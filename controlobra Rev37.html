@@ -1,0 +1,2028 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ControlObra</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=JetBrains+Mono:wght@400;600&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0C0E14;--s1:#141720;--s2:#1C2030;--bd:#2A2F42;--acc:#F59E0B;--acc2:#3B82F6;--tx:#E8EAF0;--tx2:#8892A4;--gr:#10B981;--rd:#EF4444;--pu:#8B5CF6;--fh:'Barlow Condensed',sans-serif;--fm:'JetBrains Mono',monospace;--fb:'Barlow',sans-serif}
+body{background:var(--bg);color:var(--tx);font-family:var(--fb);min-height:100vh}
+.app{min-height:100vh;display:flex;flex-direction:column}
+.topbar{background:var(--s1);border-bottom:2px solid var(--bd);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.brand{font-family:var(--fh);font-size:22px;font-weight:800;letter-spacing:.05em}.brand span{color:var(--acc)}
+.tr{display:flex;align-items:center;gap:10px}
+.rol{background:var(--s2);border:1px solid var(--bd);padding:3px 10px;border-radius:4px;font-size:11px;font-family:var(--fm);color:var(--acc);text-transform:uppercase}
+.btn-out{background:none;border:1px solid var(--bd);color:var(--tx2);padding:5px 12px;border-radius:4px;cursor:pointer;font-size:13px}.btn-out:hover{border-color:var(--rd);color:var(--rd)}
+.nav{background:var(--s2);border-bottom:1px solid var(--bd);display:flex;padding:0 20px;overflow-x:auto;gap:2px}
+.nb{background:none;border:none;color:var(--tx2);padding:11px 18px;cursor:pointer;font-family:var(--fh);font-size:14px;letter-spacing:.05em;font-weight:600;text-transform:uppercase;border-bottom:3px solid transparent;transition:all .15s;white-space:nowrap}.nb:hover{color:var(--tx)}.nb.on{color:var(--acc);border-bottom-color:var(--acc)}
+.main{flex:1;padding:20px;max-width:1400px;width:100%;margin:0 auto}
+/* LOGIN */
+.lwrap{min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);background-image:repeating-linear-gradient(0deg,transparent,transparent 39px,var(--bd) 39px,var(--bd) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,var(--bd) 39px,var(--bd) 40px);background-size:40px 40px}
+.lcard{background:var(--s1);border:2px solid var(--bd);border-radius:8px;padding:40px;width:100%;max-width:400px;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+.llogo{font-family:var(--fh);font-size:36px;font-weight:800;letter-spacing:.05em;margin-bottom:4px}.llogo span{color:var(--acc)}
+.lsub{color:var(--tx2);font-size:13px;font-family:var(--fm);letter-spacing:.05em;margin-bottom:28px;text-transform:uppercase}
+.lpub{width:100%;background:none;border:1px solid var(--bd);color:var(--tx2);border-radius:4px;padding:11px;font-family:var(--fh);font-size:15px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;margin-top:10px;transition:all .15s}.lpub:hover{border-color:var(--pu);color:#A78BFA}
+/* FORMS */
+.f{margin-bottom:14px}.f label{display:block;font-size:11px;font-family:var(--fm);color:var(--tx2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.f input,.f select,.f textarea{width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:4px;padding:9px 13px;color:var(--tx);font-size:14px;font-family:var(--fb);transition:border-color .15s;outline:none}
+.f input:focus,.f select:focus,.f textarea:focus{border-color:var(--acc)}.f input::placeholder{color:var(--tx2);opacity:.4}.f textarea{resize:vertical;min-height:70px}.f select{cursor:pointer;background:var(--s2)}
+.bp{width:100%;background:var(--acc);color:#000;border:none;border-radius:4px;padding:12px;font-family:var(--fh);font-size:17px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}.bp:hover{filter:brightness(1.1)}.bp:disabled{opacity:.35;cursor:not-allowed;filter:none}
+.err{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.4);color:var(--rd);padding:10px 14px;border-radius:4px;font-size:13px;margin-bottom:16px}
+.warn{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);color:var(--acc);padding:10px 14px;border-radius:4px;font-size:13px;margin-bottom:12px}
+.row2{display:flex;gap:12px}.row2 .f{flex:1}
+.badd{background:var(--acc);color:#000;border:none;border-radius:4px;padding:8px 18px;font-family:var(--fh);font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}.badd:hover{filter:brightness(1.1)}
+.bsm{border:1px solid var(--bd);background:var(--s2);color:var(--tx2);border-radius:3px;padding:4px 10px;font-size:12px;cursor:pointer;transition:all .15s}.bsm:hover{border-color:var(--acc2);color:var(--acc2)}.bsm-r:hover{border-color:var(--rd)!important;color:var(--rd)!important}
+.bcanc{background:var(--s2);color:var(--tx2);border:1px solid var(--bd);border-radius:4px;padding:12px 20px;font-family:var(--fh);font-size:14px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}.bcanc:hover{border-color:var(--tx2)}
+/* TABLE */
+.ph2{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;gap:12px;flex-wrap:wrap}
+.ptit{font-family:var(--fh);font-size:28px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}.ptit span{color:var(--acc)}
+.sg{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px}
+.sc{background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:14px 16px}
+.sc-btn{cursor:pointer;transition:all .15s}.sc-btn:hover{border-color:var(--acc2);background:rgba(59,130,246,.05)}
+.sv{font-family:var(--fh);font-size:34px;font-weight:800;line-height:1}.slb{font-size:11px;color:var(--tx2);text-transform:uppercase;letter-spacing:.07em;margin-top:4px;font-family:var(--fm)}
+.fb{display:flex;gap:10px;margin-bottom:13px;flex-wrap:wrap}
+.fi{background:var(--s1);border:1px solid var(--bd);border-radius:4px;padding:8px 13px;color:var(--tx);font-size:13px;outline:none;transition:border-color .15s}.fi:focus{border-color:var(--acc2)}.fi::placeholder{color:var(--tx2);opacity:.45}
+.tw{background:var(--s1);border:1px solid var(--bd);border-radius:8px;overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 200px)}
+table{width:100%;border-collapse:collapse;min-width:700px}
+th{background:var(--s2);padding:8px 12px;text-align:left;font-family:var(--fm);font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--tx2);border-bottom:1px solid var(--bd);white-space:nowrap;position:sticky;top:0;z-index:10}
+th.sh-h{color:#60A5FA;border-left:2px solid rgba(59,130,246,.25)}th.cp-h{color:var(--gr);border-left:2px solid rgba(16,185,129,.25)}
+td{padding:9px 12px;border-bottom:1px solid rgba(42,47,66,.5);font-size:13px;vertical-align:middle}
+td.sh-c{border-left:2px solid rgba(59,130,246,.1)}td.cp-c{border-left:2px solid rgba(16,185,129,.1)}
+tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012)}
+.mn{font-family:var(--fm);font-size:12px}
+.tag{display:inline-block;padding:2px 8px;border-radius:3px;font-size:11px;font-family:var(--fm);text-transform:uppercase;letter-spacing:.05em;border:1px solid}
+.t-a{background:rgba(16,185,129,.1);color:var(--gr);border-color:rgba(16,185,129,.3)}.t-e{background:rgba(245,158,11,.1);color:var(--acc);border-color:rgba(245,158,11,.3)}.t-v{background:rgba(139,92,246,.1);color:#A78BFA;border-color:rgba(139,92,246,.3)}.t-p{background:rgba(59,130,246,.1);color:#60A5FA;border-color:rgba(59,130,246,.3)}
+.av{width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:11px;font-weight:700;background:var(--s2);border:1px solid var(--bd);color:var(--tx2);flex-shrink:0}
+/* HAB CELL */
+.hc{display:inline-flex;align-items:center;padding:3px 8px;border-radius:4px;font-size:11px;font-family:var(--fm);font-weight:600;border:1px solid;white-space:nowrap;transition:all .15s}
+.hc-ok{background:rgba(16,185,129,.1);color:var(--gr);border-color:rgba(16,185,129,.3)}.hc-exp{background:rgba(245,158,11,.1);color:var(--acc);border-color:rgba(245,158,11,.3)}.hc-sus{background:rgba(239,68,68,.1);color:var(--rd);border-color:rgba(239,68,68,.3)}
+.hc-edit{cursor:pointer}.hc-edit:hover{filter:brightness(1.25)}
+.hc-add{background:none;border:1px dashed var(--bd);color:var(--tx2);border-radius:4px;padding:3px 8px;font-size:11px;font-family:var(--fm);cursor:pointer;transition:all .15s}.hc-add:hover{border-color:var(--acc);color:var(--acc)}
+.est-ok{display:inline-flex;align-items:center;gap:4px;background:rgba(16,185,129,.12);color:var(--gr);border:1px solid rgba(16,185,129,.3);border-radius:4px;padding:3px 10px;font-family:var(--fh);font-size:13px;font-weight:700;text-transform:uppercase}
+.est-no{display:inline-flex;align-items:center;gap:4px;background:rgba(239,68,68,.1);color:var(--rd);border:1px solid rgba(239,68,68,.3);border-radius:4px;padding:3px 10px;font-family:var(--fh);font-size:13px;font-weight:700;text-transform:uppercase}
+.est-par{display:inline-flex;align-items:center;gap:4px;background:rgba(245,158,11,.08);color:var(--acc);border:1px solid rgba(245,158,11,.25);border-radius:4px;padding:3px 10px;font-family:var(--fh);font-size:13px;font-weight:700;text-transform:uppercase}
+/* MODAL */
+.mo{position:fixed;inset:0;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
+.md{background:var(--s1);border:1px solid var(--bd);border-radius:8px;width:100%;max-width:460px;max-height:90vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,.7)}
+.md-lg{max-width:680px}
+.mh{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--bd)}
+.mt{font-family:var(--fh);font-size:18px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+.mc{background:none;border:none;color:var(--tx2);font-size:22px;cursor:pointer;line-height:1}.mc:hover{color:var(--rd)}
+.mb{padding:22px 24px}.mf{display:flex;gap:10px;padding:0 24px 22px}.mf .bp{flex:1}
+/* LOADER */
+.load{display:flex;align-items:center;justify-content:center;padding:40px;color:var(--tx2);font-family:var(--fm);font-size:13px;gap:10px}
+.spin{width:18px;height:18px;border:2px solid var(--bd);border-top-color:var(--acc);border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+/* CHALET BAR */
+.chalet-bar{background:linear-gradient(135deg,rgba(139,92,246,.15),rgba(59,130,246,.1));border:1px solid rgba(139,92,246,.35);border-radius:8px;padding:16px 22px;margin-bottom:18px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.chalet-num{font-family:var(--fh);font-size:52px;font-weight:900;color:#A78BFA;line-height:1}
+.chalet-label{font-family:var(--fh);font-size:16px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#A78BFA}
+.chalet-sub{font-size:12px;color:var(--tx2);font-family:var(--fm);margin-top:3px}
+.chalet-btn{background:rgba(139,92,246,.15);border:1px solid rgba(139,92,246,.4);color:#A78BFA;border-radius:5px;padding:7px 16px;font-family:var(--fh);font-size:14px;font-weight:700;text-transform:uppercase;cursor:pointer;transition:all .15s;margin-left:auto}.chalet-btn:hover{background:rgba(139,92,246,.25)}
+/* PUESTO STEPS */
+.steps{display:flex;margin-bottom:18px}
+.step{display:flex;align-items:center;gap:8px;padding:10px 18px;font-family:var(--fh);font-size:15px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--tx2);border-bottom:3px solid var(--bd);flex:1;transition:all .2s}
+.sn{width:26px;height:26px;border-radius:50%;border:2px solid var(--bd);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.step.on{color:var(--acc);border-bottom-color:var(--acc)}.step.on .sn{background:var(--acc);border-color:var(--acc);color:#000}
+.step.dn{color:var(--gr);border-bottom-color:var(--gr)}.step.dn .sn{background:var(--gr);border-color:var(--gr);color:#000}
+.vc{background:var(--s1);border:2px solid var(--bd);border-radius:8px;padding:18px 22px;margin-bottom:14px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.vc.ok{border-color:rgba(16,185,129,.45);background:rgba(16,185,129,.04)}.vc.no{border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.04)}
+.vp{font-family:var(--fm);font-size:26px;font-weight:600;letter-spacing:.1em}.vd{font-size:13px;color:var(--tx2);margin-top:2px}
+.vs{margin-left:auto;text-align:right}.vsl{font-family:var(--fh);font-size:22px;font-weight:800;text-transform:uppercase}.vsl.ok{color:var(--gr)}.vsl.no{color:var(--rd)}
+.sbox{background:var(--s1);border:2px solid var(--bd);border-radius:8px;padding:18px 22px;margin-bottom:14px}
+.slbl{font-family:var(--fh);font-size:12px;letter-spacing:.1em;color:var(--tx2);text-transform:uppercase;margin-bottom:10px}
+.srow{display:flex;gap:10px}
+.sinp{flex:1;background:var(--bg);border:2px solid var(--acc);border-radius:4px;padding:13px 16px;color:var(--tx);font-size:22px;font-family:var(--fm);letter-spacing:.08em;outline:none;text-transform:uppercase}.sinp::placeholder{color:var(--tx2);opacity:.3;font-size:15px}.sinp:focus{box-shadow:0 0 0 3px rgba(245,158,11,.15)}
+.bsc{background:var(--acc);color:#000;border:none;border-radius:4px;padding:0 22px;font-family:var(--fh);font-size:16px;font-weight:700;text-transform:uppercase;cursor:pointer}.bsc:hover{filter:brightness(1.1)}
+.sh-hint{font-size:12px;color:var(--tx2);margin-top:7px;font-family:var(--fm)}
+.fl{padding:13px 18px;border-radius:6px;margin-bottom:12px;animation:fi .15s ease}
+.fl-ok{background:rgba(16,185,129,.1);border:2px solid var(--gr)}.fl-no{background:rgba(239,68,68,.1);border:2px solid var(--rd)}
+.fll{font-family:var(--fh);font-size:22px;font-weight:800}.fl-ok .fll{color:var(--gr)}.fl-no .fll{color:var(--rd)}
+@keyframes fi{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+.pi{display:flex;align-items:center;gap:10px;padding:9px 13px;border-radius:5px;margin-bottom:5px;border:1px solid transparent}
+.pi.ok{background:rgba(16,185,129,.07);border-color:rgba(16,185,129,.22)}.pi.no{background:rgba(239,68,68,.07);border-color:rgba(239,68,68,.22)}
+.pd{width:9px;height:9px;border-radius:50%;flex-shrink:0}.pd.ok{background:var(--gr)}.pd.no{background:var(--rd)}
+.bcl{width:100%;background:var(--s2);border:2px solid var(--gr);color:var(--gr);border-radius:6px;padding:13px;font-family:var(--fh);font-size:17px;font-weight:700;text-transform:uppercase;cursor:pointer;margin-top:14px}.bcl:hover{background:rgba(16,185,129,.14)}.bcl:disabled{opacity:.35;cursor:not-allowed}
+.bnew{width:100%;background:var(--acc);color:#000;border:none;border-radius:6px;padding:14px;font-family:var(--fh);font-size:18px;font-weight:700;text-transform:uppercase;cursor:pointer;margin-top:10px}.bnew:hover{filter:brightness(1.1)}
+.scard{background:var(--s1);border:2px solid var(--bd);border-radius:8px;padding:20px 24px;margin-bottom:14px}
+.stit{font-family:var(--fh);font-size:20px;font-weight:800;text-transform:uppercase;margin-bottom:14px;color:var(--acc)}
+.dtog{display:flex;gap:8px;margin-bottom:14px}
+.db{flex:1;background:var(--s2);border:2px solid var(--bd);border-radius:4px;padding:10px;color:var(--tx2);font-family:var(--fh);font-size:16px;font-weight:700;text-transform:uppercase;cursor:pointer}
+.db-in.on{background:rgba(59,130,246,.15);border-color:#3B82F6;color:#60A5FA}.db-out.on{background:rgba(245,158,11,.1);border-color:var(--acc);color:var(--acc)}
+.rt{font-family:var(--fh);font-size:12px;letter-spacing:.1em;color:var(--tx2);text-transform:uppercase;margin-bottom:8px;margin-top:22px}
+.sr{display:flex;align-items:center;gap:10px;padding:10px 13px;background:var(--s1);border:1px solid var(--bd);border-radius:4px;margin-bottom:5px;font-size:13px;cursor:pointer;transition:all .15s}.sr:hover{border-color:var(--acc2)}
+.ld{font-family:var(--fm);font-size:11px;padding:2px 8px;border-radius:3px;text-transform:uppercase}
+.ld-in{background:rgba(59,130,246,.15);color:#60A5FA;border:1px solid rgba(59,130,246,.3)}.ld-out{background:rgba(245,158,11,.1);color:#FCD34D;border:1px solid rgba(245,158,11,.3)}
+.btn-manual{background:var(--s2);border:1px solid var(--bd);color:var(--tx2);border-radius:5px;padding:9px 16px;font-family:var(--fh);font-size:13px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;cursor:pointer;transition:all .15s;width:100%;margin-top:8px}.btn-manual:hover{border-color:var(--acc);color:var(--acc)}
+.dir-big{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px}
+.dir-big-btn{background:var(--s2);border:2px solid var(--bd);border-radius:6px;padding:18px;font-family:var(--fh);font-size:22px;font-weight:800;text-transform:uppercase;cursor:pointer;transition:all .15s;text-align:center}
+.dir-big-btn.in:hover{background:rgba(59,130,246,.15);border-color:#3B82F6;color:#60A5FA}
+.dir-big-btn.out:hover{background:rgba(245,158,11,.1);border-color:var(--acc);color:var(--acc)}
+/* PUBLIC DASHBOARD */
+.pub-wrap{min-height:100vh;background:var(--bg)}
+.pub-bar{background:var(--s1);border-bottom:2px solid var(--bd);padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between}
+.pub-tabs{display:flex;gap:2px;padding:0 20px;background:var(--s2);border-bottom:1px solid var(--bd);overflow-x:auto}
+.pub-tab{background:none;border:none;color:var(--tx2);padding:11px 18px;cursor:pointer;font-family:var(--fh);font-size:14px;font-weight:600;text-transform:uppercase;border-bottom:3px solid transparent;white-space:nowrap}.pub-tab:hover{color:var(--tx)}.pub-tab.on{color:var(--pu);border-bottom-color:var(--pu)}
+.pub-main{padding:24px;max-width:1100px;margin:0 auto}
+.pub-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.3);color:#A78BFA;border-radius:4px;padding:3px 10px;font-family:var(--fm);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+.pub-dot{width:7px;height:7px;border-radius:50%;background:#A78BFA;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+/* CHECKBOX LIST */
+.cbl{max-height:320px;overflow-y:auto;border:1px solid var(--bd);border-radius:4px}
+.cbl-item{display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid rgba(42,47,66,.5);cursor:pointer;transition:background .1s}
+.cbl-item:last-child{border-bottom:none}.cbl-item:hover{background:var(--s2)}
+.cbl-item input[type=checkbox]{width:auto;cursor:pointer;accent-color:var(--acc)}
+.offline-bar{background:linear-gradient(135deg,rgba(239,68,68,.15),rgba(245,158,11,.1));border:2px solid rgba(239,68,68,.5);border-radius:8px;padding:14px 20px;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.offline-title{font-family:var(--fh);font-size:20px;font-weight:800;color:var(--rd);text-transform:uppercase;letter-spacing:.05em}
+.btn-offline{background:rgba(239,68,68,.15);border:2px solid var(--rd);color:var(--rd);border-radius:5px;padding:8px 18px;font-family:var(--fh);font-size:14px;font-weight:700;text-transform:uppercase;cursor:pointer;transition:all .15s;width:100%;margin-top:8px}
+.btn-offline:hover{background:rgba(239,68,68,.25)}
+.pending-bar{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:12px 18px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const{useState,useEffect,useRef,useCallback}=React;
+const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
+const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
+let _tok=null,_uid=null;
+const setSes=(t,u,email,pw)=>{_tok=t;_uid=u;try{localStorage.setItem("sb",JSON.stringify({t,u,email,pw,ts:Date.now()}));}catch(e){}};
+const clearSes=()=>{_tok=null;_uid=null;try{localStorage.removeItem("sb");}catch(e){}};
+const restoreSes=()=>{try{const s=localStorage.getItem("sb");if(s){const{t,u}=JSON.parse(s);_tok=t;_uid=u;return u;}}catch(e){}return null;};
+// Refresca el token si está cerca de vencer o si da error 401
+const refreshToken=async()=>{
+  try{
+    const s=localStorage.getItem("sb");
+    if(!s)return false;
+    const{email,pw}=JSON.parse(s);
+    if(!email||!pw)return false;
+    const r=await fetch(`${SB_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:{"apikey":SB_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password:pw})});
+    if(!r.ok)return false;
+    const d=await r.json();
+    setSes(d.access_token,d.user.id,email,pw);
+    return true;
+  }catch(e){return false;}
+};
+
+// ─── CACHE OFFLINE ────────────────────────────────────────────────────────────
+const CACHE_KEY="controlobra_cache";
+const cache={
+  save:(data)=>{try{localStorage.setItem(CACHE_KEY,JSON.stringify({...data,ts:Date.now()}));}catch(e){}},
+  load:()=>{try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.parse(s):null;}catch(e){return null;}},
+  clear:()=>{try{localStorage.removeItem(CACHE_KEY);}catch(e){}},
+};
+const isOnline=()=>navigator.onLine;
+const H=(x={})=>({"apikey":SB_KEY,"Authorization":`Bearer ${_tok||SB_KEY}`,"Content-Type":"application/json","Accept-Profile":"obra","Content-Profile":"obra",...x});
+const authApi={
+  signIn:async(email,pw)=>{
+    const r=await fetch(`${SB_URL}/auth/v1/token?grant_type=password`,{method:"POST",headers:{"apikey":SB_KEY,"Content-Type":"application/json"},body:JSON.stringify({email,password:pw})});
+    const d=await r.json();if(!r.ok)return{error:d.error_description||"Email o contrasena incorrectos"};
+    setSes(d.access_token,d.user.id,email,pw);return{userId:d.user.id};
+  },
+  signOut:async()=>{await fetch(`${SB_URL}/auth/v1/logout`,{method:"POST",headers:{"apikey":SB_KEY,"Authorization":`Bearer ${_tok}`}});clearSes();}
+};
+const dbq=async(path,opts={},_retry=false)=>{
+  try{
+    const r=await fetch(`${SB_URL}/rest/v1/${path}`,{headers:H(opts.h||{}),...opts});
+    if(r.status===401&&!_retry){
+      // Token vencido: refrescar y reintentar
+      const ok=await refreshToken();
+      if(ok)return dbq(path,opts,true);
+    }
+    const d=await r.json().catch(()=>({}));return{data:d,ok:r.ok};
+  }catch(e){
+    return{data:null,ok:false};
+  }
+};
+const db={
+  sel:async(table,{cols="*",f=[],ord=null,lim=null,inFilter=null}={})=>{
+    let u=`${table}?select=${encodeURIComponent(cols)}`;
+    f.forEach(([k,op,v])=>{u+=`&${k}=${op}.${encodeURIComponent(v)}`;});
+    if(inFilter){u+=`&${inFilter[0]}=in.(${inFilter[1].join(",")})`;}
+    if(ord)u+=`&order=${ord}`;if(lim)u+=`&limit=${lim}`;
+    const{data,ok}=await dbq(u,{h:{"Accept":"application/json"}});
+    return{data:ok?(Array.isArray(data)?data:[data]):null};
+  },
+  ins:async(table,payload)=>{
+    const body=Array.isArray(payload)?payload:[payload];
+    const{data,ok}=await dbq(table,{method:"POST",h:{"Prefer":"return=representation"},body:JSON.stringify(body)});
+    return{data:ok?(Array.isArray(data)?data:[data]):null};
+  },
+  upd:async(table,payload,filters)=>{
+    let u=`${table}?`;filters.forEach(([k,op,v])=>{u+=`&${k}=${op}.${encodeURIComponent(v)}`;});
+    await dbq(u,{method:"PATCH",h:{"Prefer":"return=representation"},body:JSON.stringify(payload)});
+  },
+  del:async(table,filters)=>{
+    let u=`${table}?`;filters.forEach(([k,op,v])=>{u+=`&${k}=${op}.${encodeURIComponent(v)}`;});
+    await dbq(u,{method:"DELETE"});
+  },
+};
+const VI={Camioneta:"🛻",Combi:"🚐",Colectivo:"🚌","Camión":"🚛",Auto:"🚗",Maquinaria:"🚜",Otro:"🚗"};
+const today=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+const fmtD=d=>d?d.split("-").reverse().join("/"):"";
+const fmtTs=ts=>new Date(ts).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+const habSt=h=>{if(!h)return"none";if(h.suspendida)return"sus";if(h.fecha_hasta&&h.fecha_hasta<today())return"exp";return"ok";};
+const getHab=(et,eid,tipo,habs)=>habs.find(h=>h.entity_type===et&&(et==="persona"?h.persona_id:h.vehiculo_id)===eid&&h.tipo===tipo)||null;
+const personaEstado=(id,habs)=>{
+  const sh=habSt(getHab("persona",id,"sh_ingreso",habs));
+  const cp=habSt(getHab("persona",id,"cp_ingreso",habs));
+  if(sh==="ok"&&cp==="ok")return"ok";
+  if(sh==="ok"||cp==="ok")return"par";
+  return"no";
+};
+const vehiculoEstado=(id,habs)=>habSt(getHab("vehiculo",id,"sh_ingreso",habs))==="ok"?"ok":"no";
+const chkAuth=(type,id,habs)=>{
+  const all=habs.filter(a=>a.entity_type===type&&(type==="persona"?a.persona_id:a.vehiculo_id)===id);
+  const active=all.filter(a=>!a.suspendida&&(!a.fecha_hasta||(a.fecha_hasta+'').slice(0,10)>=today()));
+  const shOk=active.some(a=>a.tipo==="sh_ingreso");
+  const cpOk=type==="vehiculo"||active.some(a=>a.tipo==="cp_ingreso");
+  const ok=shOk&&cpOk;
+  const reason=ok?null:(!shOk?"Sin habilitacion S&H Ingreso":"Sin habilitacion CP Ingreso");
+  return{ok,reason,activeAuths:active};
+};
+
+function Spin({t="Cargando..."}){return <div className="load"><div className="spin"/>{t}</div>;}
+function Clock(){
+  const[t,setT]=useState(new Date());
+  useEffect(()=>{const i=setInterval(()=>setT(new Date()),1000);return()=>clearInterval(i);},[]);
+  return <span style={{fontFamily:"var(--fm)",fontSize:13,color:"var(--tx2)"}}>{t.toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit",second:"2-digit"})} — {t.toLocaleDateString("es-AR",{day:"2-digit",month:"2-digit",year:"numeric"})}</span>;
+}
+
+// ─── LISTA CON FILTRO EMPRESA ────────────────────────────────────────────────
+function ListaFiltrada({items,tipo,titulo,onClose}){
+  const empresas=[...new Set(items.map(x=>x.empresa||"Sin empresa").filter(Boolean))].sort();
+  const[activas,setActivas]=useState(()=>{
+    const s={};empresas.forEach(e=>{s[e]=true;});return s;
+  });
+  // Re-init when empresas change
+  useEffect(()=>{
+    const s={};empresas.forEach(e=>{s[e]=s[e]!==undefined?s[e]:true;});
+    setActivas(s);
+  },[items.length]);
+
+  const toggleEmpresa=(e)=>setActivas(a=>({...a,[e]:!a[e]}));
+  const toggleTodas=()=>{
+    const todasOn=empresas.every(e=>activas[e]);
+    const s={};empresas.forEach(e=>{s[e]=!todasOn;});setActivas(s);
+  };
+  const filtrados=items.filter(x=>(activas[x.empresa||"Sin empresa"]));
+
+  return <div className="mo"><div className="md">
+    <div className="mh"><div className="mt">{titulo} — hoy</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      {empresas.length>1&&<>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+          <div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".07em"}}>Filtrar por empresa</div>
+          <button className="bsm" style={{fontSize:11}} onClick={toggleTodas}>{empresas.every(e=>activas[e])?"Quitar todas":"Todas"}</button>
+        </div>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+          {empresas.map(e=><button key={e} onClick={()=>toggleEmpresa(e)} style={{padding:"3px 10px",borderRadius:12,border:"1px solid",fontSize:11,fontFamily:"var(--fm)",cursor:"pointer",background:activas[e]?"var(--acc2)":"var(--s2)",color:activas[e]?"#fff":"var(--tx2)",borderColor:activas[e]?"var(--acc2)":"var(--bd)",transition:"all .15s"}}>{e}</button>)}
+        </div>
+        <div style={{fontSize:12,color:"var(--tx2)",marginBottom:10}}>{filtrados.length} de {items.length}</div>
+      </>}
+      {filtrados.length===0
+        ?<div style={{color:"var(--tx2)",textAlign:"center",padding:20}}>Sin resultados.</div>
+        :<div>{filtrados.map(item=><div key={item.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:"1px solid var(--bd)"}}>
+          {tipo==="vehiculo"
+            ?<><span style={{fontSize:20}}>{VI[item.tipo]||"🚗"}</span><div><div style={{fontFamily:"var(--fm)",fontWeight:600}}>{item.patente}</div><div style={{fontSize:12,color:"var(--tx2)"}}>{item.descripcion||item.tipo} · {item.empresa||"—"}</div></div></>
+            :<><div className="av">{ini(`${item.nombre} ${item.apellido}`)}</div><div><div style={{fontWeight:500}}>{item.nombre} {item.apellido}</div><div style={{fontSize:12,color:"var(--tx2)"}}>{item.empresa||"—"} · DNI {item.dni}</div></div></>
+          }
+        </div>)}</div>
+      }
+    </div>
+  </div></div>;
+}
+
+// ─── CHALET MINI (topbar) ─────────────────────────────────────────────────────
+function ChaletMini({proyectoId}){
+  const[data,setData]=useState({pc:null,pm:0,vc:0,vm:0,plc:[],plm:[],vlc:[],vlm:[]});
+  const[showList,setShowList]=useState(null);
+  const load=async()=>{
+    try{
+      const[net2,net3,vNet2,vNet3]=await Promise.all([
+        calcNet("Puesto 2"),calcNet("Puesto 3"),
+        calcNetVehiculos("Puesto 2"),calcNetVehiculos("Puesto 3"),
+      ]);
+      const persIdsChalet=Object.entries(net3).filter(([_,v])=>v>0).map(([k])=>k);
+      const persIdsCamino=Object.entries(net2).filter(([k,v])=>{const enP3=net3[k]||0;return v>0&&enP3<=0;}).map(([k])=>k);
+      const vehIdsChalet=Object.entries(vNet3).filter(([_,v])=>v>0).map(([k])=>k);
+      const vehIdsCamino=Object.entries(vNet2).filter(([k,v])=>{const enP3=vNet3[k]||0;return v>0&&enP3<=0;}).map(([k])=>k);
+      const allPIds=[...persIdsChalet,...persIdsCamino].filter(k=>k&&k.length===36);
+      const allVIds=[...vehIdsChalet,...vehIdsCamino];
+      const[{data:pers},{data:vehs}]=await Promise.all([
+        allPIds.length?db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"}):{data:[]},
+        allVIds.length?db.sel("vehiculos",{cols:"id,patente,descripcion,tipo,empresa"}):{data:[]},
+      ]);
+      setData({
+        pc:persIdsChalet.length,pm:persIdsCamino.length,
+        vc:vehIdsChalet.length,vm:vehIdsCamino.length,
+        plc:(pers||[]).filter(p=>persIdsChalet.includes(p.id)),
+        plm:(pers||[]).filter(p=>persIdsCamino.includes(p.id)),
+        vlc:(vehs||[]).filter(v=>vehIdsChalet.includes(v.id)),
+        vlm:(vehs||[]).filter(v=>vehIdsCamino.includes(v.id)),
+      });
+    } catch(e){
+      console.warn("ChaletMini: error de red, manteniendo datos anteriores", e.message);
+    }
+  };
+  useEffect(()=>{load();const i=setInterval(load,10000);return()=>clearInterval(i);},[]);
+  if(data.pc===null)return null;
+  const Pill=({n,label,color,listKey})=><div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(0,0,0,.3)",border:`1px solid ${color}33`,borderRadius:4,padding:"3px 6px",cursor:"pointer"}} onClick={()=>setShowList(listKey)}>
+    <span style={{fontFamily:"var(--fh)",fontSize:15,fontWeight:800,color,lineHeight:1}}>{n}</span>
+    <span style={{fontSize:10,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",letterSpacing:".05em"}}>{label}</span>
+    <span style={{fontSize:9,color,opacity:.7}}>▾</span>
+  </div>;
+  const listData={plc:data.plc,plm:data.plm,vlc:data.vlc,vlm:data.vlm};
+  const listTitles={plc:"Personas en Chalet",plm:"Personas en Camino",vlc:"Vehiculos en Chalet",vlm:"Vehiculos en Camino"};
+  return <>
+    <div style={{display:"flex",alignItems:"center",gap:6}}>
+      <span style={{fontSize:9,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",letterSpacing:".06em",marginRight:2}}>Chalet</span>
+      <Pill n={data.pc} label="pers" color="#A78BFA" listKey="plc"/>
+      <Pill n={data.vc} label="veh" color="#10B981" listKey="vlc"/>
+      <span style={{fontSize:9,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",letterSpacing:".06em",marginLeft:4,marginRight:2}}>Camino</span>
+      <Pill n={data.pm} label="pers" color="#60A5FA" listKey="plm"/>
+      <Pill n={data.vm} label="veh" color="#60A5FA" listKey="vlm"/>
+    </div>
+    {showList&&<ListaFiltrada
+      items={listData[showList]}
+      tipo={showList.startsWith("v")?"vehiculo":"persona"}
+      titulo={listTitles[showList]}
+      onClose={()=>setShowList(null)}
+    />}
+  </>;
+}
+
+// ─── CHALET COUNTER ───────────────────────────────────────────────────────────
+// helper: calcula neto de personas en un puesto dado datos de sesiones+manuales+regs
+// calcNet: neto de personas por puesto (clave = persona_id o dni_raw)
+const calcNet=async(puesto)=>{
+  const todayStr=today();
+  const[{data:ses},{data:man}]=await Promise.all([
+    db.sel("sesiones_acceso",{f:[["puesto","eq",puesto],["cerrada_at","gte",todayStr+"T00:00:00"]],ord:"cerrada_at.asc"}),
+    db.sel("movimientos_manuales",{f:[["puesto","eq",puesto],["created_at","gte",todayStr+"T00:00:00"]],ord:"created_at.asc"}),
+  ]);
+  const sesIds=(ses||[]).map(s=>s.id);
+  let regPersonas=[];
+  if(sesIds.length>0){
+    // Filtramos por sesion_id directamente en Supabase (no hay limite de filas)
+    const{data:regs}=await db.sel("registros_acceso",{cols:"persona_id,dni_raw,sesion_id",inFilter:["sesion_id",sesIds]});
+    regPersonas=regs||[];
+  }
+  const netMap={};
+  (ses||[]).forEach(s=>{
+    const delta=s.direccion==="entrada"?1:-1;
+    regPersonas.filter(r=>r.sesion_id===s.id).forEach(r=>{
+      const key=r.persona_id||r.dni_raw;
+      netMap[key]=(netMap[key]||0)+delta;
+    });
+  });
+  (man||[]).forEach(m=>{
+    const delta=m.direccion==="entrada"?1:-1;
+    const key=m.persona_id||m.dni_raw||("m_"+m.id);
+    netMap[key]=(netMap[key]||0)+delta;
+  });
+  return netMap;
+};
+
+// calcNetVehiculos: neto de vehiculos por puesto (clave = vehiculo_id)
+const calcNetVehiculos=async(puesto)=>{
+  const todayStr=today();
+  const{data:ses}=await db.sel("sesiones_acceso",{
+    cols:"vehiculo_id,direccion,cerrada_at,vehiculo_razon",
+    f:[["puesto","eq",puesto],["cerrada_at","gte",todayStr+"T00:00:00"]],
+    ord:"cerrada_at.asc"
+  });
+  const netMap={};
+  (ses||[]).forEach(s=>{
+    // Usar vehiculo_id si existe, sino usar el texto del vehiculo_razon como clave
+    const key=s.vehiculo_id||(s.vehiculo_razon&&s.vehiculo_razon.startsWith("No registrado:")?s.vehiculo_razon:null);
+    if(!key)return;
+    netMap[key]=(netMap[key]||0)+(s.direccion==="entrada"?1:-1);
+  });
+  return netMap;
+};
+
+function ChaletCounter({proyectoId}){
+  const[countChalet,setCountChalet]=useState(null);
+  const[countCamino,setCountCamino]=useState(null);
+  const[countVehChalet,setCountVehChalet]=useState(0);
+  const[countVehCamino,setCountVehCamino]=useState(0);
+  const[personas,setPersonas]=useState([]);
+  const[vehiculos,setVehiculos]=useState([]);
+  const[showList,setShowList]=useState(null); // null | "personas" | "vehiculos"
+  const[personasCamino,setPersonasCamino]=useState([]);
+  const[vehiculosCamino,setVehiculosCamino]=useState([]);
+  const load=async()=>{
+    try{
+    const[net2,net3,vNet2,vNet3]=await Promise.all([
+      calcNet("Puesto 2"),calcNet("Puesto 3"),
+      calcNetVehiculos("Puesto 2"),calcNetVehiculos("Puesto 3"),
+    ]);
+    // Personas en chalet (neto + en P3)
+    const persIdsChalet=Object.entries(net3).filter(([_,v])=>v>0).map(([k])=>k);
+    const inChalet=persIdsChalet.length;
+    // Personas en camino (neto + en P2 pero NO en chalet)
+    const persIdsCamino=Object.entries(net2).filter(([k,v])=>v>0&&!persIdsChalet.includes(k)).map(([k])=>k);
+    setCountChalet(inChalet);
+    setCountCamino(persIdsCamino.length);
+    // Load persona details
+    const allPersIds=[...persIdsChalet,...persIdsCamino].filter(k=>k&&k.length===36);
+    if(allPersIds.length>0){
+      const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"});
+      setPersonas((pers||[]).filter(p=>persIdsChalet.includes(p.id)));
+      setPersonasCamino((pers||[]).filter(p=>persIdsCamino.includes(p.id)));
+    } else {setPersonas([]);setPersonasCamino([]);}
+    // Vehiculos en chalet (neto + en P3)
+    const vehIdsChalet=Object.entries(vNet3).filter(([_,v])=>v>0).map(([k])=>k);
+    // En camino: neto positivo en P2, y neto en P3 <= 0
+    const vehIdsCamino=Object.entries(vNet2).filter(([k,v])=>{
+      const enP3=vNet3[k]||0;
+      return v>0&&enP3<=0;
+    }).map(([k])=>k);
+    setCountVehChalet(vehIdsChalet.length);
+    setCountVehCamino(vehIdsCamino.length);
+    // Load vehiculo details
+    const allVehIds=[...vehIdsChalet,...vehIdsCamino];
+    if(allVehIds.length>0){
+      const{data:vehs}=await db.sel("vehiculos",{cols:"id,patente,descripcion,tipo,empresa"});
+      setVehiculos((vehs||[]).filter(v=>vehIdsChalet.includes(v.id)));
+      setVehiculosCamino((vehs||[]).filter(v=>vehIdsCamino.includes(v.id)));
+    } else {setVehiculos([]);setVehiculosCamino([]);}
+    } catch(e){console.warn("ChaletCounter: error de red, manteniendo datos anteriores");}
+  };
+  useEffect(()=>{load();const i=setInterval(load,5000);return()=>clearInterval(i);},[]);
+  if(countChalet===null)return null;
+  return <>
+    {/* CHALET */}
+    <div style={{background:"linear-gradient(135deg,rgba(139,92,246,.15),rgba(59,130,246,.1))",border:"1px solid rgba(139,92,246,.35)",borderRadius:8,overflow:"hidden",marginBottom:10}}>
+      <div style={{padding:"8px 16px",borderBottom:"1px solid rgba(139,92,246,.2)",fontFamily:"var(--fh)",fontSize:12,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:"#A78BFA"}}>En Chalet — Puesto 3</div>
+      <div style={{display:"flex"}}>
+        <div style={{flex:1,padding:"12px 16px",borderRight:"1px solid rgba(139,92,246,.2)",display:"flex",alignItems:"center",gap:12}}>
+          <div style={{fontFamily:"var(--fh)",fontSize:40,fontWeight:900,color:"#A78BFA",lineHeight:1}}>{countChalet}</div>
+          <div style={{flex:1}}><div style={{fontFamily:"var(--fh)",fontSize:13,fontWeight:700,color:"#A78BFA",textTransform:"uppercase"}}>Personas</div></div>
+          <button className="chalet-btn" style={{padding:"4px 10px",fontSize:12}} onClick={()=>setShowList("personas")}>Ver</button>
+        </div>
+        <div style={{flex:1,padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
+          <div style={{fontFamily:"var(--fh)",fontSize:40,fontWeight:900,color:"var(--gr)",lineHeight:1}}>{countVehChalet}</div>
+          <div style={{flex:1}}><div style={{fontFamily:"var(--fh)",fontSize:13,fontWeight:700,color:"var(--gr)",textTransform:"uppercase"}}>Vehiculos</div></div>
+          <button className="chalet-btn" style={{padding:"4px 10px",fontSize:12,background:"rgba(16,185,129,.15)",border:"1px solid rgba(16,185,129,.4)",color:"var(--gr)"}} onClick={()=>setShowList("vehiculos")}>Ver</button>
+        </div>
+      </div>
+    </div>
+    {/* CAMINO */}
+    <div style={{background:"linear-gradient(135deg,rgba(59,130,246,.12),rgba(16,185,129,.07))",border:"1px solid rgba(59,130,246,.3)",borderRadius:8,overflow:"hidden",marginBottom:14}}>
+      <div style={{padding:"8px 16px",borderBottom:"1px solid rgba(59,130,246,.2)",fontFamily:"var(--fh)",fontSize:12,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:"#60A5FA"}}>En Camino — P2 a P3</div>
+      <div style={{display:"flex"}}>
+        <div style={{flex:1,padding:"12px 16px",borderRight:"1px solid rgba(59,130,246,.2)",display:"flex",alignItems:"center",gap:12}}>
+          <div style={{fontFamily:"var(--fh)",fontSize:40,fontWeight:900,color:"#60A5FA",lineHeight:1}}>{countCamino}</div>
+          <div style={{flex:1}}><div style={{fontFamily:"var(--fh)",fontSize:13,fontWeight:700,color:"#60A5FA",textTransform:"uppercase"}}>Personas</div></div>
+          <button className="chalet-btn" style={{padding:"4px 10px",fontSize:12,background:"rgba(59,130,246,.15)",border:"1px solid rgba(59,130,246,.4)",color:"#60A5FA"}} onClick={()=>setShowList("personas-camino")}>Ver</button>
+        </div>
+        <div style={{flex:1,padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
+          <div style={{fontFamily:"var(--fh)",fontSize:40,fontWeight:900,color:"#60A5FA",lineHeight:1}}>{countVehCamino}</div>
+          <div style={{flex:1}}><div style={{fontFamily:"var(--fh)",fontSize:13,fontWeight:700,color:"#60A5FA",textTransform:"uppercase"}}>Vehiculos</div></div>
+          <button className="chalet-btn" style={{padding:"4px 10px",fontSize:12,background:"rgba(59,130,246,.15)",border:"1px solid rgba(59,130,246,.4)",color:"#60A5FA"}} onClick={()=>setShowList("vehiculos-camino")}>Ver</button>
+        </div>
+      </div>
+    </div>
+    {/* MODALES */}
+    {showList==="personas"&&<ListaFiltrada items={personas} tipo="persona" titulo="Personas en Chalet" onClose={()=>setShowList(null)}/>}
+    {showList==="personas-camino"&&<ListaFiltrada items={personasCamino} tipo="persona" titulo="Personas en Camino" onClose={()=>setShowList(null)}/>}
+    {showList==="vehiculos"&&<ListaFiltrada items={vehiculos} tipo="vehiculo" titulo="Vehiculos en Chalet" onClose={()=>setShowList(null)}/>}
+    {showList==="vehiculos-camino"&&<ListaFiltrada items={vehiculosCamino} tipo="vehiculo" titulo="Vehiculos en Camino" onClose={()=>setShowList(null)}/>}
+  </>;
+}
+
+// ─── MOVIMIENTO MANUAL ────────────────────────────────────────────────────────
+function MovimientoManual({user,proyectoId,onClose,onSaved}){
+  const[step,setStep]=useState("dir");
+  const[dir,setDir]=useState(null);
+  const[search,setSearch]=useState("");
+  const[personas,setPersonas]=useState([]);
+  const[saving,setSaving]=useState(false);
+  const isP1=user.puesto_nombre==="Puesto 1";
+  const labels=isP1?{entrada:"Entro",salida:"Salio"}:{entrada:"Subio",salida:"Bajo"};
+  useEffect(()=>{db.sel("personas",{f:[["deleted_at","is","null"]],ord:"apellido.asc"}).then(({data})=>{if(data)setPersonas(data);});},[]);
+  const filtered=personas.filter(p=>search?`${p.nombre} ${p.apellido} ${p.dni} ${p.empresa||""}`.toLowerCase().includes(search.toLowerCase()):true);
+  const save=async(persona)=>{
+    setSaving(true);
+    await db.ins("movimientos_manuales",{proyecto_id:proyectoId,puesto:user.puesto_nombre,operador_id:user.id,persona_id:persona?persona.id:null,dni_raw:persona?persona.dni:null,nombre_raw:persona?`${persona.nombre} ${persona.apellido}`:null,direccion:dir});
+    setSaving(false);onSaved&&onSaved();onClose();
+  };
+  return <div className="mo"><div className="md">
+    <div className="mh"><div className="mt">Movimiento manual — {user.puesto_nombre}</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      {step==="dir"&&<>
+        <div style={{fontSize:13,color:"var(--tx2)",marginBottom:16}}>Que movimiento queres registrar?</div>
+        <div className="dir-big">
+          <button className="dir-big-btn in" onClick={()=>{setDir("entrada");setStep("persona");}}>entro / subio</button>
+          <button className="dir-big-btn out" onClick={()=>{setDir("salida");setStep("persona");}}>salio / bajo</button>
+        </div>
+      </>}
+      {step==="persona"&&<>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+          <span className={`ld ld-${dir==="entrada"?"in":"out"}`}>{labels[dir]}</span>
+          <button onClick={()=>setStep("dir")} style={{background:"none",border:"none",color:"var(--tx2)",cursor:"pointer",fontSize:12}}>cambiar</button>
+        </div>
+        <div className="f"><label>Buscar persona</label><input placeholder="Nombre, apellido o DNI..." value={search} onChange={e=>setSearch(e.target.value)} autoFocus/></div>
+        <div style={{maxHeight:280,overflowY:"auto",marginTop:4}}>
+          {filtered.slice(0,20).map(p=><div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:5,cursor:"pointer",marginBottom:3}} onMouseOver={e=>e.currentTarget.style.background="var(--s2)"} onMouseOut={e=>e.currentTarget.style.background="transparent"} onClick={()=>save(p)}>
+            <div className="av">{ini(`${p.nombre} ${p.apellido}`)}</div>
+            <div><div style={{fontWeight:500}}>{p.nombre} {p.apellido}</div><div style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa} - DNI {p.dni}</div></div>
+          </div>)}
+          {filtered.length===0&&<div style={{textAlign:"center",color:"var(--tx2)",padding:20,fontSize:13}}>Sin resultados</div>}
+        </div>
+        <button onClick={()=>save(null)} style={{marginTop:12,width:"100%",background:"none",border:"1px dashed var(--bd)",color:"var(--tx2)",borderRadius:4,padding:"9px",cursor:"pointer",fontSize:13,fontFamily:"var(--fm)"}}>
+          {saving?"Guardando...":"Registrar sin identificar persona"}
+        </button>
+      </>}
+    </div>
+  </div></div>;
+}
+
+// ─── HAB MODAL ────────────────────────────────────────────────────────────────
+function HabModal({hab,tipo,onClose,onSave,onDelete}){
+  const[fecha,setFecha]=useState(hab?hab.fecha_hasta:"");
+  const[susp,setSusp]=useState(hab?hab.suspendida:false);
+  const[motivo,setMotivo]=useState(hab?hab.motivo_suspension||"":"");
+  const labels={"sh_ingreso":"S&H Ingreso","sh_chalet":"S&H Chalet","sh_manejo":"S&H Subir a Chalet","cp_ingreso":"CP Ingreso","cp_almuerzo":"CP Almuerzo","cp_cena":"CP Cena"};
+  return <div className="mo"><div className="md">
+    <div className="mh"><div className="mt">{hab?"Editar":"Nueva"} — {labels[tipo]||tipo}</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div className="f"><label>Fecha de vencimiento</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/></div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <input type="checkbox" id="susp" checked={susp} onChange={e=>setSusp(e.target.checked)} style={{width:"auto",cursor:"pointer"}}/>
+        <label htmlFor="susp" style={{cursor:"pointer",fontSize:14}}>Suspender habilitacion</label>
+      </div>
+      {susp&&<div className="f"><label>Motivo</label><textarea value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="Describe el motivo..."/></div>}
+    </div>
+    <div className="mf">
+      {onDelete&&<button className="bcanc" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.3)",flex:"0 0 auto"}} onClick={onDelete}>Eliminar</button>}
+      <button className="bcanc" onClick={onClose}>Cancelar</button>
+      <button className="bp" disabled={!fecha} onClick={()=>onSave({fecha_hasta:fecha,suspendida:susp,motivo_suspension:motivo||null})}>Guardar</button>
+    </div>
+  </div></div>;
+}
+
+function HabCell({hab,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,onRefresh,tdClass}){
+  const[show,setShow]=useState(false);
+  const st=habSt(hab);
+  const save=async(form)=>{
+    if(hab)await db.upd("habilitaciones",form,[["id","eq",hab.id]]);
+    else await db.ins("habilitaciones",{entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,...form});
+    onRefresh();setShow(false);
+  };
+  const remove=async()=>{if(!confirm("Eliminar esta habilitacion?"))return;await db.del("habilitaciones",[["id","eq",hab.id]]);onRefresh();};
+  return <td className={tdClass||""} style={{minWidth:88}}>
+    {st==="none"
+      ?canEdit?<button className="hc-add" onClick={()=>setShow(true)}>+ Agregar</button>:<span style={{color:"var(--tx2)",opacity:.3,fontSize:12}}>—</span>
+      :<span className={`hc hc-${st}${canEdit?" hc-edit":""}`} onClick={canEdit?()=>setShow(true):undefined}>{st==="ok"?"ok "+fmtD(hab.fecha_hasta):st==="exp"?"VENC "+fmtD(hab.fecha_hasta):"SUSP"}</span>
+    }
+    {show&&<HabModal hab={hab} tipo={tipo} onClose={()=>setShow(false)} onSave={save} onDelete={hab?remove:null}/>}
+  </td>;
+}
+
+// ─── HABILITACION MASIVA POR EMPRESA ──────────────────────────────────────────
+function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
+  const[empresas,setEmpresas]=useState([]);
+  const[empresa,setEmpresa]=useState("");
+  const[personas,setPersonas]=useState([]);
+  const[selected,setSelected]=useState({});
+  const[tipo,setTipo]=useState("sh_ingreso");
+  const[fecha,setFecha]=useState("");
+  const[saving,setSaving]=useState(false);
+  const[step,setStep]=useState("config"); // config | personas
+
+  useEffect(()=>{
+    db.sel("personas",{cols:"empresa",f:[["deleted_at","is","null"]]}).then(({data})=>{
+      if(data){
+        const emp=[...new Set(data.map(p=>p.empresa).filter(Boolean))].sort();
+        setEmpresas(emp);
+      }
+    });
+  },[]);
+
+  const loadPersonas=async(emp)=>{
+    const{data}=await db.sel("personas",{f:[["empresa","eq",emp],["deleted_at","is","null"]],ord:"apellido.asc"});
+    if(data){
+      setPersonas(data);
+      const sel={};
+      data.forEach(p=>{sel[p.id]=true;});
+      setSelected(sel);
+    }
+  };
+
+  const toggleAll=()=>{
+    const allOn=personas.every(p=>selected[p.id]);
+    const sel={};
+    personas.forEach(p=>{sel[p.id]=!allOn;});
+    setSelected(sel);
+  };
+
+  const save=async()=>{
+    const ids=Object.entries(selected).filter(([_,v])=>v).map(([k])=>k);
+    if(!ids.length||!fecha)return;
+    setSaving(true);
+    for(const pid of ids){
+      const existing=getHab("persona",pid,tipo,habs);
+      if(existing){
+        await db.upd("habilitaciones",{fecha_hasta:fecha,suspendida:false,motivo_suspension:null},[["id","eq",existing.id]]);
+      } else {
+        await db.ins("habilitaciones",{entity_type:"persona",persona_id:pid,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_hasta:fecha,suspendida:false});
+      }
+    }
+    setSaving(false);onSaved();onClose();
+  };
+
+  const tiposLabel={"sh_ingreso":"S&H Ingreso","sh_chalet":"S&H Chalet","sh_manejo":"S&H Subir a Chalet"};
+  const selectedCount=Object.values(selected).filter(Boolean).length;
+
+  return <div className="mo"><div className="md md-lg">
+    <div className="mh"><div className="mt">Habilitacion masiva por empresa</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      {step==="config"&&<>
+        <div className="f"><label>Tipo de habilitacion</label>
+          <select value={tipo} onChange={e=>setTipo(e.target.value)}>
+            {Object.entries(tiposLabel).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
+        <div className="f"><label>Fecha de vencimiento</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/></div>
+        <div className="f"><label>Empresa</label>
+          <select value={empresa} onChange={e=>{setEmpresa(e.target.value);if(e.target.value)loadPersonas(e.target.value);}}>
+            <option value="">-- seleccionar empresa --</option>
+            {empresas.map(e=><option key={e} value={e}>{e}</option>)}
+          </select>
+        </div>
+        {empresa&&personas.length>0&&<button className="bp" disabled={!fecha} onClick={()=>setStep("personas")}>Ver personal de {empresa}</button>}
+      </>}
+      {step==="personas"&&<>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <div>
+            <div style={{fontWeight:600}}>{empresa}</div>
+            <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>{tiposLabel[tipo]} — vence {fmtD(fecha)}</div>
+          </div>
+          <button className="bsm" onClick={toggleAll}>{personas.every(p=>selected[p.id])?"Quitar todos":"Seleccionar todos"}</button>
+        </div>
+        <div className="cbl">
+          {personas.map(p=>{
+            const st=habSt(getHab("persona",p.id,tipo,habs));
+            return <div key={p.id} className="cbl-item" onClick={()=>setSelected(s=>({...s,[p.id]:!s[p.id]}))}>
+              <input type="checkbox" checked={!!selected[p.id]} readOnly/>
+              <div className="av">{ini(`${p.nombre} ${p.apellido}`)}</div>
+              <div style={{flex:1}}><div style={{fontWeight:500}}>{p.nombre} {p.apellido}</div><div style={{fontSize:11,color:"var(--tx2)"}}>DNI {p.dni}</div></div>
+              {st!=="none"&&<span className={`hc hc-${st}`} style={{fontSize:10}}>{st==="ok"?"actual":st==="exp"?"venc":"susp"}</span>}
+            </div>;
+          })}
+        </div>
+        <div style={{marginTop:12,fontSize:13,color:"var(--tx2)"}}>{selectedCount} personas seleccionadas</div>
+      </>}
+    </div>
+    <div className="mf">
+      {step==="personas"&&<button className="bcanc" onClick={()=>setStep("config")}>Atras</button>}
+      <button className="bcanc" onClick={onClose}>Cancelar</button>
+      {step==="personas"&&<button className="bp" disabled={saving||selectedCount===0||!fecha} onClick={save}>{saving?"Aplicando...":"Aplicar a "+selectedCount+" personas"}</button>}
+    </div>
+  </div></div>;
+}
+
+// ─── REGISTRO MANUAL DE ACCESO ───────────────────────────────────────────────
+function RegistroManualAcceso({persona,user,proyectoId,onClose,onSaved}){
+  const[dir,setDir]=useState(null);
+  const[conVehiculo,setConVehiculo]=useState(null);
+  const[patente,setPatente]=useState("");
+  const[saving,setSaving]=useState(false);
+  const[step,setStep]=useState("dir"); // dir | vehiculo | confirm
+  const isP1=user.puesto_nombre==="Puesto 1";
+  const labels=isP1?{entrada:"Ingreso a obra",salida:"Salio de obra"}:{entrada:"Subio al chalet",salida:"Bajo del chalet"};
+
+  const guardar=async()=>{
+    setSaving(true);
+    // Si tiene vehículo, buscar o registrar el vehículo
+    let vehiculoId=null;
+    if(conVehiculo&&patente.trim()){
+      const pat=patente.trim().toUpperCase();
+      const{data:v}=await db.sel("vehiculos",{f:[["patente","eq",pat]],lim:1});
+      if(v&&v[0]){
+        vehiculoId=v[0].id;
+      } else {
+        // Auto-registrar vehículo
+        const{data:nuevo}=await db.ins("vehiculos",{patente:pat,tipo:"Camioneta",descripcion:"Registrado via acceso manual",activo:true});
+        if(nuevo&&nuevo[0])vehiculoId=nuevo[0].id;
+      }
+    }
+
+    if(vehiculoId){
+      // Registrar como sesión de acceso
+      const{data:ses}=await db.ins("sesiones_acceso",{
+        proyecto_id:proyectoId,puesto:user.puesto_nombre,operador_id:user.id,
+        vehiculo_id:vehiculoId,vehiculo_ok:false,
+        direccion:dir,total_personas:1,total_aprobados:1,total_rechazados:0,
+      });
+      if(ses&&ses[0]){
+        await db.ins("registros_acceso",[{
+          sesion_id:ses[0].id,persona_id:persona.id,
+          dni_raw:persona.dni,resultado:"aprobado",orden_escaneo:1,
+        }]);
+      }
+    } else {
+      // Registrar como movimiento manual
+      await db.ins("movimientos_manuales",{
+        proyecto_id:proyectoId,puesto:user.puesto_nombre,operador_id:user.id,
+        persona_id:persona.id,dni_raw:persona.dni,
+        nombre_raw:`${persona.nombre} ${persona.apellido}`,direccion:dir,
+      });
+    }
+    setSaving(false);onSaved&&onSaved();onClose();
+  };
+
+  return <div className="mo"><div className="md">
+    <div className="mh">
+      <div>
+        <div className="mt">Registro manual de acceso</div>
+        <div style={{fontSize:13,color:"var(--tx2)",marginTop:2}}>{persona.nombre} {persona.apellido} · DNI {persona.dni}</div>
+      </div>
+      <button className="mc" onClick={onClose}>x</button>
+    </div>
+    <div className="mb">
+      {step==="dir"&&<>
+        <div style={{fontSize:13,color:"var(--tx2)",marginBottom:14}}>¿Qué movimiento registrás?</div>
+        <div className="dir-big">
+          <button className="dir-big-btn in" onClick={()=>{setDir("entrada");setStep("vehiculo");}}>
+            <div style={{fontSize:32,marginBottom:6}}>⬆️</div>
+            {labels.entrada}
+          </button>
+          <button className="dir-big-btn out" onClick={()=>{setDir("salida");setStep("vehiculo");}}>
+            <div style={{fontSize:32,marginBottom:6}}>⬇️</div>
+            {labels.salida}
+          </button>
+        </div>
+      </>}
+      {step==="vehiculo"&&<>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18}}>
+          <span className={`ld ld-${dir==="entrada"?"in":"out"}`}>{dir==="entrada"?labels.entrada:labels.salida}</span>
+          <button onClick={()=>setStep("dir")} style={{background:"none",border:"none",color:"var(--tx2)",cursor:"pointer",fontSize:12}}>cambiar</button>
+        </div>
+        <div style={{fontSize:13,color:"var(--tx2)",marginBottom:14}}>¿Vino con vehículo?</div>
+        <div style={{display:"flex",gap:10,marginBottom:16}}>
+          <button onClick={()=>setConVehiculo(true)} className={`db${conVehiculo===true?" db-in on":""}`} style={{flex:1}}>Sí</button>
+          <button onClick={()=>{setConVehiculo(false);setPatente("");}} className={`db${conVehiculo===false?" db-out on":""}`} style={{flex:1}}>No</button>
+        </div>
+        {conVehiculo===true&&<div className="f">
+          <label>Patente del vehículo</label>
+          <input placeholder="Ej: AB123CD" value={patente} onChange={e=>setPatente(e.target.value.toUpperCase())} autoFocus/>
+        </div>}
+        {conVehiculo!==null&&<button className="bp" disabled={conVehiculo===true&&!patente.trim()||saving} onClick={guardar}>
+          {saving?"Guardando...":"Confirmar registro"}
+        </button>}
+      </>}
+    </div>
+  </div></div>;
+}
+
+// ─── PERSONAL PANEL ───────────────────────────────────────────────────────────
+function PersonalPanel({userRole,currentUserId,proyectoId,user}){
+  const[personas,setPersonas]=useState([]);
+  const[habs,setHabs]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[filter,setFilter]=useState("");
+  const[filterEst,setFilterEst]=useState("");
+  const[showModal,setShowModal]=useState(false);
+  const[showMasivo,setShowMasivo]=useState(false);
+  const[editP,setEditP]=useState(null);
+  const[registroP,setRegistroP]=useState(null); // persona para registro manual
+  const canSH=userRole==="sh"||userRole==="admin";
+  const canCP=userRole==="cp"||userRole==="admin";
+  const readOnly=userRole==="puesto";
+  const load=async()=>{
+    setLoading(true);
+    const[r1,r2]=await Promise.all([
+      db.sel("personas",{f:[["deleted_at","is","null"]],ord:"apellido.asc"}),
+      db.sel("habilitaciones",{f:[["entity_type","eq","persona"]]}),
+    ]);
+    if(r1.data)setPersonas(r1.data);
+    if(r2.data)setHabs(r2.data);
+    setLoading(false);
+  };
+  useEffect(()=>{load();},[]);
+  const saveP=async f=>{
+    if(editP){await db.upd("personas",f,[["id","eq",editP.id]]);}
+    else{
+      // Check if exists but deleted
+      const{data:exist}=await db.sel("personas",{f:[["dni","eq",f.dni]],lim:1});
+      if(exist&&exist[0]&&exist[0].deleted_at){
+        // Restore
+        await db.upd("personas",{...f,deleted_at:null},[["id","eq",exist[0].id]]);
+      } else {
+        await db.ins("personas",f);
+      }
+    }
+    load();
+  };
+  const delP=async id=>{if(!confirm("Eliminar?"))return;await db.upd("personas",{deleted_at:new Date().toISOString()},[["id","eq",id]]);load();};
+  let filtered=personas.filter(p=>!filter||`${p.nombre} ${p.apellido} ${p.dni} ${p.empresa||""}`.toLowerCase().includes(filter.toLowerCase()));
+  if(filterEst)filtered=filtered.filter(p=>personaEstado(p.id,habs)===filterEst);
+  const btns=[];
+  if(!readOnly&&(canSH||canCP))btns.push(<button key="add" className="badd" onClick={()=>{setEditP(null);setShowModal(true);}}>+ Nuevo</button>);
+  if(canSH)btns.push(<button key="mas" className="badd" style={{background:"var(--acc2)",marginLeft:6}} onClick={()=>setShowMasivo(true)}>Hab. masiva por empresa</button>);
+  return <div>
+    <div className="ph2"><div className="ptit"><span>Personal</span>{readOnly&&<span style={{fontSize:14,fontWeight:400,color:"var(--tx2)",marginLeft:10}}>solo lectura</span>}</div><div style={{display:"flex",gap:6}}>{btns}</div></div>
+    <div className="sg">
+      <div className="sc"><div className="sv">{personas.length}</div><div className="slb">Total</div></div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="ok"?"":"ok")} style={filterEst==="ok"?{borderColor:"var(--gr)"}:{}}><div className="sv" style={{color:"var(--gr)"}}>{personas.filter(p=>personaEstado(p.id,habs)==="ok").length}</div><div className="slb">Habilitados</div></div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="par"?"":"par")} style={filterEst==="par"?{borderColor:"var(--acc)"}:{}}><div className="sv" style={{color:"var(--acc)"}}>{personas.filter(p=>personaEstado(p.id,habs)==="par").length}</div><div className="slb">Parciales</div></div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="no"?"":"no")} style={filterEst==="no"?{borderColor:"var(--rd)"}:{}}><div className="sv" style={{color:"var(--rd)"}}>{personas.filter(p=>personaEstado(p.id,habs)==="no").length}</div><div className="slb">Bloqueados</div></div>
+    </div>
+    <div className="fb">
+      <input className="fi" placeholder="Buscar nombre, DNI o empresa..." value={filter} onChange={e=>setFilter(e.target.value)} style={{width:300}}/>
+      {filterEst&&<button className="bsm" onClick={()=>setFilterEst("")}>x Filtro activo</button>}
+    </div>
+    {loading?<Spin/>:<div className="tw"><table>
+      <thead>
+        <tr>
+          <th rowSpan={2} style={{verticalAlign:"bottom",borderRight:"1px solid var(--bd)",top:0}}>Persona</th>
+          <th rowSpan={2} style={{verticalAlign:"bottom",top:0}}>DNI</th>
+          <th rowSpan={2} style={{verticalAlign:"bottom",borderRight:"1px solid var(--bd)",top:0}}>Empresa</th>
+          <th colSpan={3} className="sh-h" style={{textAlign:"center",paddingBottom:4,top:0}}>S&H</th>
+          <th colSpan={3} className="cp-h" style={{textAlign:"center",paddingBottom:4,top:0}}>Control de Personal</th>
+          <th rowSpan={2} style={{verticalAlign:"bottom",top:0}}>Estado</th>
+          {!readOnly&&<th rowSpan={2} style={{top:0}}></th>}
+        </tr>
+        <tr>
+          <th className="sh-h" style={{top:28}}>Ingreso</th><th style={{top:28}}>Chalet</th><th style={{top:28}}>Sub.Chalet</th>
+          <th className="cp-h" style={{top:28}}>Ingreso</th><th style={{top:28}}>Almuerzo</th><th style={{top:28}}>Cena</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filtered.length===0&&<tr><td colSpan={readOnly?10:11} style={{textAlign:"center",color:"var(--tx2)",padding:28}}>Sin registros</td></tr>}
+        {filtered.map(p=>{
+          const est=personaEstado(p.id,habs);
+          return <tr key={p.id}>
+            <td style={{borderRight:"1px solid var(--bd)"}}><div style={{display:"flex",alignItems:"center",gap:8}}><div className="av">{ini(`${p.nombre} ${p.apellido}`)}</div><div><div style={{fontWeight:500}}>{p.nombre} {p.apellido}</div>{p.cargo&&<div style={{fontSize:11,color:"var(--tx2)"}}>{p.cargo}</div>}</div></div></td>
+            <td className="mn">{p.dni}</td>
+            <td style={{color:"var(--tx2)",fontSize:12,borderRight:"1px solid var(--bd)",maxWidth:130,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.empresa||"—"}</td>
+            <HabCell hab={getHab("persona",p.id,"sh_ingreso",habs)} tipo="sh_ingreso" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load} tdClass="sh-c"/>
+            <HabCell hab={getHab("persona",p.id,"sh_chalet",habs)} tipo="sh_chalet" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
+            <HabCell hab={getHab("persona",p.id,"sh_manejo",habs)} tipo="sh_manejo" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
+            <HabCell hab={getHab("persona",p.id,"cp_ingreso",habs)} tipo="cp_ingreso" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canCP&&!readOnly} currentUserId={currentUserId} onRefresh={load} tdClass="cp-c"/>
+            <HabCell hab={getHab("persona",p.id,"cp_almuerzo",habs)} tipo="cp_almuerzo" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canCP&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
+            <HabCell hab={getHab("persona",p.id,"cp_cena",habs)} tipo="cp_cena" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canCP&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
+            <td>{est==="ok"?<span className="est-ok">ok</span>:est==="par"?<span className="est-par">parcial</span>:<span className="est-no">bloq.</span>}</td>
+            {!readOnly&&<td><div style={{display:"flex",gap:5}}>
+              {(canSH||canCP)&&<button className="bsm" onClick={()=>{setEditP(p);setShowModal(true);}}>Editar</button>}
+              {(userRole==="puesto"||userRole==="admin")&&<button className="bsm" style={{color:"var(--acc2)",borderColor:"rgba(59,130,246,.3)"}} onClick={()=>setRegistroP(p)}>Acceso</button>}
+              {userRole==="admin"&&<button className="bsm bsm-r" onClick={()=>delP(p.id)}>x</button>}
+            </div></td>}
+          </tr>;
+        })}
+      </tbody>
+    </table></div>}
+    {showModal&&<PersonModal p={editP} onClose={()=>setShowModal(false)} onSave={saveP}/>}
+    {registroP&&user&&<RegistroManualAcceso persona={registroP} user={user} proyectoId={proyectoId} onClose={()=>setRegistroP(null)} onSaved={()=>setRegistroP(null)}/>}
+    {showMasivo&&<HabMasivaModal proyectoId={proyectoId} currentUserId={currentUserId} habs={habs} onClose={()=>setShowMasivo(false)} onSaved={load}/>}
+  </div>;
+}
+
+function PersonModal({p,onClose,onSave}){
+  const[f,setF]=useState({dni:p?p.dni:"",nombre:p?p.nombre:"",apellido:p?p.apellido:"",empresa:p?p.empresa:"",cargo:p?p.cargo:""});
+  const[dniWarn,setDniWarn]=useState(null); // {id, nombre, apellido}
+  const isNew=!p;
+
+  const checkDni=async(dni)=>{
+    if(!isNew||!dni||dni.length<6)return;
+    // Only warn if active (not deleted) — deleted ones will be restored silently
+    const{data}=await db.sel("personas",{f:[["dni","eq",dni],["deleted_at","is","null"]],lim:1});
+    if(data&&data[0])setDniWarn(data[0]);
+    else setDniWarn(null);
+  };
+
+  return <div className="mo"><div className="md">
+    <div className="mh"><div className="mt">{p?"Editar":"Nueva"} Persona</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div className="f">
+        <label>DNI</label>
+        <input placeholder="30456789" value={f.dni} onChange={e=>setF(x=>({...x,dni:e.target.value}))} onBlur={e=>checkDni(e.target.value)}/>
+      </div>
+      {dniWarn&&<div className="warn">
+        Ya existe: <strong>{dniWarn.nombre} {dniWarn.apellido}</strong>
+        <button onClick={onClose} style={{marginLeft:10,background:"none",border:"1px solid var(--acc)",color:"var(--acc)",borderRadius:3,padding:"2px 8px",cursor:"pointer",fontSize:12}}>Ver</button>
+      </div>}
+      <div className="row2">
+        <div className="f"><label>Nombre</label><input placeholder="Carlos" value={f.nombre} onChange={e=>setF(x=>({...x,nombre:e.target.value}))}/></div>
+        <div className="f"><label>Apellido</label><input placeholder="Rodriguez" value={f.apellido} onChange={e=>setF(x=>({...x,apellido:e.target.value}))}/></div>
+      </div>
+      <div className="f"><label>Empresa</label><input placeholder="Constructora SA" value={f.empresa} onChange={e=>setF(x=>({...x,empresa:e.target.value}))}/></div>
+      <div className="f"><label>Cargo (opcional)</label><input value={f.cargo} onChange={e=>setF(x=>({...x,cargo:e.target.value}))}/></div>
+    </div>
+    <div className="mf">
+      <button className="bcanc" onClick={onClose}>Cancelar</button>
+      <button className="bp" disabled={!f.dni||!f.nombre||!f.apellido||!!dniWarn} onClick={()=>{onSave(f);onClose();}}>Guardar</button>
+    </div>
+  </div></div>;
+}
+
+// ─── VEHÍCULOS PANEL ──────────────────────────────────────────────────────────
+function VehiculosPanel({userRole,currentUserId,proyectoId}){
+  const[vehiculos,setVehiculos]=useState([]);
+  const[habs,setHabs]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[showModal,setShowModal]=useState(false);
+  const[editV,setEditV]=useState(null);
+  const[filter,setFilter]=useState("");
+  const canSH=userRole==="sh"||userRole==="admin";
+  const readOnly=userRole==="puesto";
+  const load=async()=>{
+    setLoading(true);
+    const[r1,r2]=await Promise.all([
+      db.sel("vehiculos",{f:[["activo","eq",true]],ord:"patente.asc"}),
+      db.sel("habilitaciones",{f:[["entity_type","eq","vehiculo"]]}),
+    ]);
+    if(r1.data)setVehiculos(r1.data);
+    if(r2.data)setHabs(r2.data);
+    setLoading(false);
+  };
+  useEffect(()=>{load();},[]);
+  const saveV=async f=>{
+    if(editV){await db.upd("vehiculos",f,[["id","eq",editV.id]]);}
+    else{
+      // Check if exists but inactive
+      const{data:exist}=await db.sel("vehiculos",{f:[["patente","eq",f.patente]],lim:1});
+      if(exist&&exist[0]&&!exist[0].activo){
+        await db.upd("vehiculos",{...f,activo:true},[["id","eq",exist[0].id]]);
+      } else {
+        await db.ins("vehiculos",f);
+      }
+    }
+    load();
+  };
+  const delV=async id=>{if(!confirm("Eliminar?"))return;await db.upd("vehiculos",{activo:false},[["id","eq",id]]);load();};
+  const filtered=vehiculos.filter(v=>!filter||`${v.patente} ${v.descripcion||""} ${v.empresa||""}`.toLowerCase().includes(filter.toLowerCase()));
+  return <div>
+    <div className="ph2">
+      <div className="ptit"><span>Vehiculos</span>{readOnly&&<span style={{fontSize:14,fontWeight:400,color:"var(--tx2)",marginLeft:10}}>solo lectura</span>}</div>
+      {!readOnly&&canSH&&<button className="badd" onClick={()=>{setEditV(null);setShowModal(true);}}>+ Nuevo</button>}
+    </div>
+    <div className="sg">
+      <div className="sc"><div className="sv">{filtered.length}</div><div className="slb">Total</div></div>
+      <div className="sc"><div className="sv" style={{color:"var(--gr)"}}>{filtered.filter(v=>vehiculoEstado(v.id,habs)==="ok").length}</div><div className="slb">Habilitados</div></div>
+      <div className="sc"><div className="sv" style={{color:"var(--rd)"}}>{filtered.filter(v=>vehiculoEstado(v.id,habs)==="no").length}</div><div className="slb">Bloqueados</div></div>
+    </div>
+    <div className="fb"><input className="fi" placeholder="Buscar patente o descripcion..." value={filter} onChange={e=>setFilter(e.target.value)} style={{width:280}}/></div>
+    {loading?<Spin/>:<div className="tw"><table>
+      <thead><tr><th>Patente</th><th>Tipo</th><th>Descripcion</th><th>Empresa</th><th>Cap.</th><th className="sh-h">S&H Ingreso</th><th className="sh-h" style={{borderLeft:"none"}}>S&H Sub.Chalet</th><th>Estado</th>{!readOnly&&<th></th>}</tr></thead>
+      <tbody>
+        {filtered.length===0&&<tr><td colSpan={readOnly?8:9} style={{textAlign:"center",color:"var(--tx2)",padding:28}}>Sin vehiculos</td></tr>}
+        {filtered.map(v=>{
+          const est=vehiculoEstado(v.id,habs);
+          return <tr key={v.id}>
+            <td><span className="mn" style={{fontSize:15,fontWeight:600}}>{v.patente}</span></td>
+            <td>{VI[v.tipo]||"🚗"} <span className="tag t-v" style={{fontSize:10}}>{v.tipo}</span></td>
+            <td style={{color:"var(--tx2)"}}>{v.descripcion||"—"}</td>
+            <td style={{color:"var(--tx2)",fontSize:12}}>{v.empresa||"—"}</td>
+            <td style={{color:"var(--tx2)"}}>{v.capacidad?`${v.capacidad}p`:"—"}</td>
+            <HabCell hab={getHab("vehiculo",v.id,"sh_ingreso",habs)} tipo="sh_ingreso" entityType="vehiculo" entityId={v.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load} tdClass="sh-c"/>
+            <HabCell hab={getHab("vehiculo",v.id,"sh_manejo",habs)} tipo="sh_manejo" entityType="vehiculo" entityId={v.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
+            <td>{est==="ok"?<span className="est-ok">ok</span>:<span className="est-no">bloq.</span>}</td>
+            {!readOnly&&<td><div style={{display:"flex",gap:5}}>
+              {canSH&&<button className="bsm" onClick={()=>{setEditV(v);setShowModal(true);}}>Editar</button>}
+              {userRole==="admin"&&<button className="bsm bsm-r" onClick={()=>delV(v.id)}>x</button>}
+            </div></td>}
+          </tr>;
+        })}
+      </tbody>
+    </table></div>}
+    {showModal&&<VehModal v={editV} onClose={()=>setShowModal(false)} onSave={saveV}/>}
+  </div>;
+}
+
+function VehModal({v,onClose,onSave}){
+  const[f,setF]=useState({patente:v?v.patente:"",tipo:v?v.tipo:"Camioneta",descripcion:v?v.descripcion:"",capacidad:v?v.capacidad:"",empresa:v?v.empresa:""});
+  return <div className="mo"><div className="md">
+    <div className="mh"><div className="mt">{v?"Editar":"Nuevo"} Vehiculo</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div className="row2"><div className="f"><label>Patente</label><input placeholder="AB123CD" value={f.patente} onChange={e=>setF(x=>({...x,patente:e.target.value.toUpperCase()}))}/></div><div className="f"><label>Tipo</label><select value={f.tipo} onChange={e=>setF(x=>({...x,tipo:e.target.value}))}><option>Camioneta</option><option>Combi</option><option>Colectivo</option><option>Camion</option><option>Auto</option><option>Maquinaria</option><option>Otro</option></select></div></div>
+      <div className="f"><label>Descripcion</label><input placeholder="Ford Ranger Blanca" value={f.descripcion} onChange={e=>setF(x=>({...x,descripcion:e.target.value}))}/></div>
+      <div className="row2"><div className="f"><label>Capacidad (pax)</label><input type="number" placeholder="5" value={f.capacidad} onChange={e=>setF(x=>({...x,capacidad:Number(e.target.value)}))}/></div><div className="f"><label>Empresa</label><input placeholder="Transporte SA" value={f.empresa} onChange={e=>setF(x=>({...x,empresa:e.target.value}))}/></div></div>
+    </div>
+    <div className="mf"><button className="bcanc" onClick={onClose}>Cancelar</button><button className="bp" disabled={!f.patente} onClick={()=>{onSave(f);onClose();}}>Guardar</button></div>
+  </div></div>;
+}
+
+// ─── REGISTROS ────────────────────────────────────────────────────────────────
+function SesionDetalle({ses,onClose}){
+  const[regs,setRegs]=useState([]);
+  const[pers,setPers]=useState([]);
+  const[veh,setVeh]=useState(null);
+  const[loading,setLoading]=useState(true);
+  useEffect(()=>{
+    const load=async()=>{
+      const[{data:r},{data:v}]=await Promise.all([
+        db.sel("registros_acceso",{f:[["sesion_id","eq",ses.id]],ord:"orden_escaneo.asc"}),
+        ses.vehiculo_id?db.sel("vehiculos",{f:[["id","eq",ses.vehiculo_id]],lim:1}):{data:null},
+      ]);
+      if(r){
+        setRegs(r);
+        const ids=r.filter(x=>x.persona_id).map(x=>x.persona_id);
+        if(ids.length){const{data:p}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"});setPers((p||[]).filter(x=>ids.includes(x.id)));}
+      }
+      if(v&&v[0])setVeh(v[0]);
+      setLoading(false);
+    };
+    load();
+  },[ses.id]);
+  return <div className="mo"><div className="md md-lg">
+    <div className="mh">
+      <div><div className="mt">{veh?veh.patente:"Sesion"} — detalle</div><div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)",marginTop:2}}>{ses.puesto} · {fmtTs(ses.cerrada_at)} · <span className={`ld ld-${ses.direccion==="entrada"?"in":"out"}`}>{ses.direccion}</span></div></div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+        <button className="bsm" onClick={()=>{
+          const dir=ses.direccion==="entrada"?"ENTRA":"SALE";
+          const pat=veh?veh.patente:"SIN PATENTE";
+          const desc=veh?` ${veh.descripcion||veh.tipo}`:"";
+          const paxStr=pers.map(p=>`${p.nombre} ${p.apellido} ${p.empresa||""} DNI ${p.dni}`).join("; ");
+          const txt=`${dir} — ${pat}${desc}${paxStr?` - ${paxStr}`:""}`;
+          navigator.clipboard.writeText(txt).then(()=>alert("Copiado!")).catch(()=>{
+            const el=document.createElement("textarea");el.value=txt;document.body.appendChild(el);el.select();document.execCommand("copy");document.body.removeChild(el);alert("Copiado!");
+          });
+        }} style={{fontSize:11,padding:"4px 10px"}}>Copiar</button>
+        <button className="mc" onClick={onClose}>x</button>
+      </div>
+    </div>
+    <div className="mb">
+      {veh&&<div style={{marginBottom:14,padding:"10px 14px",background:"var(--s2)",borderRadius:4,display:"flex",gap:12,alignItems:"center"}}>
+        <span style={{fontSize:22}}>{VI[veh.tipo]||"🚗"}</span>
+        <div><div style={{fontFamily:"var(--fm)",fontSize:16,fontWeight:600}}>{veh.patente}</div><div style={{fontSize:12,color:"var(--tx2)"}}>{veh.descripcion} · {ses.vehiculo_ok?<span style={{color:"var(--gr)"}}>habilitado</span>:<span style={{color:"var(--rd)"}}>bloqueado</span>}</div></div>
+      </div>}
+      {loading?<Spin/>:regs.length===0?<div style={{color:"var(--tx2)",textAlign:"center",padding:20}}>Sin registros</div>
+      :<div>{regs.map((r,i)=>{
+        const p=pers.find(x=>x.id===r.persona_id);
+        return <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderBottom:"1px solid var(--bd)"}}>
+          <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",width:24}}>#{i+1}</div>
+          {p?<><div className="av">{ini(`${p.nombre} ${p.apellido}`)}</div><div style={{flex:1}}><div style={{fontWeight:500}}>{p.nombre} {p.apellido}</div><div style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa} · DNI {p.dni}</div></div></>:<><div className="av" style={{fontSize:14}}>?</div><div style={{flex:1,color:"var(--tx2)"}}>DNI: {r.dni_raw}</div></>}
+          <span className={r.resultado==="aprobado"?"est-ok":"est-no"} style={{fontSize:11}}>{r.resultado==="aprobado"?"ok":"denegado"}</span>
+        </div>;
+      })}</div>}
+    </div>
+  </div></div>;
+}
+
+function Registros({defaultPuesto}){
+  const[list,setList]=useState([]);
+  const[manual,setManual]=useState([]);
+  const[personas,setPersonas]=useState({}); // id -> persona
+  const[vehiculos,setVehiculos]=useState({}); // id -> vehiculo
+  const[regsMap,setRegsMap]=useState({}); // sesion_id -> [regs]
+  const[loading,setLoading]=useState(true);
+  const[fp,setFp]=useState(defaultPuesto||"");
+  const[fd,setFd]=useState("");
+  const[fFecha,setFFecha]=useState(today());
+  const[fTipo,setFTipo]=useState("");
+  const[search,setSearch]=useState("");
+  const[detalle,setDetalle]=useState(null);
+
+  const load=async()=>{
+    setLoading(true);
+    const sf=[...(fp?[["puesto","eq",fp]]:[])];
+    if(fFecha)sf.push(["cerrada_at","gte",fFecha+"T00:00:00"]);
+    const mf=[...(fp?[["puesto","eq",fp]]:[])];
+    if(fFecha)mf.push(["created_at","gte",fFecha+"T00:00:00"]);
+    const[{data:ses},{data:man}]=await Promise.all([
+      db.sel("sesiones_acceso",{f:sf,ord:"cerrada_at.desc",lim:200}),
+      db.sel("movimientos_manuales",{f:mf,ord:"created_at.desc",lim:200}),
+    ]);
+    const sesData=ses||[];const manData=man||[];
+    setList(sesData);setManual(manData);
+    // Load vehicle patentes
+    const vids=[...new Set(sesData.filter(s=>s.vehiculo_id).map(s=>s.vehiculo_id))];
+    if(vids.length){
+      const{data:vehs}=await db.sel("vehiculos",{cols:"id,patente,descripcion,tipo"});
+      const vm={};(vehs||[]).forEach(v=>{vm[v.id]=v;});setVehiculos(vm);
+    }
+    // Load registros_acceso for all sessions
+    if(sesData.length){
+      const{data:regs}=await db.sel("registros_acceso",{cols:"sesion_id,persona_id,dni_raw,resultado,orden_escaneo"});
+      const rm={};
+      (regs||[]).forEach(r=>{if(!rm[r.sesion_id])rm[r.sesion_id]=[];rm[r.sesion_id].push(r);});
+      setRegsMap(rm);
+      // Load personas for names
+      const pids=[...new Set((regs||[]).filter(r=>r.persona_id).map(r=>r.persona_id))];
+      if(pids.length){
+        const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido"});
+        const pm={};(pers||[]).forEach(p=>{pm[p.id]=p;});setPersonas(pm);
+      }
+    }
+    setLoading(false);
+  };
+  useEffect(()=>{load();},[fp,fFecha]);
+
+  const sesFiltered=list.filter(s=>(!fd||s.direccion===fd)&&(!search||(vehiculos[s.vehiculo_id]?.patente||"").toLowerCase().includes(search.toLowerCase())||(regsMap[s.id]||[]).some(r=>personas[r.persona_id]&&(`${personas[r.persona_id].nombre} ${personas[r.persona_id].apellido}`).toLowerCase().includes(search.toLowerCase()))));
+  const manFiltered=manual.filter(m=>(!fd||m.direccion===fd)&&(!search||m.nombre_raw?.toLowerCase().includes(search.toLowerCase())||m.dni_raw?.includes(search)));
+  const showSes=fTipo===""||fTipo==="vehiculo";
+  const showMan=fTipo===""||fTipo==="manual";
+
+  const getPaxLabel=(sesId)=>{
+    const regs=(regsMap[sesId]||[]).filter(r=>r.resultado==="aprobado");
+    if(!regs.length)return"sin pasajeros";
+    const names=regs.map(r=>{const p=personas[r.persona_id];return p?`${p.nombre} ${p.apellido}`:r.dni_raw;});
+    const max=2;
+    if(names.length<=max)return names.join(", ");
+    return names.slice(0,max).join(", ")+" y "+( names.length-max)+" mas";
+  };
+
+  return <div>
+    <div className="ph2"><div className="ptit">Registros de <span>Acceso</span></div></div>
+    <div className="sg">
+      <div className="sc"><div className="sv">{list.filter(s=>s.cerrada_at&&s.cerrada_at.startsWith(today())).length}</div><div className="slb">Sesiones hoy</div></div>
+      <div className="sc"><div className="sv">{list.length}</div><div className="slb">Total</div></div>
+      <div className="sc"><div className="sv">{manual.length}</div><div className="slb">Manuales</div></div>
+      <div className="sc"><div className="sv" style={{color:"var(--rd)"}}>{list.reduce((a,s)=>a+(s.total_rechazados||0),0)}</div><div className="slb">Denegados</div></div>
+    </div>
+    <div className="fb" style={{flexWrap:"wrap",gap:8}}>
+      <input className="fi" placeholder="Buscar patente o persona..." value={search} onChange={e=>setSearch(e.target.value)} style={{width:220}}/>
+      <input className="fi" type="date" value={fFecha} onChange={e=>setFFecha(e.target.value)}/>
+      <select className="fi" value={fp} onChange={e=>setFp(e.target.value)}><option value="">Todos los puestos</option><option>Puesto 1</option><option>Puesto 2</option><option>Puesto 3</option></select>
+      <select className="fi" value={fd} onChange={e=>setFd(e.target.value)}><option value="">Entrada y salida</option><option value="entrada">Entrada</option><option value="salida">Salida</option></select>
+      <select className="fi" value={fTipo} onChange={e=>setFTipo(e.target.value)}><option value="">Todo</option><option value="vehiculo">Con vehiculo</option><option value="manual">Manuales</option></select>
+    </div>
+    {loading?<Spin/>:<>
+      {showSes&&sesFiltered.length>0&&<>
+        <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Ingresos con vehiculo — {sesFiltered.length}</div>
+        <div className="tw" style={{marginBottom:16}}><table>
+          <thead><tr><th>Hora</th><th>Dir.</th><th>Puesto</th><th>Patente</th><th>Quienes</th><th>Pers.</th><th>Deneg.</th></tr></thead>
+          <tbody>{sesFiltered.map(s=>{
+            const veh=vehiculos[s.vehiculo_id];
+            return <tr key={s.id} style={{cursor:"pointer"}} onClick={()=>setDetalle(s)}>
+              <td className="mn" style={{fontSize:12,color:"var(--tx2)"}}>{fmtTs(s.cerrada_at)}</td>
+              <td><span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`}>{s.direccion}</span></td>
+              <td style={{fontSize:12,color:"var(--tx2)"}}>{s.puesto}</td>
+              <td><span style={{fontFamily:"var(--fm)",fontWeight:600}}>{veh?veh.patente:"—"}</span></td>
+              <td style={{color:"var(--tx2)",fontSize:12,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getPaxLabel(s.id)}</td>
+              <td style={{fontFamily:"var(--fh)",fontSize:18,fontWeight:700}}>{s.total_personas}</td>
+              <td>{(s.total_rechazados||0)>0?<span style={{color:"var(--rd)",fontWeight:600}}>{s.total_rechazados}</span>:<span style={{color:"var(--tx2)"}}>—</span>}</td>
+            </tr>;
+          })}</tbody>
+        </table></div>
+      </>}
+      {showMan&&manFiltered.length>0&&<>
+        <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Movimientos manuales — {manFiltered.length}</div>
+        <div className="tw"><table>
+          <thead><tr><th>Hora</th><th>Dir.</th><th>Puesto</th><th>Persona</th><th>DNI</th></tr></thead>
+          <tbody>{manFiltered.map(m=><tr key={m.id}>
+            <td className="mn" style={{fontSize:12,color:"var(--tx2)"}}>{fmtTs(m.created_at)}</td>
+            <td><span className={`ld ld-${m.direccion==="entrada"?"in":"out"}`}>{m.direccion}</span></td>
+            <td style={{fontSize:12,color:"var(--tx2)"}}>{m.puesto}</td>
+            <td style={{fontWeight:500}}>{m.nombre_raw||<span style={{color:"var(--tx2)"}}>Sin identificar</span>}</td>
+            <td className="mn" style={{color:"var(--tx2)"}}>{m.dni_raw||"—"}</td>
+          </tr>)}</tbody>
+        </table></div>
+      </>}
+      {sesFiltered.length===0&&manFiltered.length===0&&<div style={{textAlign:"center",color:"var(--tx2)",padding:40}}>Sin registros para los filtros seleccionados</div>}
+    </>}
+    {detalle&&<SesionDetalle ses={detalle} onClose={()=>setDetalle(null)}/>}
+  </div>;
+}
+
+// ─── USUARIOS ─────────────────────────────────────────────────────────────────
+function Usuarios({currentUser}){
+  const[list,setList]=useState([]);const[loading,setLoading]=useState(true);
+  const[resetting,setResetting]=useState(false);
+  const load=async()=>{setLoading(true);const{data}=await db.sel("usuarios",{f:[["activo","eq",true]],ord:"nombre.asc"});if(data)setList(data);setLoading(false);};
+  useEffect(()=>{load();},[]);
+  const resetMovimientos=async()=>{
+    if(!confirm("Esto borra TODOS los registros de acceso, sesiones y movimientos de HOY. Confirmas?"))return;
+    setResetting(true);
+    const todayStr=today();
+    try{
+      const{data:ses}=await db.sel("sesiones_acceso",{cols:"id",f:[["cerrada_at","gte",todayStr+"T00:00:00"]]});
+      for(const s of(ses||[]))await db.del("registros_acceso",[["sesion_id","eq",s.id]]);
+      await db.del("sesiones_acceso",[["cerrada_at","gte",todayStr+"T00:00:00"]]);
+      await db.del("movimientos_manuales",[["created_at","gte",todayStr+"T00:00:00"]]);
+      alert("Listo! Movimientos de hoy borrados.");
+      window.location.reload();
+    }catch(e){alert("Error: "+e.message);}
+    setResetting(false);
+  };
+  const RC={admin:"t-e",sh:"t-v",cp:"t-a",puesto:"t-p"};
+  const RL={admin:"Admin",sh:"S&H",cp:"Control Personal",puesto:"Puesto"};
+  return <div>
+    <div className="ph2"><div className="ptit">Usuarios del <span>Sistema</span></div></div>
+    <div style={{marginBottom:14,padding:"12px 16px",background:"rgba(245,158,11,.07)",border:"1px solid rgba(245,158,11,.25)",borderRadius:6,fontSize:13,color:"var(--tx2)"}}>Para crear o modificar usuarios, ingresa al <strong style={{color:"var(--tx)"}}>dashboard de Supabase → Authentication → Users</strong>.</div>
+    {loading?<Spin/>:<div className="tw"><table>
+      <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Puesto</th></tr></thead>
+      <tbody>{list.map(u=><tr key={u.id}>
+        <td><div style={{display:"flex",alignItems:"center",gap:8}}><div className="av">{ini(u.nombre)}</div><span style={{fontWeight:500}}>{u.nombre}</span>{u.id===currentUser.id&&<span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--acc)",background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.3)",padding:"1px 6px",borderRadius:3,marginLeft:4}}>vos</span>}</div></td>
+        <td className="mn" style={{fontSize:12,color:"var(--tx2)"}}>{u.email}</td>
+        <td><span className={`tag ${RC[u.rol]||"t-p"}`}>{RL[u.rol]||u.rol}</span></td>
+        <td style={{color:"var(--tx2)",fontSize:13}}>{u.puesto_nombre||"—"}</td>
+      </tr>)}</tbody>
+    </table></div>}
+    <div style={{marginTop:28,padding:"20px 24px",background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.25)",borderRadius:8}}>
+      <div style={{fontFamily:"var(--fh)",fontSize:15,fontWeight:800,color:"var(--rd)",textTransform:"uppercase",marginBottom:6}}>Herramientas de prueba</div>
+      <div style={{fontSize:13,color:"var(--tx2)",marginBottom:14}}>Borra todos los registros de hoy. Para pruebas de sistema.</div>
+      <button onClick={resetMovimientos} disabled={resetting} style={{background:"rgba(239,68,68,.15)",border:"2px solid var(--rd)",color:"var(--rd)",borderRadius:5,padding:"10px 22px",fontFamily:"var(--fh)",fontSize:15,fontWeight:700,textTransform:"uppercase",cursor:"pointer"}}>
+        {resetting?"Borrando...":"Reset movimientos de hoy"}
+      </button>
+    </div>
+  </div>;
+}
+
+// ─── PUESTO ESCANER ───────────────────────────────────────────────────────────
+const F={V:"v",P:"p",C:"c",D:"d"};
+function RecentSessions({puesto,onSelectSesion}){
+  const[list,setList]=useState([]);
+  const[personas,setPersonas]=useState({});
+  const[vehiculos,setVehiculos]=useState({});
+  const[regsMap,setRegsMap]=useState({});
+
+  useEffect(()=>{
+    const load=async()=>{
+      const{data:ses}=await db.sel("sesiones_acceso",{f:[["puesto","eq",puesto],["cerrada_at","gte",today()+"T00:00:00"]],ord:"cerrada_at.desc",lim:6});
+      if(!ses||!ses.length)return;
+      setList(ses);
+      const vids=[...new Set(ses.filter(s=>s.vehiculo_id).map(s=>s.vehiculo_id))];
+      const sesIds=ses.map(s=>s.id);
+      const[{data:vehs},{data:regs}]=await Promise.all([
+        vids.length?db.sel("vehiculos",{cols:"id,patente,descripcion,tipo"}):{data:[]},
+        db.sel("registros_acceso",{cols:"sesion_id,persona_id,dni_raw,resultado"}),
+      ]);
+      const vm={};(vehs||[]).forEach(v=>{vm[v.id]=v;});setVehiculos(vm);
+      const rm={};
+      (regs||[]).filter(r=>sesIds.includes(r.sesion_id)).forEach(r=>{if(!rm[r.sesion_id])rm[r.sesion_id]=[];rm[r.sesion_id].push(r);});
+      setRegsMap(rm);
+      const pids=[...new Set((regs||[]).filter(r=>r.persona_id).map(r=>r.persona_id))];
+      if(pids.length){const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido"});const pm={};(pers||[]).forEach(p=>{pm[p.id]=p;});setPersonas(pm);}
+    };
+    load();
+  },[puesto]);
+
+  if(!list.length)return null;
+
+  const getPaxStr=(sesId)=>{
+    const ok=(regsMap[sesId]||[]).filter(r=>r.resultado==="aprobado");
+    if(!ok.length)return"sin pasajeros";
+    const names=ok.map(r=>{const p=personas[r.persona_id];return p?`${p.nombre} ${p.apellido}`:r.dni_raw;});
+    if(names.length<=2)return names.join(", ");
+    return names.slice(0,2).join(", ")+" y "+(names.length-2)+" mas...";
+  };
+
+  return <>
+    <div className="rt">Ultimos movimientos del dia en este puesto</div>
+    {list.map(s=>{
+      const veh=vehiculos[s.vehiculo_id];
+      return <div key={s.id} className="sr" onClick={()=>onSelectSesion(s)}>
+        <span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`}>{s.direccion}</span>
+        <div style={{flex:1,minWidth:0}}>
+          <span style={{fontFamily:"var(--fm)",fontWeight:600,fontSize:13}}>{veh?veh.patente:"—"}</span>
+          <span style={{color:"var(--tx2)",fontSize:12,marginLeft:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getPaxStr(s.id)}</span>
+        </div>
+        <span style={{color:"var(--tx2)",fontSize:11,fontFamily:"var(--fm)",flexShrink:0}}>{fmtTs(s.cerrada_at)}</span>
+      </div>;
+    })}
+  </>;
+}
+
+
+// ─── MODO OFFLINE ─────────────────────────────────────────────────────────────
+const OFFLINE_KEY="controlobra_offline";
+// Usa sessionStorage con fallback a variable en memoria
+let _offlineMem=[];
+const offlineStore={
+  get:()=>{
+    try{const s=sessionStorage.getItem(OFFLINE_KEY);return s?JSON.parse(s):_offlineMem;}
+    catch(e){return _offlineMem;}
+  },
+  add:(rec)=>{
+    const l=offlineStore.get();l.push(rec);_offlineMem=l;
+    try{sessionStorage.setItem(OFFLINE_KEY,JSON.stringify(l));}catch(e){}
+  },
+  clear:()=>{_offlineMem=[];try{sessionStorage.removeItem(OFFLINE_KEY);}catch(e){}},
+};
+
+function OfflineModePanel({user,proyectoId,onClose}){
+  const[dir,setDir]=useState("entrada");
+  const[patente,setPatente]=useState("");
+  const[dnis,setDnis]=useState("");
+  const[saved,setSaved]=useState(false);
+  const isP1=user.puesto_nombre==="Puesto 1";
+  const labels=isP1?{entrada:"Entro",salida:"Salio"}:{entrada:"Subio",salida:"Bajo"};
+  const guardar=()=>{
+    if(!patente.trim()&&!dnis.trim())return;
+    offlineStore.add({
+      puesto:user.puesto_nombre,
+      operador_nombre:user.nombre,
+      direccion:dir,
+      patente:patente.trim().toUpperCase()||null,
+      dnis:dnis.replace(/[;,]+/g,'\n').split('\n').map(d=>d.trim()).filter(Boolean),
+      timestamp:new Date().toISOString(),
+    });
+    setPatente("");setDnis("");setSaved(true);
+    setTimeout(()=>setSaved(false),1800);
+  };
+  return <div className="mo"><div className="md">
+    <div className="mh">
+      <div>
+        <div className="mt">Registro Sin Internet</div>
+        <div style={{fontSize:12,color:"var(--rd)",fontFamily:"var(--fm)",marginTop:2}}>Guardado en tablet — subir cuando vuelva la red</div>
+      </div>
+      <button className="mc" onClick={onClose}>x</button>
+    </div>
+    <div className="mb">
+      {saved&&<div style={{background:"rgba(16,185,129,.1)",border:"1px solid var(--gr)",borderRadius:4,padding:"9px 14px",marginBottom:12,color:"var(--gr)",fontFamily:"var(--fh)",fontSize:15,fontWeight:700}}>Guardado en tablet!</div>}
+      <div className="dtog" style={{marginBottom:14}}>
+        <button className={`db db-in${dir==="entrada"?" on":""}`} onClick={()=>setDir("entrada")}>{labels.entrada}</button>
+        <button className={`db db-out${dir==="salida"?" on":""}`} onClick={()=>setDir("salida")}>{labels.salida}</button>
+      </div>
+      <div className="f"><label>Patente del vehiculo (opcional)</label><input placeholder="AB123CD" value={patente} onChange={e=>setPatente(e.target.value.toUpperCase())}/></div>
+      <div className="f">
+        <label>DNIs de las personas (uno por linea o separados por coma)</label>
+        <textarea placeholder={"30456789\n28123456\n..."} value={dnis} onChange={e=>setDnis(e.target.value)} style={{minHeight:110}}/>
+      </div>
+    </div>
+    <div className="mf">
+      <button className="bcanc" onClick={onClose}>Cerrar</button>
+      <button className="bp" disabled={!patente.trim()&&!dnis.trim()} onClick={guardar}>Guardar en tablet</button>
+    </div>
+  </div></div>;
+}
+
+function PendingUploads({user,proyectoId,habs,onUploaded}){
+  const[pending,setPending]=useState([]);
+  const[uploading,setUploading]=useState(false);
+  const[done,setDone]=useState(0);
+
+  useEffect(()=>{
+    const p=offlineStore.get().filter(r=>r.puesto===user.puesto_nombre);
+    setPending(p);
+  },[]);
+
+  if(!pending.length)return null;
+
+  const uploadAll=async()=>{
+    setUploading(true);
+    let count=0;
+    for(const rec of pending){
+      try{
+        // Try to find vehiculo by patente
+        let vehId=null,vehOk=false;
+        if(rec.patente){
+          const{data:v}=await db.sel("vehiculos",{f:[["patente","eq",rec.patente]],lim:1});
+          if(v&&v[0]){vehId=v[0].id;vehOk=chkAuth("vehiculo",v[0].id,habs).ok;}
+        }
+        // Try to resolve personas by DNI
+        const personasResolved=[];
+        for(const dni of (rec.dnis||[])){
+          const{data:p}=await db.sel("personas",{f:[["dni","eq",dni],["deleted_at","is","null"]],lim:1});
+          const found=p&&p[0];
+          const r=found?chkAuth("persona",found.id,habs):{ok:false,reason:"DNI no encontrado"};
+          personasResolved.push({raw:dni,person:found||null,...r});
+        }
+        // Save as sesion if there's a vehicle, otherwise as movimientos manuales
+        if(vehId||personasResolved.length>0){
+          const{data:ses}=await db.ins("sesiones_acceso",{
+            proyecto_id:proyectoId,puesto:rec.puesto,operador_id:user.id,
+            vehiculo_id:vehId,vehiculo_ok:vehOk,direccion:rec.direccion,
+            total_personas:personasResolved.length,
+            total_aprobados:personasResolved.filter(p=>p.ok).length,
+            total_rechazados:personasResolved.filter(p=>!p.ok).length,
+            cerrada_at:rec.timestamp,
+          });
+          if(ses&&ses[0]&&personasResolved.length>0){
+            await db.ins("registros_acceso",personasResolved.map((p,i)=>({
+              sesion_id:ses[0].id,persona_id:p.person?p.person.id:null,dni_raw:p.raw,
+              resultado:p.ok?"aprobado":"rechazado",motivo_rechazo:p.ok?null:p.reason,orden_escaneo:i+1,
+            })));
+          }
+        }
+        count++;
+      }catch(e){console.error("Error subiendo registro offline:",e);}
+    }
+    offlineStore.clear();
+    setDone(count);setUploading(false);setPending([]);
+    onUploaded&&onUploaded();
+  };
+
+  return <div className="pending-bar">
+    <div style={{flex:1}}>
+      <div style={{fontFamily:"var(--fh)",fontSize:16,fontWeight:800,color:"var(--acc)",textTransform:"uppercase"}}>
+        {pending.length} registro{pending.length!==1?"s":""} pendiente{pending.length!==1?"s":""} de subir
+      </div>
+      <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>Guardados sin internet — ahora hay conexion</div>
+    </div>
+    {done>0&&<span style={{color:"var(--gr)",fontFamily:"var(--fm)",fontSize:13}}>{done} subidos!</span>}
+    <button className="bsc" style={{padding:"8px 18px"}} disabled={uploading} onClick={uploadAll}>
+      {uploading?"Subiendo...":"Subir ahora"}
+    </button>
+  </div>;
+}
+
+function Puesto({user,pid}){
+  const[fase,setFase]=useState(F.V);
+  const[dir,setDir]=useState("entrada");
+  const[val,setVal]=useState("");
+  const[veh,setVeh]=useState(null);
+  const[pax,setPax]=useState([]);
+  const[flash,setFlash]=useState(null);
+  const[saving,setSaving]=useState(false);
+  const[habs,setHabs]=useState([]);
+  const[showManual,setShowManual]=useState(false);
+  const[showOffline,setShowOffline]=useState(false);
+  const[detalleSes,setDetalleSes]=useState(null);
+  const[refreshKey,setRefreshKey]=useState(0);
+  const ref=useRef();
+
+  const[offline,setOffline]=useState(false);
+
+  useEffect(()=>{
+    const loadHabs=async()=>{
+      if(!isOnline()){
+        // Sin internet: cargar desde cache
+        const cached=cache.load();
+        if(cached&&cached.habs){
+          setHabs(cached.habs);
+          setOffline(true);
+          console.log("Modo offline: usando cache de",new Date(cached.ts).toLocaleString("es-AR"));
+        }
+        return;
+      }
+      // Con internet: cargar y guardar en cache
+      const[{data:h},{data:p},{data:v}]=await Promise.all([
+        db.sel("habilitaciones",{f:[["suspendida","eq",false]],lim:5000}),
+        db.sel("personas",{f:[["deleted_at","is","null"]],lim:5000}),
+        db.sel("vehiculos",{f:[["activo","eq",true]],lim:2000}),
+      ]);
+      if(h)setHabs(h);
+      // Guardar todo en cache para uso offline
+      if(h&&p&&v){
+        cache.save({habs:h,personas:p,vehiculos:v,usuario:user,pid});
+        setOffline(false);
+      }
+    };
+    loadHabs();
+  },[pid]);
+  useEffect(()=>{setTimeout(()=>ref.current&&ref.current.focus(),80);},[fase,flash]);
+
+  const sf=d=>{setFlash(d);setTimeout(()=>setFlash(null),2800);};
+
+  const scanV=useCallback(async()=>{
+    const v=val.trim().toUpperCase();if(!v)return;
+    let found=null;let freshHabs=habs;
+    if(!isOnline()){
+      const cached=cache.load();
+      if(cached){
+        found=(cached.vehiculos||[]).find(x=>x.patente===v)||null;
+        // Siempre leer habs del cache, no del estado (puede estar desactualizado)
+        freshHabs=cached.habs||[];
+        if(freshHabs.length===0)freshHabs=habs;
+      }
+      if(!found){
+        found={id:null,patente:v,tipo:"Camioneta",descripcion:"No registrado (offline)",_noRegistrado:true};
+        sf({ok:false,label:"VEHICULO NO REGISTRADO",sub:v,reason:"Sin habilitaciones — se registra la pasada igual"});
+      }
+      // Debug: log what we find
+      const vehHabs=freshHabs.filter(h=>h.entity_type==="vehiculo"&&h.vehiculo_id===found.id);
+      console.log("Offline vehicle habs found:", vehHabs.length, "for", found.id);
+    } else {
+      const[{data:vData},{data:habsVeh},{data:habsNew}]=await Promise.all([
+        db.sel("vehiculos",{f:[["patente","eq",v]],lim:1}),
+        db.sel("habilitaciones",{f:[["entity_type","eq","vehiculo"]]}),
+        db.sel("habilitaciones",{f:[["entity_type","eq","persona"]],lim:5000}),
+      ]);
+      found=vData&&vData[0];
+      if(!found){
+        // Intentar insertar el vehiculo automaticamente
+        const{data:nuevo}=await db.ins("vehiculos",{patente:v,tipo:"Camioneta",descripcion:"Registrado en puesto",activo:true});
+        if(nuevo&&nuevo[0]){
+          found=nuevo[0];
+          sf({ok:false,label:"VEHICULO SIN HABILITACION",sub:v,reason:"Se dio de alta en el sistema — pendiente habilitacion"});
+        } else {
+          // Si no pudo insertar (permisos), usar objeto temporal
+          found={id:null,patente:v,tipo:"Camioneta",descripcion:"No registrado",_noRegistrado:true};
+          sf({ok:false,label:"VEHICULO NO REGISTRADO",sub:v,reason:"Sin habilitaciones — se registra la pasada igual"});
+        }
+      }
+      freshHabs=[...(habsVeh||[]),...(habsNew||[])];
+      setHabs(freshHabs);
+    }
+    const r=found.id?chkAuth("vehiculo",found.id,freshHabs):{ok:false,reason:"Vehiculo no registrado"};
+    setVeh({data:found,...r});setVal("");
+    if(r.ok)setFase(F.P);
+    // Si no registrado o bloqueado, mostrar card de aviso (el puestero puede avanzar igual)
+  },[val,habs]);
+
+  const scanP=useCallback(async()=>{
+    const v=val.trim();if(!v)return;
+    if(pax.some(p=>p.raw===v.toUpperCase())){sf({ok:false,label:"DNI REPETIDO",sub:v,reason:"Ya fue escaneado"});setVal("");return;}
+    let found=null;
+    if(!isOnline()){
+      // Modo offline: buscar en cache
+      const cached=cache.load();
+      found=(cached&&cached.personas||[]).find(x=>x.dni===v)||null;
+    } else {
+      const{data}=await db.sel("personas",{f:[["dni","eq",v],["deleted_at","is","null"]],lim:1});
+      found=data&&data[0];
+    }
+    if(!found){setPax(p=>[...p,{raw:v.toUpperCase(),person:null,ok:false,reason:"DNI no encontrado",activeAuths:[]}]);sf({ok:false,label:"SIN REGISTRO",sub:v,reason:"DNI no encontrado"});setVal("");return;}
+    const r=chkAuth("persona",found.id,habs);
+    setPax(p=>[...p,{raw:found.dni,person:found,...r}]);
+    sf({ok:r.ok,label:r.ok?"ACCESO PERMITIDO":"ACCESO DENEGADO",sub:`${found.nombre} ${found.apellido}`,detail:`DNI ${found.dni} · ${found.empresa||""}`,reason:r.ok?null:r.reason});
+    setVal("");
+  },[val,habs,pax]);
+
+  const scan=()=>{if(fase===F.V)scanV();else if(fase===F.P)scanP();};
+  const onKey=e=>{if(e.key==="Enter")scan();};
+
+  const cerrar=async(dirFinal)=>{
+    const d=dirFinal||dir;
+    setSaving(true);
+    if(!isOnline()){
+      // Sin internet: guardar en offlineStore para subir despues
+      offlineStore.add({
+        puesto:user.puesto_nombre,
+        operador_nombre:user.nombre,
+        direccion:d,
+        patente:veh?veh.data.patente:null,
+        vehiculo_id:veh?veh.data.id:null,
+        vehiculo_ok:veh?veh.ok:false,
+        dnis:pax.map(p=>p.raw),
+        paxData:pax.map(p=>({raw:p.raw,person_id:p.person?p.person.id:null,nombre:p.person?`${p.person.nombre} ${p.person.apellido}`:null,ok:p.ok,reason:p.reason||null})),
+        timestamp:new Date().toISOString(),
+      });
+      setDir(d);setSaving(false);setFase(F.D);
+      return;
+    }
+    const{data:ses}=await db.ins("sesiones_acceso",{proyecto_id:pid,puesto:user.puesto_nombre,operador_id:user.id,vehiculo_id:veh.data.id||null,vehiculo_ok:veh.ok,vehiculo_razon:veh.data._noRegistrado?("No registrado: "+veh.data.patente):(veh.reason||null),direccion:d,total_personas:pax.length,total_aprobados:pax.filter(p=>p.ok).length,total_rechazados:pax.filter(p=>!p.ok).length});
+    if(ses&&ses[0])await db.ins("registros_acceso",pax.map((p,i)=>({sesion_id:ses[0].id,persona_id:p.person?p.person.id:null,dni_raw:p.raw,resultado:p.ok?"aprobado":"rechazado",motivo_rechazo:p.ok?null:p.reason,orden_escaneo:i+1})));
+    setDir(d);setSaving(false);setFase(F.D);
+  };
+  const nueva=()=>{setFase(F.V);setVeh(null);setPax([]);setVal("");setFlash(null);setRefreshKey(k=>k+1);};
+  const dirLabel=dir==="entrada"?"ingreso":"egreso";
+
+  return <div>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
+      <div><div style={{fontFamily:"var(--fh)",fontSize:26,fontWeight:800,letterSpacing:".05em",color:"var(--acc)",textTransform:"uppercase"}}>{user.puesto_nombre}</div><div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)",marginTop:2}}>Control de Acceso</div></div>
+      <Clock/>
+    </div>
+    {offline&&<div style={{background:"rgba(245,158,11,.12)",border:"1px solid rgba(245,158,11,.5)",borderRadius:6,padding:"8px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
+      <span style={{fontSize:16}}>⚡</span>
+      <div style={{flex:1}}>
+        <div style={{fontFamily:"var(--fh)",fontSize:14,fontWeight:700,color:"var(--acc)",textTransform:"uppercase"}}>Modo Sin Internet</div>
+        <div style={{fontSize:12,color:"var(--tx2)"}}>Usando datos del cache local · los registros se subirán cuando vuelva la conexión</div>
+      </div>
+    </div>}
+    <ChaletCounter proyectoId={pid}/>
+    <div className="steps">
+      {[{k:F.V,l:"Vehiculo",n:"1"},{k:F.P,l:"Pasajeros",n:"2"},{k:F.C,l:"Direccion",n:"3"},{k:F.D,l:"Listo",n:"4"}].map((s,_,a)=>{
+        const ci=a.findIndex(x=>x.k===fase),si=a.findIndex(x=>x.k===s.k);
+        return <div key={s.k} className={`step ${si<ci?"dn":si===ci?"on":""}`}><div className="sn">{si<ci?"v":s.n}</div>{s.l}</div>;
+      })}
+    </div>
+    {fase===F.V&&<>
+      <div className="sbox"><div className="slbl">Paso 1 — Escanear patente del vehiculo</div><div className="srow"><input ref={ref} className="sinp" placeholder="Ej: AB123CD" value={val} onChange={e=>setVal(e.target.value)} onKeyDown={onKey} autoFocus/><button className="bsc" onClick={scan}>VERIFICAR</button></div><div className="sh-hint">Lector QR o Enter para confirmar</div></div>
+      {flash&&<div className="fl fl-no"><div className="fll">{flash.label}</div><div style={{fontWeight:600,marginTop:2}}>{flash.sub}</div>{flash.reason&&<div style={{fontSize:13,color:"var(--rd)",marginTop:4}}>{flash.reason}</div>}</div>}
+      {veh&&!veh.ok&&<div style={{marginTop:10,background:"rgba(239,68,68,.07)",border:"2px solid var(--rd)",borderRadius:8,padding:"16px 20px"}}><div style={{fontFamily:"var(--fh)",fontSize:24,fontWeight:800,color:"var(--rd)"}}>VEHICULO BLOQUEADO</div><div style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:600,marginTop:4}}>{veh.data.patente}</div><div style={{fontSize:13,color:"var(--rd)",marginTop:6}}>{veh.reason}</div><button onClick={()=>setFase(F.P)} style={{marginTop:12,background:"none",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:4,padding:"7px 16px",cursor:"pointer",fontSize:13}}>Registrar igualmente</button></div>}
+      <button className="btn-manual" onClick={()=>setShowManual(true)}>+ Registrar movimiento sin vehiculo</button>
+      <button className="btn-offline" onClick={()=>setShowOffline(true)}>Sin internet — registrar offline</button>
+    </>}
+    {fase===F.P&&<>
+      {veh&&(()=>{
+      const habChalet=veh.activeAuths&&veh.activeAuths.some(a=>a.tipo==="sh_manejo");
+      return <div className={`vc ${veh.ok?"ok":"no"}`}>
+        <div style={{fontSize:40,lineHeight:1}}>{VI[veh.data.tipo]||"🚗"}</div>
+        <div style={{flex:1}}><div className="vp">{veh.data.patente}</div><div className="vd">{veh.data.descripcion} · {veh.data.tipo}</div></div>
+        <div className="vs">
+          <div style={{display:"flex",gap:6,justifyContent:"flex-end",marginBottom:5}}>
+            <span className={veh.ok?"est-ok":"est-no"} style={{fontSize:11,padding:"2px 7px"}}>Ingreso</span>
+            <span className={habChalet?"est-ok":"est-no"} style={{fontSize:11,padding:"2px 7px"}}>Sub.Chalet</span>
+          </div>
+          <div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)"}}>{dir.toUpperCase()} · {user.puesto_nombre}</div>
+        </div>
+      </div>;
+    })()}
+      {flash&&<div className={`fl fl-${flash.ok?"ok":"no"}`}><div className="fll">{flash.label}</div><div style={{fontWeight:600,marginTop:2}}>{flash.sub}</div>{flash.detail&&<div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)"}}>{flash.detail}</div>}{flash.reason&&<div style={{fontSize:13,color:"var(--rd)",marginTop:4}}>{flash.reason}</div>}</div>}
+      <div className="sbox"><div className="slbl">Paso 2 — Escanear DNI de cada pasajero</div><div className="srow"><input ref={ref} className="sinp" placeholder="Numero de DNI..." value={val} onChange={e=>setVal(e.target.value)} onKeyDown={onKey} autoFocus/><button className="bsc" onClick={scan}>VERIFICAR</button></div><div className="sh-hint">Escaneá uno por uno — Enter para confirmar</div></div>
+      {pax.length>0&&<div style={{marginBottom:10}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}><div style={{fontFamily:"var(--fh)",fontSize:17,fontWeight:700,textTransform:"uppercase"}}>Pasajeros</div><div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:20,padding:"4px 14px",fontFamily:"var(--fm)",fontSize:13}}><span style={{color:"var(--gr)",fontWeight:600}}>{pax.filter(p=>p.ok).length}ok</span>{pax.some(p=>!p.ok)&&<span> · <span style={{color:"var(--rd)",fontWeight:600}}>{pax.filter(p=>!p.ok).length}x</span></span>}</div></div>
+        <div style={{maxHeight:300,overflowY:"auto"}}>{pax.map((p,i)=><div key={i} className={`pi ${p.ok?"ok":"no"}`}><div className={`pd ${p.ok?"ok":"no"}`}/><div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",width:22}}>#{i+1}</div><div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI: ${p.raw}`}</div>{p.person&&<div style={{fontSize:12,color:"var(--tx2)"}}>{p.person.empresa} · DNI {p.raw}</div>}{!p.ok&&<div style={{fontSize:12,color:"var(--rd)"}}>{p.reason}</div>}</div></div>)}</div>
+      </div>}
+      {pax.length===0&&<div style={{textAlign:"center",padding:"28px 0",color:"var(--tx2)",fontSize:14}}>Aun no se escaneo ningun pasajero</div>}
+      <button className="bcl" onClick={()=>setFase(F.C)} disabled={pax.length===0}>{pax.length+" "+(pax.length===1?"persona":"personas")+" — Elegir direccion"}</button>
+      <button onClick={nueva} style={{width:"100%",background:"none",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:5,padding:"9px",marginTop:8,cursor:"pointer",fontFamily:"var(--fh)",fontSize:14,textTransform:"uppercase"}}>Cancelar y volver</button>
+    </>}
+    {fase===F.C&&<>
+      <div style={{marginBottom:16}}>
+        <div style={{fontFamily:"var(--fh)",fontSize:13,color:"var(--tx2)",letterSpacing:".1em",textTransform:"uppercase",marginBottom:14,textAlign:"center"}}>El vehiculo y {pax.length} persona{pax.length!==1?"s":""} estan...</div>
+        <div className="dir-big" style={{gap:16}}>
+          <button className="dir-big-btn in" style={{padding:"28px 16px",fontSize:28}} onClick={()=>cerrar("entrada")}>
+            <div style={{fontSize:44,marginBottom:8}}>⬆️</div>
+            SUBIENDO<div style={{fontSize:13,fontWeight:400,marginTop:4,color:"var(--tx2)"}}>Ingresando a la obra</div>
+          </button>
+          <button className="dir-big-btn out" style={{padding:"28px 16px",fontSize:28}} onClick={()=>cerrar("salida")}>
+            <div style={{fontSize:44,marginBottom:8}}>⬇️</div>
+            BAJANDO<div style={{fontSize:13,fontWeight:400,marginTop:4,color:"var(--tx2)"}}>Saliendo de la obra</div>
+          </button>
+        </div>
+        {saving&&<div style={{textAlign:"center",color:"var(--tx2)",fontFamily:"var(--fm)",fontSize:13,marginTop:14}}>Guardando...</div>}
+      </div>
+      <button onClick={()=>setFase(F.P)} style={{width:"100%",background:"none",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:5,padding:"9px",cursor:"pointer",fontFamily:"var(--fh)",fontSize:14,textTransform:"uppercase"}}>Volver a pasajeros</button>
+    </>}
+    {fase===F.D&&<>
+      <div className="scard"><div className="stit">Registrado correctamente</div><div style={{display:"flex",gap:28,flexWrap:"wrap"}}><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Vehiculo</div><div style={{fontFamily:"var(--fm)",fontSize:20,fontWeight:600,marginTop:3}}>{veh&&veh.data.patente}</div></div><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Personas</div><div style={{fontFamily:"var(--fh)",fontSize:26,fontWeight:800,marginTop:2}}><span style={{color:"var(--gr)"}}>{pax.filter(p=>p.ok).length}</span>{pax.some(p=>!p.ok)&&<span style={{color:"var(--rd)",fontSize:22}}> / {pax.filter(p=>!p.ok).length}x</span>}</div></div><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Tipo</div><div style={{marginTop:6}}><span className={`ld ld-${dir==="entrada"?"in":"out"}`} style={{fontSize:13}}>{dirLabel.toUpperCase()}</span></div></div></div></div>
+      <button className="bnew" onClick={nueva}>+ Nuevo vehiculo</button>
+      <button className="btn-manual" onClick={()=>setShowManual(true)}>+ Registrar movimiento sin vehiculo</button>
+    </>}
+    <RecentSessions key={refreshKey} puesto={user.puesto_nombre} onSelectSesion={setDetalleSes}/>
+    {showManual&&<MovimientoManual user={user} proyectoId={pid} onClose={()=>setShowManual(false)} onSaved={()=>setRefreshKey(k=>k+1)}/>}
+    {detalleSes&&<SesionDetalle ses={detalleSes} onClose={()=>setDetalleSes(null)}/>}
+  </div>;
+}
+
+// ─── TABLERO PÚBLICO ──────────────────────────────────────────────────────────
+function PublicDashboard({onBack}){
+  const[tab,setTab]=useState("chalet");
+  const[search,setSearch]=useState("");
+  const[searchResult,setSearchResult]=useState(null);
+  const[searching,setSearching]=useState(false);
+  const[habs,setHabs]=useState([]);
+  const[movHoy,setMovHoy]=useState([]);
+  const[movVehs,setMovVehs]=useState({});
+  const[movPersonas,setMovPersonas]=useState({});
+  const[movRegs,setMovRegs]=useState({});
+  const[movLoading,setMovLoading]=useState(true);
+  const[pubChalet,setPubChalet]=useState({persChalet:null,persCamino:0,vehChalet:0,vehCamino:0,persListChalet:[],persListCamino:[],vehListChalet:[],vehListCamino:[]});
+  const[pubShowList,setPubShowList]=useState(null);
+
+  const loadChalet=async()=>{
+    const[net2,net3,vNet2,vNet3]=await Promise.all([
+      calcNet("Puesto 2"),calcNet("Puesto 3"),
+      calcNetVehiculos("Puesto 2"),calcNetVehiculos("Puesto 3"),
+    ]);
+    const persIdsChalet=Object.entries(net3).filter(([_,v])=>v>0).map(([k])=>k);
+    // En camino: neto positivo en P2, y neto en P3 <= 0 (no llegaron al chalet aun)
+    const persIdsCamino=Object.entries(net2).filter(([k,v])=>{
+      const enP3=net3[k]||0;
+      return v>0&&enP3<=0;
+    }).map(([k])=>k);
+    const vehIdsChalet=Object.entries(vNet3).filter(([_,v])=>v>0).map(([k])=>k);
+    const vehIdsCamino=Object.entries(vNet2).filter(([k,v])=>{const enP3=vNet3[k]||0;return v>0&&enP3<=0;}).map(([k])=>k);
+    const allPersIds=[...persIdsChalet,...persIdsCamino].filter(k=>k&&k.length===36);
+    const allVehIds=[...vehIdsChalet,...vehIdsCamino];
+    const[{data:pers},{data:vehs}]=await Promise.all([
+      allPersIds.length?db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"}):{data:[]},
+      allVehIds.length?db.sel("vehiculos",{cols:"id,patente,descripcion,tipo,empresa"}):{data:[]},
+    ]);
+    setPubChalet({
+      persChalet:persIdsChalet.length,
+      persCamino:persIdsCamino.length,
+      vehChalet:vehIdsChalet.length,
+      vehCamino:vehIdsCamino.length,
+      persListChalet:(pers||[]).filter(p=>persIdsChalet.includes(p.id)),
+      persListCamino:(pers||[]).filter(p=>persIdsCamino.includes(p.id)),
+      vehListChalet:(vehs||[]).filter(v=>vehIdsChalet.includes(v.id)),
+      vehListCamino:(vehs||[]).filter(v=>vehIdsCamino.includes(v.id)),
+    });
+  };
+
+
+  useEffect(()=>{
+    db.sel("habilitaciones",{f:[["suspendida","eq",false]],lim:5000}).then(({data})=>{if(data)setHabs(data);});
+    loadMovimientos();
+    loadChalet();
+    const i=setInterval(()=>{loadMovimientos();loadChalet();},5000);
+    return()=>clearInterval(i);
+  },[]);
+
+  const loadMovimientos=async()=>{
+    setMovLoading(true);
+    const[{data:ses},{data:man}]=await Promise.all([
+      db.sel("sesiones_acceso",{f:[["cerrada_at","gte",today()+"T00:00:00"]],ord:"cerrada_at.desc",lim:100}),
+      db.sel("movimientos_manuales",{f:[["created_at","gte",today()+"T00:00:00"]],ord:"created_at.desc",lim:50}),
+    ]);
+    setMovHoy({ses:ses||[],man:man||[]});
+    if(ses&&ses.length){
+      const vids=[...new Set((ses||[]).filter(s=>s.vehiculo_id).map(s=>s.vehiculo_id))];
+      const sesIds=(ses||[]).map(s=>s.id);
+      const[{data:vehs},{data:regs}]=await Promise.all([
+        vids.length?db.sel("vehiculos",{cols:"id,patente,tipo"}):{data:[]},
+        db.sel("registros_acceso",{cols:"sesion_id,persona_id,dni_raw,resultado"}),
+      ]);
+      const vm={};(vehs||[]).forEach(v=>{vm[v.id]=v;});setMovVehs(vm);
+      const rm={};(regs||[]).filter(r=>sesIds.includes(r.sesion_id)).forEach(r=>{if(!rm[r.sesion_id])rm[r.sesion_id]=[];rm[r.sesion_id].push(r);});setMovRegs(rm);
+      const pids=[...new Set((regs||[]).filter(r=>r.persona_id).map(r=>r.persona_id))];
+      if(pids.length){const{data:p}=await db.sel("personas",{cols:"id,nombre,apellido"});const pm={};(p||[]).forEach(x=>{pm[x.id]=x;});setMovPersonas(pm);}
+    }
+    setMovLoading(false);
+  };
+
+  const buscar=async()=>{
+    if(!search.trim())return;
+    setSearching(true);setSearchResult(null);
+    const q=search.trim();
+    // Intentar como DNI
+    const{data:p}=await db.sel("personas",{f:[["dni","eq",q],["deleted_at","is","null"]],lim:1});
+    const habOk=(pid,tipo)=>habs.some(h=>h.entity_type==="persona"&&h.persona_id===pid&&h.tipo===tipo&&!h.suspendida&&(!h.fecha_hasta||(h.fecha_hasta+"").slice(0,10)>=today()));
+    if(p&&p[0]){
+      const shOk=habOk(p[0].id,"sh_ingreso");
+      const cpOk=habOk(p[0].id,"cp_ingreso");
+      setSearchResult({type:"persona",data:p[0],shOk,cpOk,estado:shOk&&cpOk?"ok":shOk||cpOk?"par":"no"});
+      setSearching(false);return;
+    }
+    // Intentar como nombre
+    const{data:p2}=await db.sel("personas",{f:[["deleted_at","is","null"]],ord:"apellido.asc"});
+    const found=(p2||[]).filter(x=>`${x.nombre} ${x.apellido}`.toLowerCase().includes(q.toLowerCase()));
+    if(found.length===1){
+      const shOk=habOk(found[0].id,"sh_ingreso");
+      const cpOk=habOk(found[0].id,"cp_ingreso");
+      setSearchResult({type:"persona",data:found[0],shOk,cpOk,estado:shOk&&cpOk?"ok":shOk||cpOk?"par":"no"});
+    } else if(found.length>1){
+      setSearchResult({type:"multiple",items:found});
+    } else {
+      // Intentar como patente
+      const{data:v}=await db.sel("vehiculos",{f:[["patente","eq",q.toUpperCase()],["activo","eq",true]],lim:1});
+      if(v&&v[0]){
+        // Buscar habs del vehiculo directo en Supabase, no del cache
+        const{data:vhabs}=await db.sel("habilitaciones",{f:[["entity_type","eq","vehiculo"],["vehiculo_id","eq",v[0].id]]});
+        const habVOk=(tipo)=>(vhabs||[]).some(h=>h.tipo===tipo&&!h.suspendida&&(!h.fecha_hasta||(h.fecha_hasta+"").slice(0,10)>=today()));
+        const shOk=habVOk("sh_ingreso");
+        const chaletOk=habVOk("sh_manejo");
+        setSearchResult({type:"vehiculo",data:v[0],shOk,chaletOk});
+      } else {
+        setSearchResult({type:"nada"});
+      }
+    }
+    setSearching(false);
+  };
+
+  const getPaxStr=(sesId,max=3)=>{
+    const ok=(movRegs[sesId]||[]).filter(r=>r.resultado==="aprobado");
+    if(!ok.length)return"sin pasajeros";
+    const names=ok.map(r=>{const p=movPersonas[r.persona_id];return p?`${p.nombre} ${p.apellido}`:r.dni_raw;});
+    if(names.length<=max)return names.join(", ");
+    return names.slice(0,max).join(", ")+"...";
+  };
+
+  const sesList=movHoy.ses||[];
+  const manList=movHoy.man||[];
+
+  return <div className="pub-wrap">
+    <div className="pub-bar">
+      <div className="brand">CONTROL<span>OBRA</span> <span style={{fontSize:13,fontWeight:400,color:"var(--tx2)",marginLeft:6,fontFamily:"var(--fb)"}}>vista publica</span></div>
+      <div style={{display:"flex",alignItems:"center",gap:12}}>
+        <div className="pub-badge"><div className="pub-dot"/>EN VIVO</div>
+        <button className="btn-out" onClick={onBack}>Iniciar sesion</button>
+      </div>
+    </div>
+    <div className="pub-tabs">
+      {[{k:"chalet",l:"Conteo de Personal"},{k:"consulta",l:"Habilitaciones Personal / Vehiculos"},{k:"movimientos",l:"Movimientos del dia"}].map(t=><button key={t.k} className={`pub-tab${tab===t.k?" on":""}`} onClick={()=>setTab(t.k)}>{t.l}</button>)}
+    </div>
+    <div className="pub-main">
+      {tab==="chalet"&&<>
+        {/* CHALET */}
+        <div style={{background:"linear-gradient(135deg,rgba(139,92,246,.15),rgba(59,130,246,.1))",border:"1px solid rgba(139,92,246,.35)",borderRadius:8,overflow:"hidden",marginBottom:12}}>
+          <div style={{padding:"10px 18px",borderBottom:"1px solid rgba(139,92,246,.2)",fontFamily:"var(--fh)",fontSize:13,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:"#A78BFA"}}>En Chalet — Puesto 3</div>
+          <div style={{display:"flex",flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:160,padding:"16px 20px",borderRight:"1px solid rgba(139,92,246,.2)",display:"flex",alignItems:"center",gap:14}}>
+              <div style={{fontFamily:"var(--fh)",fontSize:52,fontWeight:900,color:"#A78BFA",lineHeight:1}}>{pubChalet.persChalet??"-"}</div>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"var(--fh)",fontSize:14,fontWeight:700,color:"#A78BFA",textTransform:"uppercase"}}>Personas</div>
+              </div>
+              <button style={{background:"rgba(139,92,246,.15)",border:"1px solid rgba(139,92,246,.4)",color:"#A78BFA",borderRadius:4,padding:"5px 12px",fontFamily:"var(--fh)",fontSize:12,fontWeight:700,cursor:"pointer"}} onClick={()=>setPubShowList("persChalet")}>Ver</button>
+            </div>
+            <div style={{flex:1,minWidth:160,padding:"16px 20px",display:"flex",alignItems:"center",gap:14}}>
+              <div style={{fontFamily:"var(--fh)",fontSize:52,fontWeight:900,color:"var(--gr)",lineHeight:1}}>{pubChalet.vehChalet}</div>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"var(--fh)",fontSize:14,fontWeight:700,color:"var(--gr)",textTransform:"uppercase"}}>Vehiculos</div>
+              </div>
+              <button style={{background:"rgba(16,185,129,.15)",border:"1px solid rgba(16,185,129,.4)",color:"var(--gr)",borderRadius:4,padding:"5px 12px",fontFamily:"var(--fh)",fontSize:12,fontWeight:700,cursor:"pointer"}} onClick={()=>setPubShowList("vehChalet")}>Ver</button>
+            </div>
+          </div>
+        </div>
+        {/* CAMINO */}
+        <div style={{background:"linear-gradient(135deg,rgba(59,130,246,.12),rgba(16,185,129,.07))",border:"1px solid rgba(59,130,246,.3)",borderRadius:8,overflow:"hidden",marginBottom:14}}>
+          <div style={{padding:"10px 18px",borderBottom:"1px solid rgba(59,130,246,.2)",fontFamily:"var(--fh)",fontSize:13,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:"#60A5FA"}}>En Camino — P2 a P3</div>
+          <div style={{display:"flex",flexWrap:"wrap"}}>
+            <div style={{flex:1,minWidth:160,padding:"16px 20px",borderRight:"1px solid rgba(59,130,246,.2)",display:"flex",alignItems:"center",gap:14}}>
+              <div style={{fontFamily:"var(--fh)",fontSize:52,fontWeight:900,color:"#60A5FA",lineHeight:1}}>{pubChalet.persCamino}</div>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"var(--fh)",fontSize:14,fontWeight:700,color:"#60A5FA",textTransform:"uppercase"}}>Personas</div>
+              </div>
+              <button style={{background:"rgba(59,130,246,.15)",border:"1px solid rgba(59,130,246,.4)",color:"#60A5FA",borderRadius:4,padding:"5px 12px",fontFamily:"var(--fh)",fontSize:12,fontWeight:700,cursor:"pointer"}} onClick={()=>setPubShowList("persCamino")}>Ver</button>
+            </div>
+            <div style={{flex:1,minWidth:160,padding:"16px 20px",display:"flex",alignItems:"center",gap:14}}>
+              <div style={{fontFamily:"var(--fh)",fontSize:52,fontWeight:900,color:"#60A5FA",lineHeight:1}}>{pubChalet.vehCamino}</div>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"var(--fh)",fontSize:14,fontWeight:700,color:"#60A5FA",textTransform:"uppercase"}}>Vehiculos</div>
+              </div>
+              <button style={{background:"rgba(59,130,246,.15)",border:"1px solid rgba(59,130,246,.4)",color:"#60A5FA",borderRadius:4,padding:"5px 12px",fontFamily:"var(--fh)",fontSize:12,fontWeight:700,cursor:"pointer"}} onClick={()=>setPubShowList("vehCamino")}>Ver</button>
+            </div>
+          </div>
+        </div>
+        <div style={{fontSize:12,color:"var(--tx2)",marginBottom:14}}>Se actualiza cada 5 segundos</div>
+        {pubShowList&&<ListaFiltrada
+          items={pubShowList==="persChalet"?pubChalet.persListChalet:pubShowList==="persCamino"?pubChalet.persListCamino:pubShowList==="vehChalet"?pubChalet.vehListChalet:pubChalet.vehListCamino}
+          tipo={pubShowList.startsWith("pers")?"persona":"vehiculo"}
+          titulo={{persChalet:"Personas en Chalet",persCamino:"Personas en Camino",vehChalet:"Vehiculos en Chalet",vehCamino:"Vehiculos en Camino"}[pubShowList]}
+          onClose={()=>setPubShowList(null)}
+        />}
+      </>}
+      {tab==="movimientos"&&<>
+        <div className="sg" style={{marginBottom:18}}>
+          <div className="sc"><div className="sv">{sesList.filter(s=>s.direccion==="entrada").length}</div><div className="slb">Entradas hoy</div></div>
+          <div className="sc"><div className="sv">{sesList.filter(s=>s.direccion==="salida").length}</div><div className="slb">Salidas hoy</div></div>
+          <div className="sc"><div className="sv">{sesList.reduce((a,s)=>a+(s.total_aprobados||0),0)}</div><div className="slb">Personas OK</div></div>
+          <div className="sc"><div className="sv" style={{color:"var(--rd)"}}>{sesList.reduce((a,s)=>a+(s.total_rechazados||0),0)}</div><div className="slb">Denegados</div></div>
+        </div>
+        {movLoading?<Spin/>:<>
+          {sesList.length>0&&<div className="tw" style={{marginBottom:14}}><table>
+            <thead><tr><th>Hora</th><th>Puesto</th><th>Dir.</th><th>Patente</th><th>Pasajeros</th><th>Tot.</th></tr></thead>
+            <tbody>{sesList.map(s=>{
+              const v=movVehs[s.vehiculo_id];
+              return <tr key={s.id}>
+                <td className="mn" style={{color:"var(--tx2)",fontSize:12}}>{fmtTs(s.cerrada_at)}</td>
+                <td style={{fontSize:12,color:"var(--tx2)"}}>{s.puesto}</td>
+                <td><span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`}>{s.direccion}</span></td>
+                <td><span style={{fontFamily:"var(--fm)",fontWeight:600}}>{v?v.patente:"—"}</span></td>
+                <td style={{fontSize:12,color:"var(--tx2)",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getPaxStr(s.id)}</td>
+                <td style={{fontFamily:"var(--fh)",fontSize:18,fontWeight:700}}>{s.total_personas}</td>
+              </tr>;
+            })}</tbody>
+          </table></div>}
+          {manList.length>0&&<>
+            <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Movimientos manuales hoy</div>
+            <div className="tw"><table>
+              <thead><tr><th>Hora</th><th>Puesto</th><th>Dir.</th><th>Persona</th></tr></thead>
+              <tbody>{manList.map(m=><tr key={m.id}>
+                <td className="mn" style={{color:"var(--tx2)",fontSize:12}}>{fmtTs(m.created_at)}</td>
+                <td style={{fontSize:12,color:"var(--tx2)"}}>{m.puesto}</td>
+                <td><span className={`ld ld-${m.direccion==="entrada"?"in":"out"}`}>{m.direccion}</span></td>
+                <td>{m.nombre_raw||<span style={{color:"var(--tx2)"}}>Sin identificar</span>}</td>
+              </tr>)}</tbody>
+            </table></div>
+          </>}
+          {sesList.length===0&&manList.length===0&&<div style={{textAlign:"center",color:"var(--tx2)",padding:40}}>Sin movimientos registrados hoy</div>}
+        </>}
+      </>}
+
+      {tab==="consulta"&&<>
+        <div style={{marginBottom:20}}>
+          <div style={{fontFamily:"var(--fh)",fontSize:14,color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".1em",marginBottom:12}}>Buscar persona o vehiculo</div>
+          <div style={{display:"flex",gap:10}}>
+            <input className="fi" style={{flex:1,maxWidth:400,fontSize:15}} placeholder="DNI, nombre completo o patente..." value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>e.key==="Enter"&&buscar()}/>
+            <button className="bsc" onClick={buscar} disabled={searching}>{searching?"...":"Buscar"}</button>
+          </div>
+        </div>
+        {searchResult&&<>
+          {searchResult.type==="nada"&&<div className="err">No se encontro ningun registro con esa busqueda.</div>}
+          {searchResult.type==="multiple"&&<div className="tw"><table>
+            <thead><tr><th>Nombre</th><th>DNI</th><th>Empresa</th></tr></thead>
+            <tbody>{searchResult.items.map(p=><tr key={p.id}><td>{p.nombre} {p.apellido}</td><td className="mn">{p.dni}</td><td style={{color:"var(--tx2)"}}>{p.empresa||"—"}</td></tr>)}</tbody>
+          </table></div>}
+          {searchResult.type==="persona"&&(()=>{
+            const pid=searchResult.data.id;
+            const habCheck=(tipo)=>{const h=habs.find(x=>x.entity_type==="persona"&&x.persona_id===pid&&x.tipo===tipo&&!x.suspendida&&(!x.fecha_hasta||(x.fecha_hasta+"").slice(0,10)>=today()));return h?{ok:true,fecha:h.fecha_hasta}:{ok:false};};
+            const shIng=habCheck("sh_ingreso");const shCha=habCheck("sh_chalet");const shMan=habCheck("sh_manejo");
+            const cpIng=habCheck("cp_ingreso");const cpAlm=habCheck("cp_almuerzo");const cpCen=habCheck("cp_cena");
+            return <div style={{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:8,padding:"20px 24px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+                <div className="av" style={{width:44,height:44,fontSize:16}}>{ini(`${searchResult.data.nombre} ${searchResult.data.apellido}`)}</div>
+                <div style={{flex:1}}><div style={{fontFamily:"var(--fh)",fontSize:22,fontWeight:700}}>{searchResult.data.nombre} {searchResult.data.apellido}</div><div style={{fontSize:13,color:"var(--tx2)"}}>{searchResult.data.empresa} · DNI {searchResult.data.dni}</div></div>
+                <div>{searchResult.estado==="ok"?<span className="est-ok">Habilitado</span>:searchResult.estado==="par"?<span className="est-par">Parcial</span>:<span className="est-no">Bloqueado</span>}</div>
+              </div>
+              <div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>S&H</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+                {[{l:"Ingreso",h:shIng},{l:"Chalet",h:shCha},{l:"Sub.Chalet",h:shMan}].map(({l,h})=><div key={l} style={{padding:"7px 12px",background:"var(--s2)",borderRadius:4,fontSize:13,border:"1px solid "+(h.ok?"rgba(16,185,129,.3)":"rgba(239,68,68,.2)")}}><span style={{color:"var(--tx2)"}}>{l}: </span><span style={{color:h.ok?"var(--gr)":"var(--rd)",fontWeight:600}}>{h.ok?"ok "+fmtD(h.fecha):"No"}</span></div>)}
+              </div>
+              <div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Control de Personal</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {[{l:"Ingreso",h:cpIng},{l:"Almuerzo",h:cpAlm},{l:"Cena",h:cpCen}].map(({l,h})=><div key={l} style={{padding:"7px 12px",background:"var(--s2)",borderRadius:4,fontSize:13,border:"1px solid "+(h.ok?"rgba(16,185,129,.3)":"rgba(239,68,68,.2)")}}><span style={{color:"var(--tx2)"}}>{l}: </span><span style={{color:h.ok?"var(--gr)":"var(--rd)",fontWeight:600}}>{h.ok?"ok "+fmtD(h.fecha):"No"}</span></div>)}
+              </div>
+            </div>;
+          })()}
+          {searchResult.type==="vehiculo"&&(()=>{
+            const chaletOk=searchResult.chaletOk||false;
+            return <div style={{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:8,padding:"20px 24px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+                <span style={{fontSize:36}}>{VI[searchResult.data.tipo]||"🚗"}</span>
+                <div style={{flex:1}}><div style={{fontFamily:"var(--fm)",fontSize:22,fontWeight:600}}>{searchResult.data.patente}</div><div style={{fontSize:13,color:"var(--tx2)"}}>{searchResult.data.descripcion} · {searchResult.data.empresa}</div></div>
+                <div>{searchResult.shOk?<span className="est-ok">Habilitado</span>:<span className="est-no">Bloqueado</span>}</div>
+              </div>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                <div style={{padding:"8px 14px",background:"var(--s2)",borderRadius:4,fontSize:13}}><span style={{color:"var(--tx2)"}}>S&H Ingreso: </span><span style={{color:searchResult.shOk?"var(--gr)":"var(--rd)",fontWeight:600}}>{searchResult.shOk?"Habilitado":"No habilitado"}</span></div>
+                <div style={{padding:"8px 14px",background:"var(--s2)",borderRadius:4,fontSize:13}}><span style={{color:"var(--tx2)"}}>Sub. Chalet: </span><span style={{color:chaletOk?"var(--gr)":"var(--rd)",fontWeight:600}}>{chaletOk?"Habilitado":"No habilitado"}</span></div>
+              </div>
+            </div>;
+          })()}
+        </>}
+      </>}
+    </div>
+  </div>;
+}
+
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
+function Login({onLogin,onPublic}){
+  const[email,setEmail]=useState("");const[pw,setPw]=useState("");const[err,setErr]=useState("");const[loading,setLoading]=useState(false);
+  const go=async()=>{
+    setLoading(true);setErr("");
+    if(!isOnline()){
+      // Sin internet: intentar login desde cache
+      const cached=cache.load();
+      if(cached&&cached.usuario&&cached.usuario.email===email){
+        onLogin(cached.usuario);setLoading(false);return;
+      }
+      setErr("Sin internet y sin cache previo. Conectate al menos una vez primero.");
+      setLoading(false);return;
+    }
+    const r=await authApi.signIn(email,pw);
+    if(r.error){setErr(r.error);setLoading(false);return;}
+    const{data}=await db.sel("usuarios",{f:[["id","eq",r.userId]],lim:1});
+    if(!data||!data[0]){setErr("Usuario sin perfil. Contacta al administrador.");await authApi.signOut();setLoading(false);return;}
+    onLogin(data[0]);setLoading(false);
+  };
+  return <div className="lwrap"><div className="lcard">
+    <div className="llogo">CONTROL<span>OBRA</span></div>
+    <div className="lsub">Sistema de control de puestos</div>
+    {err&&<div className="err">{err}</div>}
+    <div className="f"><label>Email</label><input type="email" placeholder="usuario@obrasysistemas.com.ar" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} autoFocus/></div>
+    <div className="f"><label>Contrasena</label><input type="password" placeholder="..." value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}/></div>
+    <button className="bp" onClick={go} disabled={loading}>{loading?"Ingresando...":"Ingresar"}</button>
+    <button className="lpub" onClick={onPublic}>Ver movimientos de obra (sin login)</button>
+  </div></div>;
+}
+
+// ─── APP ──────────────────────────────────────────────────────────────────────
+function App(){
+  const[user,setUser]=useState(null);
+  const[tab,setTab]=useState(null);
+  const[proyectos,setProyectos]=useState([]);
+  const[checking,setChecking]=useState(true);
+  const[publicMode,setPublicMode]=useState(false);
+  const pid=proyectos.length>0?proyectos[0].id:null;
+
+  useEffect(()=>{
+    const uid=restoreSes();
+    if(uid){
+      // Verificar si el token guardado es muy viejo (>1h) y refrescar proactivamente
+      try{
+        const s=localStorage.getItem("sb");
+        if(s){
+          const{ts}=JSON.parse(s);
+          if(ts&&Date.now()-ts>3600000){
+            // Token viejo, refrescar antes de continuar
+            refreshToken().then(()=>{
+              db.sel("usuarios",{f:[["id","eq",uid]],lim:1}).then(({data})=>{if(data&&data[0])login(data[0]);else setChecking(false);});
+            }).catch(()=>setChecking(false));
+            return;
+          }
+        }
+      }catch(e){}
+      db.sel("usuarios",{f:[["id","eq",uid]],lim:1}).then(({data})=>{if(data&&data[0])login(data[0]);else setChecking(false);});
+    }
+    else setChecking(false);
+  },[]);
+
+  const login=async p=>{
+    setUser(p);
+    setTab({puesto:"sc",sh:"per",cp:"per",admin:"per"}[p.rol]||"per");
+    const{data}=await db.sel("proyectos",{f:[["activo","eq",true]]});
+    if(data)setProyectos(data);
+    setChecking(false);
+  };
+  const logout=async()=>{await authApi.signOut();setUser(null);setTab(null);setProyectos([]);};
+
+  const TABS={
+    puesto:[{k:"sc",l:"Escanear"},{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"}],
+    sh:    [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"}],
+    cp:    [{k:"per",l:"Personal"},{k:"reg",l:"Registros"}],
+    admin: [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"adm",l:"Usuarios"}],
+  };
+
+  if(checking)return <div className="lwrap"><Spin t="Iniciando..."/></div>;
+  if(publicMode)return <PublicDashboard onBack={()=>setPublicMode(false)}/>;
+  if(!user)return <Login onLogin={login} onPublic={()=>setPublicMode(true)}/>;
+  const tabs=TABS[user.rol]||[];
+  return <div className="app">
+    <div className="topbar">
+      <div className="brand">CONTROL<span>OBRA</span></div>
+      <div className="tr" style={{gap:16}}>
+        {pid&&<ChaletMini proyectoId={pid}/>}
+        <span style={{fontSize:13,color:"var(--tx2)"}}>{user.nombre}</span><span className="rol">{user.rol}</span><button className="btn-out" onClick={logout}>Salir</button>
+      </div>
+    </div>
+    {tabs.length>1&&<div className="nav">{tabs.map(t=><button key={t.k} className={`nb${tab===t.k?" on":""}`} onClick={()=>setTab(t.k)}>{t.l}</button>)}</div>}
+    <div className="main">
+      {tab==="per"&&<PersonalPanel userRole={user.rol} currentUserId={user.id} proyectoId={pid} user={user}/>}
+      {tab==="veh"&&<VehiculosPanel userRole={user.rol} currentUserId={user.id} proyectoId={pid}/>}
+      {tab==="reg"&&<Registros defaultPuesto={user.rol==="puesto"?user.puesto_nombre:""}/>}
+      {tab==="sc" &&<Puesto user={user} pid={pid}/>}
+      {tab==="adm"&&<Usuarios currentUser={user}/>}
+    </div>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
