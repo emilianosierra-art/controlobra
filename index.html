@@ -551,7 +551,7 @@ function HabModal({hab,tipo,onClose,onSave,onDelete}){
   const[fecha,setFecha]=useState(hab?hab.fecha_hasta:"");
   const[susp,setSusp]=useState(hab?hab.suspendida:false);
   const[motivo,setMotivo]=useState(hab?hab.motivo_suspension||"":"");
-  const labels={"sh_ingreso":"S&H Ingreso","sh_chalet":"S&H Chalet","sh_manejo":"S&H Subir a Chalet","cp_ingreso":"CP Ingreso","cp_almuerzo":"CP Almuerzo","cp_cena":"CP Cena"};
+  const labels={"sh_ingreso":"S&H Ingreso","sh_chalet":"S&H Subir a Chalet","sh_manejo":"S&H Manejo en Montana","cp_ingreso":"CP Ingreso","cp_almuerzo":"CP Almuerzo","cp_cena":"CP Cena"};
   return <div className="mo"><div className="md">
     <div className="mh"><div className="mt">{hab?"Editar":"Nueva"} — {labels[tipo]||tipo}</div><button className="mc" onClick={onClose}>x</button></div>
     <div className="mb">
@@ -640,26 +640,25 @@ function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
     setSaving(false);onSaved();onClose();
   };
 
-  const tiposLabel={"sh_ingreso":"S&H Ingreso","sh_chalet":"S&H Chalet","sh_manejo":"S&H Subir a Chalet"};
+  const tiposLabel={"sh_ingreso":"S&H Ingreso","sh_chalet":"S&H Subir a Chalet","sh_manejo":"S&H Manejo en Montana"};
   const selectedCount=Object.values(selected).filter(Boolean).length;
 
   return <div className="mo"><div className="md md-lg">
     <div className="mh"><div className="mt">Habilitacion masiva por empresa</div><button className="mc" onClick={onClose}>x</button></div>
     <div className="mb">
-      {step==="config"&&<>
+      {step==="empresa"&&<>
         <div className="f"><label>Tipo de habilitacion</label>
           <select value={tipo} onChange={e=>setTipo(e.target.value)}>
             {Object.entries(tiposLabel).map(([k,v])=><option key={k} value={k}>{v}</option>)}
           </select>
         </div>
-        <div className="f"><label>Fecha de vencimiento</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/></div>
         <div className="f"><label>Empresa</label>
           <select value={empresa} onChange={e=>{setEmpresa(e.target.value);if(e.target.value)loadPersonas(e.target.value);}}>
             <option value="">-- seleccionar empresa --</option>
             {empresas.map(e=><option key={e} value={e}>{e}</option>)}
           </select>
         </div>
-        {empresa&&personas.length>0&&<button className="bp" disabled={!fecha} onClick={()=>setStep("personas")}>Ver personal de {empresa}</button>}
+        {empresa&&personas.length>0&&<button className="bp" onClick={()=>setStep("personas")}>Ver personal de {empresa}</button>}
       </>}
       {step==="personas"&&<>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
@@ -681,12 +680,21 @@ function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
           })}
         </div>
         <div style={{marginTop:12,fontSize:13,color:"var(--tx2)"}}>{selectedCount} personas seleccionadas</div>
+        <div style={{marginTop:16}}><button className="bp" disabled={selectedCount===0} onClick={()=>setStep("fecha")}>Continuar → elegir fecha</button></div>
+      </>}
+      {step==="fecha"&&<>
+        <div style={{marginBottom:14}}>
+          <div style={{fontWeight:600}}>{empresa}</div>
+          <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>{tiposLabel[tipo]} · {selectedCount} personas</div>
+        </div>
+        <div className="f"><label>Fecha de vencimiento</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} autoFocus/></div>
       </>}
     </div>
     <div className="mf">
-      {step==="personas"&&<button className="bcanc" onClick={()=>setStep("config")}>Atras</button>}
+      {step==="personas"&&<button className="bcanc" onClick={()=>setStep("empresa")}>Atras</button>}
+      {step==="fecha"&&<button className="bcanc" onClick={()=>setStep("personas")}>Atras</button>}
       <button className="bcanc" onClick={onClose}>Cancelar</button>
-      {step==="personas"&&<button className="bp" disabled={saving||selectedCount===0||!fecha} onClick={save}>{saving?"Aplicando...":"Aplicar a "+selectedCount+" personas"}</button>}
+      {step==="fecha"&&<button className="bp" disabled={saving||!fecha} onClick={save}>{saving?"Aplicando...":"Aplicar a "+selectedCount+" personas"}</button>}
     </div>
   </div></div>;
 }
@@ -785,6 +793,95 @@ function RegistroManualAcceso({persona,user,proyectoId,onClose,onSaved}){
   </div></div>;
 }
 
+// ─── HABILITACION MASIVA VEHICULOS ───────────────────────────────────────────
+function HabMasivaVehModal({proyectoId,currentUserId,habs,onClose,onSaved}){
+  const[empresas,setEmpresas]=useState([]);
+  const[empresa,setEmpresa]=useState("");
+  const[vehiculos,setVehiculos]=useState([]);
+  const[selected,setSelected]=useState({});
+  const[tipo,setTipo]=useState("sh_ingreso");
+  const[fecha,setFecha]=useState("");
+  const[saving,setSaving]=useState(false);
+  const[step,setStep]=useState("empresa");
+  const tiposLabel={"sh_ingreso":"S&H Ingreso","sh_manejo":"S&H Subir a Chalet"};
+  const selectedCount=Object.values(selected).filter(Boolean).length;
+
+  useEffect(()=>{
+    db.sel("vehiculos",{cols:"empresa",f:[["activo","eq",true]]}).then(({data})=>{
+      if(data){const emp=[...new Set(data.map(v=>v.empresa).filter(Boolean))].sort();setEmpresas(emp);}
+    });
+  },[]);
+
+  const loadVehiculos=async(emp)=>{
+    const{data}=await db.sel("vehiculos",{f:[["empresa","eq",emp],["activo","eq",true]],ord:"patente.asc"});
+    if(data){setVehiculos(data);const sel={};data.forEach(v=>{sel[v.id]=true;});setSelected(sel);}
+  };
+  const toggleAll=()=>{const allOn=vehiculos.every(v=>selected[v.id]);const sel={};vehiculos.forEach(v=>{sel[v.id]=!allOn;});setSelected(sel);};
+  const save=async()=>{
+    const ids=Object.entries(selected).filter(([_,v])=>v).map(([k])=>k);
+    if(!ids.length||!fecha)return;
+    setSaving(true);
+    for(const vid of ids){
+      const existing=getHab("vehiculo",vid,tipo,habs);
+      if(existing)await db.upd("habilitaciones",{fecha_hasta:fecha,suspendida:false,motivo_suspension:null},[["id","eq",existing.id]]);
+      else await db.ins("habilitaciones",{entity_type:"vehiculo",vehiculo_id:vid,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_hasta:fecha,suspendida:false});
+    }
+    setSaving(false);onSaved();onClose();
+  };
+
+  return <div className="mo"><div className="md md-lg">
+    <div className="mh"><div className="mt">Hab. masiva vehiculos por empresa</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      {step==="empresa"&&<>
+        <div className="f"><label>Tipo de habilitacion</label>
+          <select value={tipo} onChange={e=>setTipo(e.target.value)}>
+            {Object.entries(tiposLabel).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
+        <div className="f"><label>Empresa</label>
+          <select value={empresa} onChange={e=>{setEmpresa(e.target.value);if(e.target.value)loadVehiculos(e.target.value);}}>
+            <option value="">-- seleccionar empresa --</option>
+            {empresas.map(e=><option key={e} value={e}>{e}</option>)}
+          </select>
+        </div>
+        {empresa&&vehiculos.length>0&&<button className="bp" onClick={()=>setStep("vehiculos")}>Ver vehiculos de {empresa}</button>}
+      </>}
+      {step==="vehiculos"&&<>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <div><div style={{fontWeight:600}}>{empresa}</div><div style={{fontSize:12,color:"var(--tx2)"}}>{tiposLabel[tipo]}</div></div>
+          <button className="bsm" onClick={toggleAll}>{vehiculos.every(v=>selected[v.id])?"Quitar todos":"Seleccionar todos"}</button>
+        </div>
+        <div className="cbl">
+          {vehiculos.map(v=>{
+            const st=habSt(getHab("vehiculo",v.id,tipo,habs));
+            return <div key={v.id} className="cbl-item" onClick={()=>setSelected(s=>({...s,[v.id]:!s[v.id]}))}>
+              <input type="checkbox" checked={!!selected[v.id]} readOnly/>
+              <span style={{fontSize:18}}>{VI[v.tipo]||"🚗"}</span>
+              <div style={{flex:1}}><div style={{fontWeight:500,fontFamily:"var(--fm)"}}>{v.patente}</div><div style={{fontSize:11,color:"var(--tx2)"}}>{v.descripcion||v.tipo}</div></div>
+              {st!=="none"&&<span className={`hc hc-${st}`} style={{fontSize:10}}>{st==="ok"?"actual":st==="exp"?"venc":"susp"}</span>}
+            </div>;
+          })}
+        </div>
+        <div style={{marginTop:12,fontSize:13,color:"var(--tx2)"}}>{selectedCount} vehiculos seleccionados</div>
+        <div style={{marginTop:16}}><button className="bp" disabled={selectedCount===0} onClick={()=>setStep("fecha")}>Continuar → elegir fecha</button></div>
+      </>}
+      {step==="fecha"&&<>
+        <div style={{marginBottom:14}}>
+          <div style={{fontWeight:600}}>{empresa}</div>
+          <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>{tiposLabel[tipo]} · {selectedCount} vehiculos</div>
+        </div>
+        <div className="f"><label>Fecha de vencimiento</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)} autoFocus/></div>
+      </>}
+    </div>
+    <div className="mf">
+      {step==="vehiculos"&&<button className="bcanc" onClick={()=>setStep("empresa")}>Atras</button>}
+      {step==="fecha"&&<button className="bcanc" onClick={()=>setStep("vehiculos")}>Atras</button>}
+      <button className="bcanc" onClick={onClose}>Cancelar</button>
+      {step==="fecha"&&<button className="bp" disabled={saving||!fecha} onClick={save}>{saving?"Aplicando...":"Aplicar a "+selectedCount+" vehiculos"}</button>}
+    </div>
+  </div></div>;
+}
+
 // ─── PERSONAL PANEL ───────────────────────────────────────────────────────────
 function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const[personas,setPersonas]=useState([]);
@@ -798,7 +895,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const[registroP,setRegistroP]=useState(null); // persona para registro manual
   const canSH=userRole==="sh"||userRole==="admin";
   const canCP=userRole==="cp"||userRole==="admin";
-  const readOnly=userRole==="puesto";
+  const readOnly=userRole==="puesto"||userRole==="logistica";
   const load=async()=>{
     setLoading(true);
     const[r1,r2]=await Promise.all([
@@ -854,7 +951,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
           {!readOnly&&<th rowSpan={2} style={{top:0}}></th>}
         </tr>
         <tr>
-          <th className="sh-h" style={{top:28}}>Ingreso</th><th style={{top:28}}>Chalet</th><th style={{top:28}}>Sub.Chalet</th>
+          <th className="sh-h" style={{top:28}}>Ingreso</th><th style={{top:28}}>Subir a Chalet</th><th style={{top:28}}>Manejo en Monta&ntilde;a</th>
           <th className="cp-h" style={{top:28}}>Ingreso</th><th style={{top:28}}>Almuerzo</th><th style={{top:28}}>Cena</th>
         </tr>
       </thead>
@@ -933,8 +1030,10 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
   const[loading,setLoading]=useState(true);
   const[showModal,setShowModal]=useState(false);
   const[editV,setEditV]=useState(null);
+  const[showMasivoVeh,setShowMasivoVeh]=useState(false);
   const[filter,setFilter]=useState("");
   const canSH=userRole==="sh"||userRole==="admin";
+  const canEditVeh=canSH||userRole==="logistica";
   const readOnly=userRole==="puesto";
   const load=async()=>{
     setLoading(true);
@@ -965,7 +1064,10 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
   return <div>
     <div className="ph2">
       <div className="ptit"><span>Vehiculos</span>{readOnly&&<span style={{fontSize:14,fontWeight:400,color:"var(--tx2)",marginLeft:10}}>solo lectura</span>}</div>
-      {!readOnly&&canSH&&<button className="badd" onClick={()=>{setEditV(null);setShowModal(true);}}>+ Nuevo</button>}
+      <div style={{display:"flex",gap:6}}>
+        {(canEditVeh||!readOnly)&&canEditVeh&&<button className="badd" onClick={()=>{setEditV(null);setShowModal(true);}}>+ Nuevo</button>}
+        {canSH&&<button className="badd" style={{background:"var(--acc2)"}} onClick={()=>setShowMasivoVeh(true)}>Hab. masiva por empresa</button>}
+      </div>
     </div>
     <div className="sg">
       <div className="sc"><div className="sv">{filtered.length}</div><div className="slb">Total</div></div>
@@ -974,7 +1076,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
     </div>
     <div className="fb"><input className="fi" placeholder="Buscar patente o descripcion..." value={filter} onChange={e=>setFilter(e.target.value)} style={{width:280}}/></div>
     {loading?<Spin/>:<div className="tw"><table>
-      <thead><tr><th>Patente</th><th>Tipo</th><th>Descripcion</th><th>Empresa</th><th>Cap.</th><th className="sh-h">S&H Ingreso</th><th className="sh-h" style={{borderLeft:"none"}}>S&H Sub.Chalet</th><th>Estado</th>{!readOnly&&<th></th>}</tr></thead>
+      <thead><tr><th>Patente</th><th>Tipo</th><th>Descripcion</th><th>Empresa</th><th>Cap.</th><th className="sh-h">S&H Ingreso</th><th className="sh-h" style={{borderLeft:"none"}}>Sub.Chalet</th><th>Estado</th>{!readOnly&&<th></th>}</tr></thead>
       <tbody>
         {filtered.length===0&&<tr><td colSpan={readOnly?8:9} style={{textAlign:"center",color:"var(--tx2)",padding:28}}>Sin vehiculos</td></tr>}
         {filtered.map(v=>{
@@ -989,7 +1091,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
             <HabCell hab={getHab("vehiculo",v.id,"sh_manejo",habs)} tipo="sh_manejo" entityType="vehiculo" entityId={v.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
             <td>{est==="ok"?<span className="est-ok">ok</span>:<span className="est-no">bloq.</span>}</td>
             {!readOnly&&<td><div style={{display:"flex",gap:5}}>
-              {canSH&&<button className="bsm" onClick={()=>{setEditV(v);setShowModal(true);}}>Editar</button>}
+              {canEditVeh&&<button className="bsm" onClick={()=>{setEditV(v);setShowModal(true);}}>Editar</button>}
               {userRole==="admin"&&<button className="bsm bsm-r" onClick={()=>delV(v.id)}>x</button>}
             </div></td>}
           </tr>;
@@ -997,6 +1099,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
       </tbody>
     </table></div>}
     {showModal&&<VehModal v={editV} onClose={()=>setShowModal(false)} onSave={saveV}/>}
+    {showMasivoVeh&&<HabMasivaVehModal proyectoId={proyectoId} currentUserId={currentUserId} habs={habs} onClose={()=>setShowMasivoVeh(false)} onSaved={load}/>}
   </div>;
 }
 
@@ -1045,8 +1148,8 @@ function SesionDetalle({ses,onClose}){
           const desc=veh?` ${veh.descripcion||veh.tipo}`:"";
           const paxStr=pers.map(p=>`${p.nombre} ${p.apellido} ${p.empresa||""} DNI ${p.dni}`).join("; ");
           const txt=`${dir} — ${pat}${desc}${paxStr?` - ${paxStr}`:""}`;
-          navigator.clipboard.writeText(txt).then(()=>alert("Copiado!")).catch(()=>{
-            const el=document.createElement("textarea");el.value=txt;document.body.appendChild(el);el.select();document.execCommand("copy");document.body.removeChild(el);alert("Copiado!");
+          navigator.clipboard.writeText(txt).then(()=>{}).catch(()=>{
+            const el=document.createElement("textarea");el.value=txt;document.body.appendChild(el);el.select();document.execCommand("copy");document.body.removeChild(el);
           });
         }} style={{fontSize:11,padding:"4px 10px"}}>Copiar</button>
         <button className="mc" onClick={onClose}>x</button>
@@ -1117,7 +1220,7 @@ function Registros({defaultPuesto}){
     }
     setLoading(false);
   };
-  useEffect(()=>{load();},[fp,fFecha]);
+  useEffect(()=>{load();const i=setInterval(load,30000);return()=>clearInterval(i);},[fp,fFecha]);
 
   const sesFiltered=list.filter(s=>(!fd||s.direccion===fd)&&(!search||(vehiculos[s.vehiculo_id]?.patente||"").toLowerCase().includes(search.toLowerCase())||(regsMap[s.id]||[]).some(r=>personas[r.persona_id]&&(`${personas[r.persona_id].nombre} ${personas[r.persona_id].apellido}`).toLowerCase().includes(search.toLowerCase()))));
   const manFiltered=manual.filter(m=>(!fd||m.direccion===fd)&&(!search||m.nombre_raw?.toLowerCase().includes(search.toLowerCase())||m.dni_raw?.includes(search)));
@@ -1206,8 +1309,8 @@ function Usuarios({currentUser}){
     }catch(e){alert("Error: "+e.message);}
     setResetting(false);
   };
-  const RC={admin:"t-e",sh:"t-v",cp:"t-a",puesto:"t-p"};
-  const RL={admin:"Admin",sh:"S&H",cp:"Control Personal",puesto:"Puesto"};
+  const RC={admin:"t-e",sh:"t-v",cp:"t-a",puesto:"t-p",logistica:"t-p"};
+  const RL={admin:"Admin",sh:"S&H",cp:"Control Personal",puesto:"Puesto",logistica:"Logistica"};
   return <div>
     <div className="ph2"><div className="ptit">Usuarios del <span>Sistema</span></div></div>
     <div style={{marginBottom:14,padding:"12px 16px",background:"rgba(245,158,11,.07)",border:"1px solid rgba(245,158,11,.25)",borderRadius:6,fontSize:13,color:"var(--tx2)"}}>Para crear o modificar usuarios, ingresa al <strong style={{color:"var(--tx)"}}>dashboard de Supabase → Authentication → Users</strong>.</div>
@@ -1432,6 +1535,7 @@ function Puesto({user,pid}){
   const[showOffline,setShowOffline]=useState(false);
   const[detalleSes,setDetalleSes]=useState(null);
   const[refreshKey,setRefreshKey]=useState(0);
+  const[cola,setCola]=useState([]); // escaneadas pausadas
   const ref=useRef();
 
   const[offline,setOffline]=useState(false);
@@ -1493,16 +1597,9 @@ function Puesto({user,pid}){
       ]);
       found=vData&&vData[0];
       if(!found){
-        // Intentar insertar el vehiculo automaticamente
-        const{data:nuevo}=await db.ins("vehiculos",{patente:v,tipo:"Camioneta",descripcion:"Registrado en puesto",activo:true});
-        if(nuevo&&nuevo[0]){
-          found=nuevo[0];
-          sf({ok:false,label:"VEHICULO SIN HABILITACION",sub:v,reason:"Se dio de alta en el sistema — pendiente habilitacion"});
-        } else {
-          // Si no pudo insertar (permisos), usar objeto temporal
-          found={id:null,patente:v,tipo:"Camioneta",descripcion:"No registrado",_noRegistrado:true};
-          sf({ok:false,label:"VEHICULO NO REGISTRADO",sub:v,reason:"Sin habilitaciones — se registra la pasada igual"});
-        }
+        // Vehiculo no registrado: avanzar sin vehículo, solo registrar personas
+        sf({ok:false,label:"VEHICULO NO REGISTRADO",sub:v,reason:"No esta en la base — se registran solo las personas"});
+        found={id:null,patente:v,tipo:"Camioneta",descripcion:"No registrado",_noRegistrado:true};
       }
       freshHabs=[...(habsVeh||[]),...(habsNew||[])];
       setHabs(freshHabs);
@@ -1574,6 +1671,20 @@ function Puesto({user,pid}){
       </div>
     </div>}
     <ChaletCounter proyectoId={pid}/>
+    {cola.length>0&&<div style={{background:"rgba(59,130,246,.1)",border:"1px solid rgba(59,130,246,.3)",borderRadius:6,padding:"10px 14px",marginBottom:10}}>
+      <div style={{fontFamily:"var(--fh)",fontSize:13,fontWeight:700,color:"#60A5FA",marginBottom:8}}>
+        {cola.length} escaneada{cola.length!==1?"s":""} en pausa
+      </div>
+      {cola.map((q,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+        <span style={{fontFamily:"var(--fm)",fontWeight:600,fontSize:13}}>{q.veh.data.patente}</span>
+        <span style={{fontSize:12,color:"var(--tx2)"}}>{q.pax.length} pers.</span>
+        <button className="bsm" onClick={()=>{
+          setVeh(q.veh);setPax(q.pax);setDir(q.dir);setFase(F.P);
+          setCola(prev=>prev.filter((_,j)=>j!==i));
+        }} style={{marginLeft:"auto",color:"#60A5FA",borderColor:"rgba(59,130,246,.3)"}}>Retomar</button>
+        <button className="bsm" onClick={()=>setCola(prev=>prev.filter((_,j)=>j!==i))} style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.3)"}}>×</button>
+      </div>)}
+    </div>}
     <div className="steps">
       {[{k:F.V,l:"Vehiculo",n:"1"},{k:F.P,l:"Pasajeros",n:"2"},{k:F.C,l:"Direccion",n:"3"},{k:F.D,l:"Listo",n:"4"}].map((s,_,a)=>{
         const ci=a.findIndex(x=>x.k===fase),si=a.findIndex(x=>x.k===s.k);
@@ -1596,7 +1707,7 @@ function Puesto({user,pid}){
         <div className="vs">
           <div style={{display:"flex",gap:6,justifyContent:"flex-end",marginBottom:5}}>
             <span className={veh.ok?"est-ok":"est-no"} style={{fontSize:11,padding:"2px 7px"}}>Ingreso</span>
-            <span className={habChalet?"est-ok":"est-no"} style={{fontSize:11,padding:"2px 7px"}}>Sub.Chalet</span>
+            <span className={habChalet?"est-ok":"est-no"} style={{fontSize:11,padding:"2px 7px"}}>Manejo Monta&ntilde;a</span>
           </div>
           <div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)"}}>{dir.toUpperCase()} · {user.puesto_nombre}</div>
         </div>
@@ -1606,11 +1717,17 @@ function Puesto({user,pid}){
       <div className="sbox"><div className="slbl">Paso 2 — Escanear DNI de cada pasajero</div><div className="srow"><input ref={ref} className="sinp" placeholder="Numero de DNI..." value={val} onChange={e=>setVal(e.target.value)} onKeyDown={onKey} autoFocus/><button className="bsc" onClick={scan}>VERIFICAR</button></div><div className="sh-hint">Escaneá uno por uno — Enter para confirmar</div></div>
       {pax.length>0&&<div style={{marginBottom:10}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}><div style={{fontFamily:"var(--fh)",fontSize:17,fontWeight:700,textTransform:"uppercase"}}>Pasajeros</div><div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:20,padding:"4px 14px",fontFamily:"var(--fm)",fontSize:13}}><span style={{color:"var(--gr)",fontWeight:600}}>{pax.filter(p=>p.ok).length}ok</span>{pax.some(p=>!p.ok)&&<span> · <span style={{color:"var(--rd)",fontWeight:600}}>{pax.filter(p=>!p.ok).length}x</span></span>}</div></div>
-        <div style={{maxHeight:300,overflowY:"auto"}}>{pax.map((p,i)=><div key={i} className={`pi ${p.ok?"ok":"no"}`}><div className={`pd ${p.ok?"ok":"no"}`}/><div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",width:22}}>#{i+1}</div><div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI: ${p.raw}`}</div>{p.person&&<div style={{fontSize:12,color:"var(--tx2)"}}>{p.person.empresa} · DNI {p.raw}</div>}{!p.ok&&<div style={{fontSize:12,color:"var(--rd)"}}>{p.reason}</div>}</div></div>)}</div>
+        <div style={{maxHeight:300,overflowY:"auto"}}>{pax.map((p,i)=><div key={i} className={`pi ${p.ok?"ok":"no"}`}><div className={`pd ${p.ok?"ok":"no"}`}/><div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",width:22}}>#{i+1}</div><div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI: ${p.raw}`}</div>{p.person&&<div style={{fontSize:12,color:"var(--tx2)"}}>{p.person.empresa} · DNI {p.raw}</div>}{!p.ok&&<div style={{fontSize:12,color:"var(--rd)"}}>{p.reason}</div>}</div><button onClick={()=>setPax(px=>px.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"var(--rd)",cursor:"pointer",fontSize:16,padding:"0 6px",opacity:.7}} title="Quitar">×</button></div>)}</div>
       </div>}
       {pax.length===0&&<div style={{textAlign:"center",padding:"28px 0",color:"var(--tx2)",fontSize:14}}>Aun no se escaneo ningun pasajero</div>}
       <button className="bcl" onClick={()=>setFase(F.C)} disabled={pax.length===0}>{pax.length+" "+(pax.length===1?"persona":"personas")+" — Elegir direccion"}</button>
       <button onClick={nueva} style={{width:"100%",background:"none",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:5,padding:"9px",marginTop:8,cursor:"pointer",fontFamily:"var(--fh)",fontSize:14,textTransform:"uppercase"}}>Cancelar y volver</button>
+      {veh&&pax.length>0&&<button onClick={()=>{
+        setCola(q=>[...q,{veh,pax,dir}]);
+        setFase(F.V);setVeh(null);setPax([]);setVal("");setFlash(null);
+      }} style={{width:"100%",background:"rgba(59,130,246,.1)",border:"1px solid rgba(59,130,246,.3)",color:"#60A5FA",borderRadius:5,padding:"9px",marginTop:6,cursor:"pointer",fontFamily:"var(--fh)",fontSize:14,textTransform:"uppercase"}}>
+        Pausar y escanear otro vehiculo
+      </button>}
     </>}
     {fase===F.C&&<>
       <div style={{marginBottom:16}}>
@@ -1631,11 +1748,20 @@ function Puesto({user,pid}){
     </>}
     {fase===F.D&&<>
       <div className="scard"><div className="stit">Registrado correctamente</div><div style={{display:"flex",gap:28,flexWrap:"wrap"}}><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Vehiculo</div><div style={{fontFamily:"var(--fm)",fontSize:20,fontWeight:600,marginTop:3}}>{veh&&veh.data.patente}</div></div><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Personas</div><div style={{fontFamily:"var(--fh)",fontSize:26,fontWeight:800,marginTop:2}}><span style={{color:"var(--gr)"}}>{pax.filter(p=>p.ok).length}</span>{pax.some(p=>!p.ok)&&<span style={{color:"var(--rd)",fontSize:22}}> / {pax.filter(p=>!p.ok).length}x</span>}</div></div><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Tipo</div><div style={{marginTop:6}}><span className={`ld ld-${dir==="entrada"?"in":"out"}`} style={{fontSize:13}}>{dirLabel.toUpperCase()}</span></div></div></div></div>
+      <button onClick={()=>{
+        const d=dir==="entrada"?"SUBE":"BAJA";
+        const pat=(veh&&veh.data&&veh.data.patente)||"SIN PATENTE";
+        const desc=veh&&veh.data&&veh.data.descripcion&&!veh.data._noRegistrado?` ${veh.data.descripcion}`:"";
+        const paxStr=pax.map(p=>p.person?`${p.person.nombre} ${p.person.apellido} DNI ${p.raw}`:`DNI ${p.raw}`).join("; ");
+        const txt=`${d} — ${pat}${desc}${paxStr?` - ${paxStr}`:""}`;
+        navigator.clipboard.writeText(txt).catch(()=>{const el=document.createElement("textarea");el.value=txt;document.body.appendChild(el);el.select();document.execCommand("copy");document.body.removeChild(el);});
+      }} style={{width:"100%",background:"var(--s2)",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:6,padding:"11px",marginTop:10,cursor:"pointer",fontFamily:"var(--fh)",fontSize:14,fontWeight:600,textTransform:"uppercase",letterSpacing:".06em"}}>Copiar movimiento</button>
       <button className="bnew" onClick={nueva}>+ Nuevo vehiculo</button>
       <button className="btn-manual" onClick={()=>setShowManual(true)}>+ Registrar movimiento sin vehiculo</button>
     </>}
     <RecentSessions key={refreshKey} puesto={user.puesto_nombre} onSelectSesion={setDetalleSes}/>
     {showManual&&<MovimientoManual user={user} proyectoId={pid} onClose={()=>setShowManual(false)} onSaved={()=>setRefreshKey(k=>k+1)}/>}
+    {showOffline&&<OfflineModePanel user={user} proyectoId={pid} onClose={()=>setShowOffline(false)}/>}
     {detalleSes&&<SesionDetalle ses={detalleSes} onClose={()=>setDetalleSes(null)}/>}
   </div>;
 }
@@ -1691,7 +1817,7 @@ function PublicDashboard({onBack}){
     db.sel("habilitaciones",{f:[["suspendida","eq",false]],lim:5000}).then(({data})=>{if(data)setHabs(data);});
     loadMovimientos();
     loadChalet();
-    const i=setInterval(()=>{loadMovimientos();loadChalet();},5000);
+    const i=setInterval(()=>{loadMovimientos();loadChalet();},15000);
     return()=>clearInterval(i);
   },[]);
 
@@ -1893,7 +2019,7 @@ function PublicDashboard({onBack}){
               </div>
               <div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>S&H</div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-                {[{l:"Ingreso",h:shIng},{l:"Chalet",h:shCha},{l:"Sub.Chalet",h:shMan}].map(({l,h})=><div key={l} style={{padding:"7px 12px",background:"var(--s2)",borderRadius:4,fontSize:13,border:"1px solid "+(h.ok?"rgba(16,185,129,.3)":"rgba(239,68,68,.2)")}}><span style={{color:"var(--tx2)"}}>{l}: </span><span style={{color:h.ok?"var(--gr)":"var(--rd)",fontWeight:600}}>{h.ok?"ok "+fmtD(h.fecha):"No"}</span></div>)}
+                {[{l:"Ingreso",h:shIng},{l:"Subir a Chalet",h:shCha},{l:"Manejo en Montaña",h:shMan}].map(({l,h})=><div key={l} style={{padding:"7px 12px",background:"var(--s2)",borderRadius:4,fontSize:13,border:"1px solid "+(h.ok?"rgba(16,185,129,.3)":"rgba(239,68,68,.2)")}}><span style={{color:"var(--tx2)"}}>{l}: </span><span style={{color:h.ok?"var(--gr)":"var(--rd)",fontWeight:600}}>{h.ok?"ok "+fmtD(h.fecha):"No"}</span></div>)}
               </div>
               <div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Control de Personal</div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -1985,7 +2111,7 @@ function App(){
 
   const login=async p=>{
     setUser(p);
-    setTab({puesto:"sc",sh:"per",cp:"per",admin:"per"}[p.rol]||"per");
+    setTab({puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per"}[p.rol]||"per");
     const{data}=await db.sel("proyectos",{f:[["activo","eq",true]]});
     if(data)setProyectos(data);
     setChecking(false);
@@ -1993,10 +2119,11 @@ function App(){
   const logout=async()=>{await authApi.signOut();setUser(null);setTab(null);setProyectos([]);};
 
   const TABS={
-    puesto:[{k:"sc",l:"Escanear"},{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"}],
-    sh:    [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"}],
-    cp:    [{k:"per",l:"Personal"},{k:"reg",l:"Registros"}],
-    admin: [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"adm",l:"Usuarios"}],
+    puesto:   [{k:"sc",l:"Escanear"},{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"}],
+    sh:       [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"}],
+    cp:       [{k:"per",l:"Personal"},{k:"reg",l:"Registros"}],
+    logistica:[{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"}],
+    admin:    [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"adm",l:"Usuarios"}],
   };
 
   if(checking)return <div className="lwrap"><Spin t="Iniciando..."/></div>;
