@@ -1207,7 +1207,8 @@ function Registros({defaultPuesto}){
     }
     // Load registros_acceso for all sessions
     if(sesData.length){
-      const{data:regs}=await db.sel("registros_acceso",{cols:"sesion_id,persona_id,dni_raw,resultado,orden_escaneo"});
+      const sesIds=sesData.map(s=>s.id);
+      const{data:regs}=await db.sel("registros_acceso",{cols:"sesion_id,persona_id,dni_raw,resultado,orden_escaneo",inFilter:["sesion_id",sesIds]});
       const rm={};
       (regs||[]).forEach(r=>{if(!rm[r.sesion_id])rm[r.sesion_id]=[];rm[r.sesion_id].push(r);});
       setRegsMap(rm);
@@ -1350,7 +1351,7 @@ function RecentSessions({puesto,onSelectSesion}){
       const sesIds=ses.map(s=>s.id);
       const[{data:vehs},{data:regs}]=await Promise.all([
         vids.length?db.sel("vehiculos",{cols:"id,patente,descripcion,tipo"}):{data:[]},
-        db.sel("registros_acceso",{cols:"sesion_id,persona_id,dni_raw,resultado"}),
+        db.sel("registros_acceso",{cols:"sesion_id,persona_id,dni_raw,resultado",inFilter:["sesion_id",sesIds]}),
       ]);
       const vm={};(vehs||[]).forEach(v=>{vm[v.id]=v;});setVehiculos(vm);
       const rm={};
@@ -1537,6 +1538,7 @@ function Puesto({user,pid}){
   const[refreshKey,setRefreshKey]=useState(0);
   const[cola,setCola]=useState([]); // escaneadas pausadas
   const ref=useRef();
+  const[paxSnap,setPaxSnap]=useState([]);
 
   const[offline,setOffline]=useState(false);
 
@@ -1635,6 +1637,7 @@ function Puesto({user,pid}){
   const cerrar=async(dirFinal)=>{
     const d=dirFinal||dir;
     setSaving(true);
+    setPaxSnap([...pax]); // guardar snapshot antes de cualquier reset
     if(!isOnline()){
       // Sin internet: guardar en offlineStore para subir despues
       offlineStore.add({
@@ -1655,7 +1658,7 @@ function Puesto({user,pid}){
     if(ses&&ses[0])await db.ins("registros_acceso",pax.map((p,i)=>({sesion_id:ses[0].id,persona_id:p.person?p.person.id:null,dni_raw:p.raw,resultado:p.ok?"aprobado":"rechazado",motivo_rechazo:p.ok?null:p.reason,orden_escaneo:i+1})));
     setDir(d);setSaving(false);setFase(F.D);
   };
-  const nueva=()=>{setFase(F.V);setVeh(null);setPax([]);setVal("");setFlash(null);setRefreshKey(k=>k+1);};
+  const nueva=()=>{setFase(F.V);setVeh(null);setPax([]);setPaxSnap([]);setVal("");setFlash(null);setRefreshKey(k=>k+1);};
   const dirLabel=dir==="entrada"?"ingreso":"egreso";
 
   return <div>
@@ -1670,7 +1673,6 @@ function Puesto({user,pid}){
         <div style={{fontSize:12,color:"var(--tx2)"}}>Usando datos del cache local · los registros se subirán cuando vuelva la conexión</div>
       </div>
     </div>}
-    <ChaletCounter proyectoId={pid}/>
     {cola.length>0&&<div style={{background:"rgba(59,130,246,.1)",border:"1px solid rgba(59,130,246,.3)",borderRadius:6,padding:"10px 14px",marginBottom:10}}>
       <div style={{fontFamily:"var(--fh)",fontSize:13,fontWeight:700,color:"#60A5FA",marginBottom:8}}>
         {cola.length} escaneada{cola.length!==1?"s":""} en pausa
@@ -1692,43 +1694,79 @@ function Puesto({user,pid}){
       })}
     </div>
     {fase===F.V&&<>
-      <div className="sbox"><div className="slbl">Paso 1 — Escanear patente del vehiculo</div><div className="srow"><input ref={ref} className="sinp" placeholder="Ej: AB123CD" value={val} onChange={e=>setVal(e.target.value)} onKeyDown={onKey} autoFocus/><button className="bsc" onClick={scan}>VERIFICAR</button></div><div className="sh-hint">Lector QR o Enter para confirmar</div></div>
+      <div style={{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:8,padding:"12px 14px",marginBottom:10}}>
+        <div className="slbl" style={{marginBottom:8}}>Paso 1 — Patente del vehículo</div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <input ref={ref} className="sinp" placeholder="AB123CD" value={val} onChange={e=>setVal(e.target.value)} onKeyDown={onKey} autoFocus style={{maxWidth:160,fontFamily:"var(--fm)",fontSize:18,fontWeight:700,letterSpacing:".1em"}}/>
+          <button className="bsc" onClick={scan} style={{flexShrink:0}}>VERIFICAR</button>
+        </div>
+        <div className="sh-hint" style={{marginTop:6}}>QR o Enter para confirmar</div>
+      </div>
       {flash&&<div className="fl fl-no"><div className="fll">{flash.label}</div><div style={{fontWeight:600,marginTop:2}}>{flash.sub}</div>{flash.reason&&<div style={{fontSize:13,color:"var(--rd)",marginTop:4}}>{flash.reason}</div>}</div>}
       {veh&&!veh.ok&&<div style={{marginTop:10,background:"rgba(239,68,68,.07)",border:"2px solid var(--rd)",borderRadius:8,padding:"16px 20px"}}><div style={{fontFamily:"var(--fh)",fontSize:24,fontWeight:800,color:"var(--rd)"}}>VEHICULO BLOQUEADO</div><div style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:600,marginTop:4}}>{veh.data.patente}</div><div style={{fontSize:13,color:"var(--rd)",marginTop:6}}>{veh.reason}</div><button onClick={()=>setFase(F.P)} style={{marginTop:12,background:"none",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:4,padding:"7px 16px",cursor:"pointer",fontSize:13}}>Registrar igualmente</button></div>}
       <button className="btn-manual" onClick={()=>setShowManual(true)}>+ Registrar movimiento sin vehiculo</button>
       <button className="btn-offline" onClick={()=>setShowOffline(true)}>Sin internet — registrar offline</button>
     </>}
-    {fase===F.P&&<>
-      {veh&&(()=>{
-      const habChalet=veh.activeAuths&&veh.activeAuths.some(a=>a.tipo==="sh_manejo");
-      return <div className={`vc ${veh.ok?"ok":"no"}`}>
-        <div style={{fontSize:40,lineHeight:1}}>{VI[veh.data.tipo]||"🚗"}</div>
-        <div style={{flex:1}}><div className="vp">{veh.data.patente}</div><div className="vd">{veh.data.descripcion} · {veh.data.tipo}</div></div>
-        <div className="vs">
-          <div style={{display:"flex",gap:6,justifyContent:"flex-end",marginBottom:5}}>
-            <span className={veh.ok?"est-ok":"est-no"} style={{fontSize:11,padding:"2px 7px"}}>Ingreso</span>
-            <span className={habChalet?"est-ok":"est-no"} style={{fontSize:11,padding:"2px 7px"}}>Manejo Monta&ntilde;a</span>
+            {fase===F.P&&<>
+      {/* BARRA FIJA ARRIBA: input + botones acción */}
+      <div style={{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:8,padding:"12px 14px",marginBottom:10}}>
+        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+          <input ref={ref} className="sinp" placeholder="DNI..." value={val} onChange={e=>setVal(e.target.value)} onKeyDown={onKey} autoFocus style={{maxWidth:160,fontFamily:"var(--fm)",fontSize:18,fontWeight:700,letterSpacing:".05em"}}/>
+          <button className="bsc" onClick={scan} style={{flexShrink:0}}>OK</button>
+          <div style={{flex:1,display:"flex",gap:6,justifyContent:"flex-end",flexWrap:"wrap"}}>
+            <button onClick={()=>setFase(F.C)} disabled={pax.length===0} style={{background:"var(--gr)",border:"none",color:"#000",borderRadius:5,padding:"7px 12px",cursor:"pointer",fontFamily:"var(--fh)",fontSize:12,fontWeight:700,textTransform:"uppercase",opacity:pax.length===0?.4:1}}>
+              ✓ {pax.length>0?pax.length+" pers.":"Confirmar"}
+            </button>
+            {veh&&pax.length>0&&<button onClick={()=>{setCola(q=>[...q,{veh,pax,dir}]);setFase(F.V);setVeh(null);setPax([]);setVal("");setFlash(null);}} style={{background:"rgba(59,130,246,.15)",border:"1px solid rgba(59,130,246,.4)",color:"#60A5FA",borderRadius:5,padding:"7px 10px",cursor:"pointer",fontFamily:"var(--fh)",fontSize:11,fontWeight:700,textTransform:"uppercase"}}>
+              ⏸ Pausar
+            </button>}
+            <button onClick={nueva} style={{background:"none",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:5,padding:"7px 10px",cursor:"pointer",fontFamily:"var(--fh)",fontSize:11,textTransform:"uppercase"}}>
+              ✕ Cancelar
+            </button>
           </div>
-          <div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)"}}>{dir.toUpperCase()} · {user.puesto_nombre}</div>
         </div>
-      </div>;
-    })()}
-      {flash&&<div className={`fl fl-${flash.ok?"ok":"no"}`}><div className="fll">{flash.label}</div><div style={{fontWeight:600,marginTop:2}}>{flash.sub}</div>{flash.detail&&<div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)"}}>{flash.detail}</div>}{flash.reason&&<div style={{fontSize:13,color:"var(--rd)",marginTop:4}}>{flash.reason}</div>}</div>}
-      <div className="sbox"><div className="slbl">Paso 2 — Escanear DNI de cada pasajero</div><div className="srow"><input ref={ref} className="sinp" placeholder="Numero de DNI..." value={val} onChange={e=>setVal(e.target.value)} onKeyDown={onKey} autoFocus/><button className="bsc" onClick={scan}>VERIFICAR</button></div><div className="sh-hint">Escaneá uno por uno — Enter para confirmar</div></div>
+        <div className="sh-hint">QR o Enter · {pax.length} escaneados</div>
+      </div>
+      {/* Flash debajo del input */}
+      {flash&&<div className={`fl fl-${flash.ok?"ok":"no"}`} style={{marginBottom:10}}><div className="fll">{flash.label}</div><div style={{fontWeight:600,marginTop:2}}>{flash.sub}</div>{flash.detail&&<div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)"}}>{flash.detail}</div>}{flash.reason&&<div style={{fontSize:13,color:"var(--rd)",marginTop:4}}>{flash.reason}</div>}</div>}
+      {/* Vehículo compacto debajo del input */}
+      {veh&&(()=>{
+        const habChalet=veh.activeAuths&&veh.activeAuths.some(a=>a.tipo==="sh_manejo");
+        return <div className={`vc ${veh.ok?"ok":"no"}`} style={{marginBottom:10}}>
+          <div style={{fontSize:26,lineHeight:1}}>{VI[veh.data.tipo]||"🚗"}</div>
+          <div style={{flex:1}}><div className="vp" style={{fontSize:15}}>{veh.data.patente}</div><div className="vd" style={{fontSize:11}}>{veh.data.descripcion}</div></div>
+          <div style={{display:"flex",gap:5,flexShrink:0}}>
+            <span className={veh.ok?"est-ok":"est-no"} style={{fontSize:10,padding:"2px 6px"}}>Ingreso</span>
+            <span className={habChalet?"est-ok":"est-no"} style={{fontSize:10,padding:"2px 6px"}}>Monta&ntilde;a</span>
+          </div>
+        </div>;
+      })()}
+      {/* Lista de pasajeros crece hacia abajo */}
       {pax.length>0&&<div style={{marginBottom:10}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}><div style={{fontFamily:"var(--fh)",fontSize:17,fontWeight:700,textTransform:"uppercase"}}>Pasajeros</div><div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:20,padding:"4px 14px",fontFamily:"var(--fm)",fontSize:13}}><span style={{color:"var(--gr)",fontWeight:600}}>{pax.filter(p=>p.ok).length}ok</span>{pax.some(p=>!p.ok)&&<span> · <span style={{color:"var(--rd)",fontWeight:600}}>{pax.filter(p=>!p.ok).length}x</span></span>}</div></div>
-        <div style={{maxHeight:300,overflowY:"auto"}}>{pax.map((p,i)=><div key={i} className={`pi ${p.ok?"ok":"no"}`}><div className={`pd ${p.ok?"ok":"no"}`}/><div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",width:22}}>#{i+1}</div><div style={{flex:1}}><div style={{fontWeight:600,fontSize:14}}>{p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI: ${p.raw}`}</div>{p.person&&<div style={{fontSize:12,color:"var(--tx2)"}}>{p.person.empresa} · DNI {p.raw}</div>}{!p.ok&&<div style={{fontSize:12,color:"var(--rd)"}}>{p.reason}</div>}</div><button onClick={()=>setPax(px=>px.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"var(--rd)",cursor:"pointer",fontSize:16,padding:"0 6px",opacity:.7}} title="Quitar">×</button></div>)}</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+          <div style={{fontFamily:"var(--fh)",fontSize:14,fontWeight:700,textTransform:"uppercase"}}>Pasajeros</div>
+          <div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:20,padding:"3px 12px",fontFamily:"var(--fm)",fontSize:12}}>
+            <span style={{color:"var(--gr)",fontWeight:600}}>{pax.filter(p=>p.ok).length} ok</span>
+            {pax.some(p=>!p.ok)&&<span> · <span style={{color:"var(--rd)",fontWeight:600}}>{pax.filter(p=>!p.ok).length}×</span></span>}
+          </div>
+        </div>
+        <div style={{maxHeight:280,overflowY:"auto"}}>
+          {pax.map((p,i)=><div key={i} className={`pi ${p.ok?"ok":"no"}`}>
+            <div className={`pd ${p.ok?"ok":"no"}`}/>
+            <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",width:22}}>#{i+1}</div>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:600,fontSize:14}}>{p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI: ${p.raw}`}</div>
+              {p.person&&<div style={{fontSize:12,color:"var(--tx2)"}}>{p.person.empresa} · DNI {p.raw}</div>}
+              {!p.ok&&<div style={{fontSize:12,color:"var(--rd)"}}>{p.reason}</div>}
+            </div>
+            <button onClick={()=>setPax(px=>px.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"var(--rd)",cursor:"pointer",fontSize:16,padding:"0 6px",opacity:.7}}>×</button>
+          </div>)}
+        </div>
       </div>}
-      {pax.length===0&&<div style={{textAlign:"center",padding:"28px 0",color:"var(--tx2)",fontSize:14}}>Aun no se escaneo ningun pasajero</div>}
-      <button className="bcl" onClick={()=>setFase(F.C)} disabled={pax.length===0}>{pax.length+" "+(pax.length===1?"persona":"personas")+" — Elegir direccion"}</button>
-      <button onClick={nueva} style={{width:"100%",background:"none",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:5,padding:"9px",marginTop:8,cursor:"pointer",fontFamily:"var(--fh)",fontSize:14,textTransform:"uppercase"}}>Cancelar y volver</button>
-      {veh&&pax.length>0&&<button onClick={()=>{
-        setCola(q=>[...q,{veh,pax,dir}]);
-        setFase(F.V);setVeh(null);setPax([]);setVal("");setFlash(null);
-      }} style={{width:"100%",background:"rgba(59,130,246,.1)",border:"1px solid rgba(59,130,246,.3)",color:"#60A5FA",borderRadius:5,padding:"9px",marginTop:6,cursor:"pointer",fontFamily:"var(--fh)",fontSize:14,textTransform:"uppercase"}}>
-        Pausar y escanear otro vehiculo
-      </button>}
+
+
     </>}
+
     {fase===F.C&&<>
       <div style={{marginBottom:16}}>
         <div style={{fontFamily:"var(--fh)",fontSize:13,color:"var(--tx2)",letterSpacing:".1em",textTransform:"uppercase",marginBottom:14,textAlign:"center"}}>El vehiculo y {pax.length} persona{pax.length!==1?"s":""} estan...</div>
@@ -1747,15 +1785,19 @@ function Puesto({user,pid}){
       <button onClick={()=>setFase(F.P)} style={{width:"100%",background:"none",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:5,padding:"9px",cursor:"pointer",fontFamily:"var(--fh)",fontSize:14,textTransform:"uppercase"}}>Volver a pasajeros</button>
     </>}
     {fase===F.D&&<>
-      <div className="scard"><div className="stit">Registrado correctamente</div><div style={{display:"flex",gap:28,flexWrap:"wrap"}}><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Vehiculo</div><div style={{fontFamily:"var(--fm)",fontSize:20,fontWeight:600,marginTop:3}}>{veh&&veh.data.patente}</div></div><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Personas</div><div style={{fontFamily:"var(--fh)",fontSize:26,fontWeight:800,marginTop:2}}><span style={{color:"var(--gr)"}}>{pax.filter(p=>p.ok).length}</span>{pax.some(p=>!p.ok)&&<span style={{color:"var(--rd)",fontSize:22}}> / {pax.filter(p=>!p.ok).length}x</span>}</div></div><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Tipo</div><div style={{marginTop:6}}><span className={`ld ld-${dir==="entrada"?"in":"out"}`} style={{fontSize:13}}>{dirLabel.toUpperCase()}</span></div></div></div></div>
-      <button onClick={()=>{
-        const d=dir==="entrada"?"SUBE":"BAJA";
-        const pat=(veh&&veh.data&&veh.data.patente)||"SIN PATENTE";
-        const desc=veh&&veh.data&&veh.data.descripcion&&!veh.data._noRegistrado?` ${veh.data.descripcion}`:"";
-        const paxStr=pax.map(p=>p.person?`${p.person.nombre} ${p.person.apellido} DNI ${p.raw}`:`DNI ${p.raw}`).join("; ");
-        const txt=`${d} — ${pat}${desc}${paxStr?` - ${paxStr}`:""}`;
-        navigator.clipboard.writeText(txt).catch(()=>{const el=document.createElement("textarea");el.value=txt;document.body.appendChild(el);el.select();document.execCommand("copy");document.body.removeChild(el);});
-      }} style={{width:"100%",background:"var(--s2)",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:6,padding:"11px",marginTop:10,cursor:"pointer",fontFamily:"var(--fh)",fontSize:14,fontWeight:600,textTransform:"uppercase",letterSpacing:".06em"}}>Copiar movimiento</button>
+      <div className="scard"><div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
+        <div className="stit">Registrado correctamente</div>
+        <button onClick={()=>{
+          const d=dir==="entrada"?"SUBE":"BAJA";
+          const pat=(veh&&veh.data&&veh.data.patente)||"SIN PATENTE";
+          const desc=veh&&veh.data&&veh.data.descripcion&&!veh.data._noRegistrado?` ${veh.data.descripcion}`:"";
+          const snap=paxSnap.length?paxSnap:pax;
+          const paxStr=snap.map(p=>p.person?`${p.person.nombre} ${p.person.apellido} DNI ${p.raw}`:`DNI ${p.raw}`).join("; ");
+          const txt=`${d} — ${pat}${desc}${paxStr?` - ${paxStr}`:""}`;
+          navigator.clipboard.writeText(txt).catch(()=>{const el=document.createElement("textarea");el.value=txt;document.body.appendChild(el);el.select();document.execCommand("copy");document.body.removeChild(el);});
+        }} style={{background:"var(--s2)",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:5,padding:"6px 14px",cursor:"pointer",fontFamily:"var(--fh)",fontSize:12,fontWeight:700,textTransform:"uppercase",whiteSpace:"nowrap",flexShrink:0}}>Copiar</button>
+      </div>
+      <div style={{display:"flex",gap:28,flexWrap:"wrap"}}><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Vehiculo</div><div style={{fontFamily:"var(--fm)",fontSize:20,fontWeight:600,marginTop:3}}>{veh&&veh.data.patente}</div></div><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Personas</div><div style={{fontFamily:"var(--fh)",fontSize:26,fontWeight:800,marginTop:2}}><span style={{color:"var(--gr)"}}>{(paxSnap.length?paxSnap:pax).filter(p=>p.ok).length}</span>{(paxSnap.length?paxSnap:pax).some(p=>!p.ok)&&<span style={{color:"var(--rd)",fontSize:22}}> / {(paxSnap.length?paxSnap:pax).filter(p=>!p.ok).length}x</span>}</div></div><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Tipo</div><div style={{marginTop:6}}><span className={`ld ld-${dir==="entrada"?"in":"out"}`} style={{fontSize:13}}>{dirLabel.toUpperCase()}</span></div></div></div></div>
       <button className="bnew" onClick={nueva}>+ Nuevo vehiculo</button>
       <button className="btn-manual" onClick={()=>setShowManual(true)}>+ Registrar movimiento sin vehiculo</button>
     </>}
@@ -1833,7 +1875,7 @@ function PublicDashboard({onBack}){
       const sesIds=(ses||[]).map(s=>s.id);
       const[{data:vehs},{data:regs}]=await Promise.all([
         vids.length?db.sel("vehiculos",{cols:"id,patente,tipo"}):{data:[]},
-        db.sel("registros_acceso",{cols:"sesion_id,persona_id,dni_raw,resultado"}),
+        db.sel("registros_acceso",{cols:"sesion_id,persona_id,dni_raw,resultado",inFilter:["sesion_id",sesIds]}),
       ]);
       const vm={};(vehs||[]).forEach(v=>{vm[v.id]=v;});setMovVehs(vm);
       const rm={};(regs||[]).filter(r=>sesIds.includes(r.sesion_id)).forEach(r=>{if(!rm[r.sesion_id])rm[r.sesion_id]=[];rm[r.sesion_id].push(r);});setMovRegs(rm);
@@ -2090,21 +2132,13 @@ function App(){
   useEffect(()=>{
     const uid=restoreSes();
     if(uid){
-      // Verificar si el token guardado es muy viejo (>1h) y refrescar proactivamente
-      try{
-        const s=localStorage.getItem("sb");
-        if(s){
-          const{ts}=JSON.parse(s);
-          if(ts&&Date.now()-ts>3600000){
-            // Token viejo, refrescar antes de continuar
-            refreshToken().then(()=>{
-              db.sel("usuarios",{f:[["id","eq",uid]],lim:1}).then(({data})=>{if(data&&data[0])login(data[0]);else setChecking(false);});
-            }).catch(()=>setChecking(false));
-            return;
-          }
-        }
-      }catch(e){}
-      db.sel("usuarios",{f:[["id","eq",uid]],lim:1}).then(({data})=>{if(data&&data[0])login(data[0]);else setChecking(false);});
+      // Intentar cargar usuario directamente, si falla por 401 el dbq lo refresca solo
+      const timeout=setTimeout(()=>setChecking(false),8000); // max 8s
+      db.sel("usuarios",{f:[["id","eq",uid]],lim:1}).then(({data})=>{
+        clearTimeout(timeout);
+        if(data&&data[0])login(data[0]);
+        else setChecking(false);
+      }).catch(()=>{clearTimeout(timeout);setChecking(false);});
     }
     else setChecking(false);
   },[]);
