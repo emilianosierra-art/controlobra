@@ -142,6 +142,27 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .btn-offline{background:rgba(239,68,68,.15);border:2px solid var(--rd);color:var(--rd);border-radius:5px;padding:8px 18px;font-family:var(--fh);font-size:14px;font-weight:700;text-transform:uppercase;cursor:pointer;transition:all .15s;width:100%;margin-top:8px}
 .btn-offline:hover{background:rgba(239,68,68,.25)}
 .pending-bar{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:12px 18px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+
+@media(max-width:600px){
+  button{min-height:40px}
+  .bsc,.bcl,.bnew,.badd,.bp,.bcanc{min-height:44px;font-size:14px}
+  .btn-out{min-height:36px}
+  .bsm{min-height:34px;padding:6px 12px}
+  .top{padding:6px 10px;gap:6px}
+  .tr{gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .tr .btn-out{padding:5px 10px;font-size:12px}
+  .tr .rol{font-size:10px;padding:2px 7px}
+  .tr span{font-size:11px}
+  .tabs{padding:0 8px;gap:0;overflow-x:auto}
+  .tabs button{padding:10px 10px;font-size:11px;white-space:nowrap}
+  .main{padding:10px}
+  .sr{flex-wrap:wrap;gap:6px}
+  .sr>div{min-width:0;flex:1}
+  .sr .mn{display:block;font-size:11px}
+  .steps{gap:4px}
+  .step{font-size:10px;gap:4px;padding:6px 4px}
+  .sn{width:18px;height:18px;font-size:10px}
+}
 </style>
 </head>
 <body>
@@ -333,19 +354,19 @@ function ChaletMini({proyectoId}){
   };
   useEffect(()=>{load();const i=setInterval(load,10000);return()=>clearInterval(i);},[]);
   if(data.pc===null)return null;
-  const Pill=({n,label,color,listKey})=><div style={{display:"flex",alignItems:"center",gap:4,background:"rgba(0,0,0,.3)",border:`1px solid ${color}33`,borderRadius:4,padding:"3px 6px",cursor:"pointer"}} onClick={()=>setShowList(listKey)}>
-    <span style={{fontFamily:"var(--fh)",fontSize:15,fontWeight:800,color,lineHeight:1}}>{n}</span>
-    <span style={{fontSize:10,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",letterSpacing:".05em"}}>{label}</span>
-    <span style={{fontSize:9,color,opacity:.7}}>▾</span>
+  const Pill=({n,label,color,listKey})=><div style={{display:"flex",alignItems:"center",gap:3,background:"rgba(0,0,0,.3)",border:`1px solid ${color}33`,borderRadius:4,padding:"2px 5px",cursor:"pointer"}} onClick={()=>setShowList(listKey)}>
+    <span style={{fontFamily:"var(--fh)",fontSize:13,fontWeight:800,color,lineHeight:1}}>{n}</span>
+    <span style={{fontSize:9,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase"}}>{label}</span>
+    <span style={{fontSize:8,color,opacity:.7}}>▾</span>
   </div>;
   const listData={plc:data.plc,plm:data.plm,vlc:data.vlc,vlm:data.vlm};
   const listTitles={plc:"Personas en Chalet",plm:"Personas en Camino",vlc:"Vehiculos en Chalet",vlm:"Vehiculos en Camino"};
   return <>
     <div style={{display:"flex",alignItems:"center",gap:6}}>
-      <span style={{fontSize:9,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",letterSpacing:".06em",marginRight:2}}>Chalet</span>
+      <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginRight:1}}>CH</span>
       <Pill n={data.pc} label="pers" color="#A78BFA" listKey="plc"/>
       <Pill n={data.vc} label="veh" color="#10B981" listKey="vlc"/>
-      <span style={{fontSize:9,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",letterSpacing:".06em",marginLeft:4,marginRight:2}}>Camino</span>
+      <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginLeft:4,marginRight:1}}>CAM</span>
       <Pill n={data.pm} label="pers" color="#60A5FA" listKey="plm"/>
       <Pill n={data.vm} label="veh" color="#60A5FA" listKey="vlm"/>
     </div>
@@ -2167,11 +2188,13 @@ function App(){
   return <div className="app">
     <div className="topbar">
       <div className="brand">CONTROL<span>OBRA</span></div>
-      <div className="tr" style={{gap:16}}>
-        {pid&&<ChaletMini proyectoId={pid}/>}
-        <span style={{fontSize:13,color:"var(--tx2)"}}>{user.nombre}</span><span className="rol">{user.rol}</span><button className="btn-out" onClick={logout}>Salir</button>
+      <div className="tr" style={{gap:8,flexWrap:"nowrap"}}>
+        <span style={{fontSize:12,color:"var(--tx2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:80}}>{user.nombre}</span>
+        <span className="rol" style={{flexShrink:0}}>{user.rol==="puesto"?user.puesto_nombre||"Puesto":user.rol.toUpperCase()}</span>
+        <button className="btn-out" onClick={logout} style={{flexShrink:0}}>Salir</button>
       </div>
     </div>
+    {pid&&<div style={{background:"var(--s2)",borderBottom:"1px solid var(--bd)",padding:"5px 12px",display:"flex",alignItems:"center",gap:8,overflowX:"auto"}}><ChaletMini proyectoId={pid}/></div>}
     {tabs.length>1&&<div className="nav">{tabs.map(t=><button key={t.k} className={`nb${tab===t.k?" on":""}`} onClick={()=>setTab(t.k)}>{t.l}</button>)}</div>}
     <div className="main">
       {tab==="per"&&<PersonalPanel userRole={user.rol} currentUserId={user.id} proyectoId={pid} user={user}/>}
