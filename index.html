@@ -1560,6 +1560,7 @@ function Puesto({user,pid}){
   const[cola,setCola]=useState([]); // escaneadas pausadas
   const ref=useRef();
   const[paxSnap,setPaxSnap]=useState([]);
+  const[warnDupVeh,setWarnDupVeh]=useState(null); // {patente, dir} si ya figura adentro
 
   const[offline,setOffline]=useState(false);
 
@@ -1628,10 +1629,20 @@ function Puesto({user,pid}){
       setHabs(freshHabs);
     }
     const r=found.id?chkAuth("vehiculo",found.id,freshHabs):{ok:false,reason:"Vehiculo no registrado"};
+    // Verificar si el vehículo ya figura adentro hoy (para evitar doble entrada)
+    if(found.id&&isOnline()){
+      const vNet=await calcNetVehiculos(user.puesto_nombre);
+      const netVal=vNet[found.id]||0;
+      if(netVal>0){
+        // Ya figura adentro — mostrar advertencia
+        setWarnDupVeh({found,r,patente:found.patente});
+        setVal("");
+        return;
+      }
+    }
     setVeh({data:found,...r});setVal("");
-    if(r.ok)setFase(F.P);
-    // Si no registrado o bloqueado, mostrar card de aviso (el puestero puede avanzar igual)
-  },[val,habs]);
+    if(r.ok||found._noRegistrado)setFase(F.P);
+  },[val,habs,user]);
 
   const scanP=useCallback(async()=>{
     const v=val.trim();if(!v)return;
@@ -1646,11 +1657,21 @@ function Puesto({user,pid}){
       found=data&&data[0];
     }
     if(!found){setPax(p=>[...p,{raw:v.toUpperCase(),person:null,ok:false,reason:"DNI no encontrado",activeAuths:[]}]);sf({ok:false,label:"SIN REGISTRO",sub:v,reason:"DNI no encontrado"});setVal("");return;}
+    // Verificar si la persona ya figura adentro hoy
+    if(found.id&&isOnline()){
+      const pNet=await calcNet(user.puesto_nombre);
+      const netVal=pNet[found.id]||0;
+      if(netVal>0){
+        setWarnDupVeh({tipo:"persona",found,nombre:`${found.nombre} ${found.apellido}`,dni:found.dni});
+        setVal("");
+        return;
+      }
+    }
     const r=chkAuth("persona",found.id,habs);
     setPax(p=>[...p,{raw:found.dni,person:found,...r}]);
     sf({ok:r.ok,label:r.ok?"ACCESO PERMITIDO":"ACCESO DENEGADO",sub:`${found.nombre} ${found.apellido}`,detail:`DNI ${found.dni} · ${found.empresa||""}`,reason:r.ok?null:r.reason});
     setVal("");
-  },[val,habs,pax]);
+  },[val,habs,pax,user]);
 
   const scan=()=>{if(fase===F.V)scanV();else if(fase===F.P)scanP();};
   const onKey=e=>{if(e.key==="Enter")scan();};
@@ -1823,6 +1844,44 @@ function Puesto({user,pid}){
       <button className="btn-manual" onClick={()=>setShowManual(true)}>+ Registrar movimiento sin vehiculo</button>
     </>}
     <RecentSessions key={refreshKey} puesto={user.puesto_nombre} onSelectSesion={setDetalleSes}/>
+    {warnDupVeh&&<div className="mo"><div className="md">
+      <div className="mh"><div className="mt">⚠️ {warnDupVeh.tipo==="persona"?"Persona":"Vehículo"} ya figura adentro</div><button className="mc" onClick={()=>setWarnDupVeh(null)}>x</button></div>
+      <div className="mb">
+        <div style={{textAlign:"center",padding:"10px 0 20px"}}>
+          <div style={{fontFamily:"var(--fm)",fontSize:22,fontWeight:700,marginBottom:6}}>{warnDupVeh.tipo==="persona"?warnDupVeh.nombre:warnDupVeh.patente}</div>
+          <div style={{color:"var(--tx2)",fontSize:14,marginBottom:20}}>Según los registros de hoy, este vehículo ya entró y no registró salida. Se registrará una salida automática para corregir el conteo.</div>
+          <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+            <button className="bp" style={{background:"rgba(245,158,11,.2)",border:"2px solid var(--acc)",color:"var(--acc)"}} onClick={async()=>{
+              if(warnDupVeh.tipo==="persona"){
+                // Insertar movimiento manual de salida automática para la persona
+                await db.ins("movimientos_manuales",{
+                  proyecto_id:pid,puesto:user.puesto_nombre,operador_id:user.id,
+                  persona_id:warnDupVeh.found.id,dni_raw:warnDupVeh.dni,
+                  nombre_raw:warnDupVeh.nombre,direccion:"salida",
+                });
+                // Ahora escanear la persona normalmente
+                const r=chkAuth("persona",warnDupVeh.found.id,habs);
+                setPax(p=>[...p,{raw:warnDupVeh.found.dni,person:warnDupVeh.found,...r}]);
+                sf({ok:r.ok,label:r.ok?"ACCESO PERMITIDO":"ACCESO DENEGADO",sub:warnDupVeh.nombre,detail:`DNI ${warnDupVeh.dni}`,reason:r.ok?null:r.reason});
+                setWarnDupVeh(null);
+                return;
+              }
+              // Insertar salida automática para corregir el neto
+              await db.ins("sesiones_acceso",{
+                proyecto_id:pid,puesto:user.puesto_nombre,operador_id:user.id,
+                vehiculo_id:warnDupVeh.found.id||null,
+                vehiculo_ok:warnDupVeh.r.ok,vehiculo_razon:"Salida automatica — correccion de doble entrada",
+                direccion:"salida",total_personas:0,total_aprobados:0,total_rechazados:0,
+              });
+              setVeh({data:warnDupVeh.found,...warnDupVeh.r});
+              setWarnDupVeh(null);
+              if(warnDupVeh.r.ok||warnDupVeh.found._noRegistrado)setFase(F.P);
+            }}>Corregir y continuar</button>
+            <button className="bcanc" onClick={()=>setWarnDupVeh(null)}>Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div></div>}
     {showManual&&<MovimientoManual user={user} proyectoId={pid} onClose={()=>setShowManual(false)} onSaved={()=>setRefreshKey(k=>k+1)}/>}
     {showOffline&&<OfflineModePanel user={user} proyectoId={pid} onClose={()=>setShowOffline(false)}/>}
     {detalleSes&&<SesionDetalle ses={detalleSes} onClose={()=>setDetalleSes(null)}/>}
