@@ -395,17 +395,23 @@ const calcNet=async(puesto)=>{
     const{data:regs}=await db.sel("registros_acceso",{cols:"persona_id,dni_raw,sesion_id",inFilter:["sesion_id",sesIds]});
     regPersonas=regs||[];
   }
+  // Normalizar claves: preferir persona_id pero si no hay, usar dni_raw
+  // Construir mapa dni_raw -> persona_id para normalizar
+  const dniToId={};
+  regPersonas.forEach(r=>{if(r.persona_id&&r.dni_raw)dniToId[r.dni_raw]=r.persona_id;});
+  const normKey=(pid,dni)=>pid||(dniToId[dni]||dni);
+
   const netMap={};
   (ses||[]).forEach(s=>{
     const delta=s.direccion==="entrada"?1:-1;
     regPersonas.filter(r=>r.sesion_id===s.id).forEach(r=>{
-      const key=r.persona_id||r.dni_raw;
+      const key=normKey(r.persona_id,r.dni_raw);
       netMap[key]=(netMap[key]||0)+delta;
     });
   });
   (man||[]).forEach(m=>{
     const delta=m.direccion==="entrada"?1:-1;
-    const key=m.persona_id||m.dni_raw||("m_"+m.id);
+    const key=normKey(m.persona_id,m.dni_raw)||("m_"+m.id);
     netMap[key]=(netMap[key]||0)+delta;
   });
   return netMap;
@@ -600,12 +606,38 @@ function HabCell({hab,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,
     onRefresh();setShow(false);
   };
   const remove=async()=>{if(!confirm("Eliminar esta habilitacion?"))return;await db.del("habilitaciones",[["id","eq",hab.id]]);onRefresh();};
+  const[showInfo,setShowInfo]=useState(false);
+  const[operador,setOperador]=useState(null);
+  const[habHist,setHabHist]=useState([]);
+  const loadInfo=async()=>{
+    if(hab&&hab.otorgado_por){
+      const{data:u}=await db.sel("usuarios",{cols:"id,nombre,rol",f:[["id","eq",hab.otorgado_por]],lim:1});
+      setOperador(u&&u[0]?u[0]:null);
+    }
+    // Fetch history would require audit table - for now show current hab details
+    setShowInfo(true);
+  };
   return <td className={tdClass||""} style={{minWidth:88}}>
     {st==="none"
       ?canEdit?<button className="hc-add" onClick={()=>setShow(true)}>+ Agregar</button>:<span style={{color:"var(--tx2)",opacity:.3,fontSize:12}}>—</span>
-      :<span className={`hc hc-${st}${canEdit?" hc-edit":""}`} onClick={canEdit?()=>setShow(true):undefined}>{st==="ok"?"ok "+fmtD(hab.fecha_hasta):st==="exp"?"VENC "+fmtD(hab.fecha_hasta):"SUSP"}</span>
+      :<div style={{display:"flex",alignItems:"center",gap:3}}>
+        <span className={`hc hc-${st}${canEdit?" hc-edit":""}`} onClick={canEdit?()=>setShow(true):undefined}>{st==="ok"?"ok "+fmtD(hab.fecha_hasta):st==="exp"?"VENC "+fmtD(hab.fecha_hasta):"SUSP"}</span>
+        <button onClick={loadInfo} style={{background:"none",border:"none",color:"var(--tx2)",cursor:"pointer",fontSize:11,padding:"0 2px",opacity:.6}} title="Ver info">ℹ</button>
+      </div>
     }
     {show&&<HabModal hab={hab} tipo={tipo} onClose={()=>setShow(false)} onSave={save} onDelete={hab?remove:null}/>}
+    {showInfo&&hab&&<div className="mo"><div className="md" style={{maxWidth:340}}>
+      <div className="mh"><div className="mt">Detalle habilitación</div><button className="mc" onClick={()=>setShowInfo(false)}>x</button></div>
+      <div className="mb">
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div><div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginBottom:2}}>Tipo</div><div style={{fontWeight:600}}>{hab.tipo}</div></div>
+          <div><div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginBottom:2}}>Estado</div><span className={`hc hc-${st}`}>{st==="ok"?"Vigente hasta "+fmtD(hab.fecha_hasta):st==="exp"?"Vencida "+fmtD(hab.fecha_hasta):"Suspendida"}</span></div>
+          <div><div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginBottom:2}}>Otorgada por</div><div style={{fontWeight:500}}>{operador?`${operador.nombre} (${operador.rol})`:"—"}</div></div>
+          {hab.created_at&&<div><div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginBottom:2}}>Fecha de carga</div><div>{fmtTs(hab.created_at)}</div></div>}
+          {hab.motivo_suspension&&<div><div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginBottom:2}}>Motivo suspensión</div><div style={{color:"var(--rd)"}}>{hab.motivo_suspension}</div></div>}
+        </div>
+      </div>
+    </div></div>}
   </td>;
 }
 
@@ -618,7 +650,7 @@ function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
   const[tipo,setTipo]=useState("sh_ingreso");
   const[fecha,setFecha]=useState("");
   const[saving,setSaving]=useState(false);
-  const[step,setStep]=useState("config"); // config | personas
+  const[step,setStep]=useState("empresa"); // empresa | personas | fecha
 
   useEffect(()=>{
     db.sel("personas",{cols:"empresa",f:[["deleted_at","is","null"]]}).then(({data})=>{
@@ -674,12 +706,16 @@ function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
           </select>
         </div>
         <div className="f"><label>Empresa</label>
-          <select value={empresa} onChange={e=>{setEmpresa(e.target.value);if(e.target.value)loadPersonas(e.target.value);}}>
-            <option value="">-- seleccionar empresa --</option>
-            {empresas.map(e=><option key={e} value={e}>{e}</option>)}
-          </select>
+          {empresas.length===0
+            ?<div style={{color:"var(--tx2)",fontSize:13,padding:"8px 0"}}>Cargando empresas...</div>
+            :<select value={empresa} onChange={e=>{setEmpresa(e.target.value);if(e.target.value)loadPersonas(e.target.value);}}>
+              <option value="">-- seleccionar empresa --</option>
+              {empresas.map(e=><option key={e} value={e}>{e}</option>)}
+            </select>
+          }
         </div>
-        {empresa&&personas.length>0&&<button className="bp" onClick={()=>setStep("personas")}>Ver personal de {empresa}</button>}
+        {empresa&&personas.length===0&&<div style={{color:"var(--tx2)",fontSize:13}}>Cargando personal...</div>}
+        {empresa&&personas.length>0&&<button className="bp" onClick={()=>setStep("personas")}>Ver {personas.length} personas de {empresa} →</button>}
       </>}
       {step==="personas"&&<>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
@@ -716,6 +752,88 @@ function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
       {step==="fecha"&&<button className="bcanc" onClick={()=>setStep("personas")}>Atras</button>}
       <button className="bcanc" onClick={onClose}>Cancelar</button>
       {step==="fecha"&&<button className="bp" disabled={saving||!fecha} onClick={save}>{saving?"Aplicando...":"Aplicar a "+selectedCount+" personas"}</button>}
+    </div>
+  </div></div>;
+}
+
+// ─── PERSONA DETALLE MODAL ───────────────────────────────────────────────────
+function PersonaDetalleModal({persona,proyectoId,onClose}){
+  const[ubicacion,setUbicacion]=useState(null); // null | "chalet" | "camino" | "fuera"
+  const[historial,setHistorial]=useState([]);
+  const[loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    const load=async()=>{
+      // Verificar ubicación actual
+      const[net2,net3]=await Promise.all([calcNet("Puesto 2"),calcNet("Puesto 3")]);
+      const enChalet=(net3[persona.id]||0)>0;
+      const enP2=(net2[persona.id]||0)>0;
+      const enP3=(net3[persona.id]||0);
+      if(enChalet)setUbicacion("chalet");
+      else if(enP2>0&&enP3<=0)setUbicacion("camino");
+      else setUbicacion("fuera");
+
+      // Historial de accesos (últimos 20)
+      const todayStr=today();
+      const[{data:regs},{data:mans}]=await Promise.all([
+        db.sel("registros_acceso",{cols:"sesion_id,resultado,orden_escaneo",f:[["persona_id","eq",persona.id]],lim:50}),
+        db.sel("movimientos_manuales",{cols:"id,created_at,direccion,puesto",f:[["persona_id","eq",persona.id]],ord:"created_at.desc",lim:20}),
+      ]);
+      let sesiones=[];
+      if(regs&&regs.length){
+        const sesIds=[...new Set(regs.map(r=>r.sesion_id))];
+        const{data:ses}=await db.sel("sesiones_acceso",{cols:"id,cerrada_at,direccion,puesto,vehiculo_id",inFilter:["id",sesIds],ord:"cerrada_at.desc"});
+        const vids=[...new Set((ses||[]).filter(s=>s.vehiculo_id).map(s=>s.vehiculo_id))];
+        let vm={};
+        if(vids.length){const{data:vehs}=await db.sel("vehiculos",{cols:"id,patente",inFilter:["id",vids]});(vehs||[]).forEach(v=>{vm[v.id]=v;});}
+        sesiones=(ses||[]).map(s=>({...s,veh:vm[s.vehiculo_id]||null,tipo:"sesion"}));
+      }
+      const manuales=(mans||[]).map(m=>({id:m.id,cerrada_at:m.created_at,direccion:m.direccion,puesto:m.puesto,veh:null,tipo:"manual"}));
+      // Combinar y ordenar por fecha
+      const todo=[...sesiones,...manuales].sort((a,b)=>new Date(b.cerrada_at)-new Date(a.cerrada_at)).slice(0,30);
+      setHistorial(todo);
+      setLoading(false);
+    };
+    load();
+  },[persona.id]);
+
+  const ubColor=ubicacion==="chalet"?"#A78BFA":ubicacion==="camino"?"#60A5FA":"var(--tx2)";
+  const ubLabel=ubicacion==="chalet"?"En Chalet":ubicacion==="camino"?"En Camino (P2→P3)":"Fuera de la obra";
+  const ubIcon=ubicacion==="chalet"?"🏔️":ubicacion==="camino"?"🚗":"—";
+
+  return <div className="mo"><div className="md">
+    <div className="mh">
+      <div>
+        <div className="mt">{persona.nombre} {persona.apellido}</div>
+        <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>{persona.empresa} · DNI {persona.dni}</div>
+      </div>
+      <button className="mc" onClick={onClose}>x</button>
+    </div>
+    <div className="mb">
+      {loading?<div style={{textAlign:"center",padding:20,color:"var(--tx2)"}}>Cargando...</div>:<>
+        {/* Ubicación actual */}
+        <div style={{background:"var(--s2)",border:`1px solid ${ubColor}44`,borderRadius:8,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:28}}>{ubIcon}</span>
+          <div>
+            <div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginBottom:2}}>Ubicación ahora</div>
+            <div style={{fontFamily:"var(--fh)",fontSize:16,fontWeight:700,color:ubColor}}>{ubLabel}</div>
+          </div>
+        </div>
+        {/* Historial */}
+        <div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",letterSpacing:".07em",marginBottom:8}}>Historial reciente</div>
+        {historial.length===0
+          ?<div style={{color:"var(--tx2)",textAlign:"center",padding:12}}>Sin registros.</div>
+          :<div style={{maxHeight:280,overflowY:"auto"}}>
+            {historial.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid var(--bd)"}}>
+              <span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`} style={{fontSize:11,flexShrink:0}}>{s.direccion}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:500}}>{s.puesto}{s.veh?` · ${s.veh.patente}`:""}</div>
+                <div style={{fontSize:11,color:"var(--tx2)"}}>{fmtTs(s.cerrada_at)}</div>
+              </div>
+            </div>)}
+          </div>
+        }
+      </>}
     </div>
   </div></div>;
 }
@@ -913,7 +1031,8 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const[showModal,setShowModal]=useState(false);
   const[showMasivo,setShowMasivo]=useState(false);
   const[editP,setEditP]=useState(null);
-  const[registroP,setRegistroP]=useState(null); // persona para registro manual
+  const[registroP,setRegistroP]=useState(null);
+  const[detalleP,setDetalleP]=useState(null); // persona para registro manual
   const canSH=userRole==="sh"||userRole==="admin";
   const canCP=userRole==="cp"||userRole==="admin";
   const readOnly=userRole==="puesto"||userRole==="logistica";
@@ -981,7 +1100,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
         {filtered.map(p=>{
           const est=personaEstado(p.id,habs);
           return <tr key={p.id}>
-            <td style={{borderRight:"1px solid var(--bd)"}}><div style={{display:"flex",alignItems:"center",gap:8}}><div className="av">{ini(`${p.nombre} ${p.apellido}`)}</div><div><div style={{fontWeight:500}}>{p.nombre} {p.apellido}</div>{p.cargo&&<div style={{fontSize:11,color:"var(--tx2)"}}>{p.cargo}</div>}</div></div></td>
+            <td style={{borderRight:"1px solid var(--bd)",cursor:"pointer"}} onClick={()=>setDetalleP(p)}><div style={{display:"flex",alignItems:"center",gap:8}}><div className="av">{ini(`${p.nombre} ${p.apellido}`)}</div><div><div style={{fontWeight:500}}>{p.nombre} {p.apellido}</div>{p.cargo&&<div style={{fontSize:11,color:"var(--tx2)"}}>{p.cargo}</div>}</div></div></td>
             <td className="mn">{p.dni}</td>
             <td style={{color:"var(--tx2)",fontSize:12,borderRight:"1px solid var(--bd)",maxWidth:130,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.empresa||"—"}</td>
             <HabCell hab={getHab("persona",p.id,"sh_ingreso",habs)} tipo="sh_ingreso" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load} tdClass="sh-c"/>
@@ -1001,6 +1120,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
       </tbody>
     </table></div>}
     {showModal&&<PersonModal p={editP} onClose={()=>setShowModal(false)} onSave={saveP}/>}
+    {detalleP&&<PersonaDetalleModal persona={detalleP} proyectoId={proyectoId} onClose={()=>setDetalleP(null)}/>}
     {registroP&&user&&<RegistroManualAcceso persona={registroP} user={user} proyectoId={proyectoId} onClose={()=>setRegistroP(null)} onSaved={()=>setRegistroP(null)}/>}
     {showMasivo&&<HabMasivaModal proyectoId={proyectoId} currentUserId={currentUserId} habs={habs} onClose={()=>setShowMasivo(false)} onSaved={load}/>}
   </div>;
@@ -1211,9 +1331,9 @@ function Registros({defaultPuesto}){
   const load=async()=>{
     setLoading(true);
     const sf=[...(fp?[["puesto","eq",fp]]:[])];
-    if(fFecha)sf.push(["cerrada_at","gte",fFecha+"T00:00:00"]);
+    if(fFecha){sf.push(["cerrada_at","gte",fFecha+"T00:00:00"]);sf.push(["cerrada_at","lte",fFecha+"T23:59:59"]);}
     const mf=[...(fp?[["puesto","eq",fp]]:[])];
-    if(fFecha)mf.push(["created_at","gte",fFecha+"T00:00:00"]);
+    if(fFecha){mf.push(["created_at","gte",fFecha+"T00:00:00"]);mf.push(["created_at","lte",fFecha+"T23:59:59"]);}
     const[{data:ses},{data:man}]=await Promise.all([
       db.sel("sesiones_acceso",{f:sf,ord:"cerrada_at.desc",lim:200}),
       db.sel("movimientos_manuales",{f:mf,ord:"created_at.desc",lim:200}),
@@ -1417,14 +1537,14 @@ const OFFLINE_KEY="controlobra_offline";
 let _offlineMem=[];
 const offlineStore={
   get:()=>{
-    try{const s=sessionStorage.getItem(OFFLINE_KEY);return s?JSON.parse(s):_offlineMem;}
+    try{const s=localStorage.getItem(OFFLINE_KEY);return s?JSON.parse(s):_offlineMem;}
     catch(e){return _offlineMem;}
   },
   add:(rec)=>{
     const l=offlineStore.get();l.push(rec);_offlineMem=l;
-    try{sessionStorage.setItem(OFFLINE_KEY,JSON.stringify(l));}catch(e){}
+    try{localStorage.setItem(OFFLINE_KEY,JSON.stringify(l));}catch(e){}
   },
-  clear:()=>{_offlineMem=[];try{sessionStorage.removeItem(OFFLINE_KEY);}catch(e){}},
+  clear:()=>{_offlineMem=[];try{localStorage.removeItem(OFFLINE_KEY);}catch(e){}},
 };
 
 function OfflineModePanel({user,proyectoId,onClose}){
@@ -1614,19 +1734,33 @@ function Puesto({user,pid}){
       const vehHabs=freshHabs.filter(h=>h.entity_type==="vehiculo"&&h.vehiculo_id===found.id);
       console.log("Offline vehicle habs found:", vehHabs.length, "for", found.id);
     } else {
-      const[{data:vData},{data:habsVeh},{data:habsNew}]=await Promise.all([
-        db.sel("vehiculos",{f:[["patente","eq",v]],lim:1}),
-        db.sel("habilitaciones",{f:[["entity_type","eq","vehiculo"]]}),
-        db.sel("habilitaciones",{f:[["entity_type","eq","persona"]],lim:5000}),
-      ]);
-      found=vData&&vData[0];
+      let vData=null,habsVeh=null,habsNew=null;
+      // Buscar vehículo en cache primero
+      const cachedNow=cache.load();
+      if(cachedNow&&cachedNow.vehiculos){
+        found=cachedNow.vehiculos.find(x=>x.patente===v)||null;
+        freshHabs=cachedNow.habs||[];
+      }
+      // Si no está en cache o hay internet, consultar Supabase
+      try{
+        const[r1,r2,r3]=await Promise.all([
+          db.sel("vehiculos",{f:[["patente","eq",v]],lim:1}),
+          db.sel("habilitaciones",{f:[["entity_type","eq","vehiculo"]]}),
+          db.sel("habilitaciones",{f:[["entity_type","eq","persona"]],lim:5000}),
+        ]);
+        if(r1.data&&r1.data[0])found=r1.data[0];
+        habsVeh=r2.data;habsNew=r3.data;
+      }catch(e){
+        console.warn("scanV: fallo consulta Supabase, usando cache");
+      }
       if(!found){
-        // Vehiculo no registrado: avanzar sin vehículo, solo registrar personas
         sf({ok:false,label:"VEHICULO NO REGISTRADO",sub:v,reason:"No esta en la base — se registran solo las personas"});
         found={id:null,patente:v,tipo:"Camioneta",descripcion:"No registrado",_noRegistrado:true};
       }
-      freshHabs=[...(habsVeh||[]),...(habsNew||[])];
-      setHabs(freshHabs);
+      if(habsVeh||habsNew){
+        freshHabs=[...(habsVeh||[]),...(habsNew||[])];
+        setHabs(freshHabs);
+      }
     }
     const r=found.id?chkAuth("vehiculo",found.id,freshHabs):{ok:false,reason:"Vehiculo no registrado"};
     setVeh({data:found,...r});setVal("");
@@ -1637,15 +1771,31 @@ function Puesto({user,pid}){
     const v=val.trim();if(!v)return;
     if(pax.some(p=>p.raw===v.toUpperCase())){sf({ok:false,label:"DNI REPETIDO",sub:v,reason:"Ya fue escaneado"});setVal("");return;}
     let found=null;
-    if(!isOnline()){
-      // Modo offline: buscar en cache
-      const cached=cache.load();
-      found=(cached&&cached.personas||[]).find(x=>x.dni===v)||null;
-    } else {
-      const{data}=await db.sel("personas",{f:[["dni","eq",v],["deleted_at","is","null"]],lim:1});
-      found=data&&data[0];
+    // 1. Buscar SIEMPRE primero en cache local (rápido, sin depender de red)
+    const cached=cache.load();
+    if(cached&&cached.personas){
+      found=(cached.personas||[]).find(x=>x.dni===v)||null;
     }
-    if(!found){setPax(p=>[...p,{raw:v.toUpperCase(),person:null,ok:false,reason:"DNI no encontrado",activeAuths:[]}]);sf({ok:false,label:"SIN REGISTRO",sub:v,reason:"DNI no encontrado"});setVal("");return;}
+    // 2. Si no está en cache o hay internet, consultar Supabase
+    if(!found&&isOnline()){
+      try{
+        const{data}=await db.sel("personas",{f:[["dni","eq",v],["deleted_at","is","null"]],lim:1});
+        found=data&&data[0];
+        // Si lo encontramos online, actualizar cache
+        if(found&&cached){
+          const idx=cached.personas.findIndex(p=>p.dni===v);
+          if(idx>=0)cached.personas[idx]=found;else cached.personas.push(found);
+          cache.save(cached);
+        }
+      }catch(e){
+        console.warn("scanP: fallo consulta Supabase, usando solo cache");
+      }
+    }
+    if(!found){
+      setPax(p=>[...p,{raw:v.toUpperCase(),person:null,ok:false,reason:"DNI no encontrado",activeAuths:[]}]);
+      sf({ok:false,label:"SIN REGISTRO",sub:v,reason:"DNI no encontrado"});
+      setVal("");return;
+    }
     const r=chkAuth("persona",found.id,habs);
     setPax(p=>[...p,{raw:found.dni,person:found,...r}]);
     sf({ok:r.ok,label:r.ok?"ACCESO PERMITIDO":"ACCESO DENEGADO",sub:`${found.nombre} ${found.apellido}`,detail:`DNI ${found.dni} · ${found.empresa||""}`,reason:r.ok?null:r.reason});
@@ -1675,8 +1825,26 @@ function Puesto({user,pid}){
       setDir(d);setSaving(false);setFase(F.D);
       return;
     }
-    const{data:ses}=await db.ins("sesiones_acceso",{proyecto_id:pid,puesto:user.puesto_nombre,operador_id:user.id,vehiculo_id:veh.data.id||null,vehiculo_ok:veh.ok,vehiculo_razon:veh.data._noRegistrado?("No registrado: "+veh.data.patente):(veh.reason||null),direccion:d,total_personas:pax.length,total_aprobados:pax.filter(p=>p.ok).length,total_rechazados:pax.filter(p=>!p.ok).length});
-    if(ses&&ses[0])await db.ins("registros_acceso",pax.map((p,i)=>({sesion_id:ses[0].id,persona_id:p.person?p.person.id:null,dni_raw:p.raw,resultado:p.ok?"aprobado":"rechazado",motivo_rechazo:p.ok?null:p.reason,orden_escaneo:i+1})));
+    // Intentar subir con timeout de 8 segundos - si falla, guardar offline
+    const saveOnline=async()=>{
+      const{data:ses}=await db.ins("sesiones_acceso",{proyecto_id:pid,puesto:user.puesto_nombre,operador_id:user.id,vehiculo_id:veh.data.id||null,vehiculo_ok:veh.ok,vehiculo_razon:veh.data._noRegistrado?("No registrado: "+veh.data.patente):(veh.reason||null),direccion:d,total_personas:pax.length,total_aprobados:pax.filter(p=>p.ok).length,total_rechazados:pax.filter(p=>!p.ok).length});
+      if(ses&&ses[0])await db.ins("registros_acceso",pax.map((p,i)=>({sesion_id:ses[0].id,persona_id:p.person?p.person.id:null,dni_raw:p.raw,resultado:p.ok?"aprobado":"rechazado",motivo_rechazo:p.ok?null:p.reason,orden_escaneo:i+1})));
+      return true;
+    };
+    const withTimeout=(promise,ms)=>Promise.race([promise,new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),ms))]);
+    try{
+      await withTimeout(saveOnline(),8000);
+    }catch(e){
+      // Timeout o error de red: guardar offline
+      console.warn("cerrar: fallo online, guardando offline:",e.message);
+      offlineStore.add({
+        puesto:user.puesto_nombre,operador_nombre:user.nombre,direccion:d,
+        patente:veh?veh.data.patente:null,vehiculo_id:veh?veh.data.id:null,vehiculo_ok:veh?veh.ok:false,
+        dnis:pax.map(p=>p.raw),
+        paxData:pax.map(p=>({raw:p.raw,person_id:p.person?p.person.id:null,nombre:p.person?`${p.person.nombre} ${p.person.apellido}`:null,ok:p.ok,reason:p.reason||null})),
+        timestamp:new Date().toISOString(),
+      });
+    }
     setDir(d);setSaving(false);setFase(F.D);
   };
   const nueva=()=>{setFase(F.V);setVeh(null);setPax([]);setPaxSnap([]);setVal("");setFlash(null);setRefreshKey(k=>k+1);};
