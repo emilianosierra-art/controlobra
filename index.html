@@ -232,11 +232,13 @@ const db={
   ins:async(table,payload)=>{
     const body=Array.isArray(payload)?payload:[payload];
     const{data,ok}=await dbq(table,{method:"POST",h:{"Prefer":"return=representation"},body:JSON.stringify(body)});
-    return{data:ok?(Array.isArray(data)?data:[data]):null};
+    return{data:ok?(Array.isArray(data)?data:[data]):null,ok};
   },
   upd:async(table,payload,filters)=>{
     let u=`${table}?`;filters.forEach(([k,op,v])=>{u+=`&${k}=${op}.${encodeURIComponent(v)}`;});
-    await dbq(u,{method:"PATCH",h:{"Prefer":"return=representation"},body:JSON.stringify(payload)});
+    const{data,ok}=await dbq(u,{method:"PATCH",h:{"Prefer":"return=representation"},body:JSON.stringify(payload)});
+    if(!ok)console.error("db.upd failed",table,payload,data);
+    return{data,ok};
   },
   del:async(table,filters)=>{
     let u=`${table}?`;filters.forEach(([k,op,v])=>{u+=`&${k}=${op}.${encodeURIComponent(v)}`;});
@@ -575,7 +577,8 @@ function MovimientoManual({user,proyectoId,onClose,onSaved}){
 
 // ─── HAB MODAL ────────────────────────────────────────────────────────────────
 function HabModal({hab,tipo,onClose,onSave,onDelete}){
-  const[fecha,setFecha]=useState(hab?hab.fecha_hasta:"");
+  const defaultFecha=()=>{const d=new Date();d.setFullYear(d.getFullYear()+1);return d.toISOString().split("T")[0];};
+  const[fecha,setFecha]=useState(hab&&hab.fecha_hasta?hab.fecha_hasta.slice(0,10):defaultFecha());
   const[susp,setSusp]=useState(hab?hab.suspendida:false);
   const[motivo,setMotivo]=useState(hab?hab.motivo_suspension||"":"");
   const labels={"sh_ingreso":"S&H Ingreso","sh_chalet":"S&H Subir a Chalet","sh_manejo":"S&H Manejo en Montana","cp_ingreso":"CP Ingreso","cp_almuerzo":"CP Almuerzo","cp_cena":"CP Cena"};
@@ -601,9 +604,20 @@ function HabCell({hab,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,
   const[show,setShow]=useState(false);
   const st=habSt(hab);
   const save=async(form)=>{
-    if(hab)await db.upd("habilitaciones",form,[["id","eq",hab.id]]);
-    else await db.ins("habilitaciones",{entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,...form});
-    onRefresh();setShow(false);
+    try{
+      if(hab){
+        const{data,ok}=await db.upd("habilitaciones",form,[["id","eq",hab.id]]);
+        if(!ok){alert("Error al actualizar: "+JSON.stringify(data));return;}
+      } else {
+        const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,...form};
+        const{data,ok}=await db.ins("habilitaciones",payload);
+        if(!ok){console.error("ins hab failed",data);alert("Error al crear: "+JSON.stringify(data));return;}
+      }
+      await onRefresh();
+      setTimeout(()=>setShow(false),150);
+    }catch(e){
+      alert("Error: "+e.message);
+    }
   };
   const remove=async()=>{if(!confirm("Eliminar esta habilitacion?"))return;await db.del("habilitaciones",[["id","eq",hab.id]]);onRefresh();};
   const[showInfo,setShowInfo]=useState(false);
@@ -682,18 +696,22 @@ function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
     const ids=Object.entries(selected).filter(([_,v])=>v).map(([k])=>k);
     if(!ids.length||!fecha)return;
     setSaving(true);
+    const tipos=tipo==="todas"?TODOS_TIPOS:[tipo];
     for(const pid of ids){
-      const existing=getHab("persona",pid,tipo,habs);
-      if(existing){
-        await db.upd("habilitaciones",{fecha_hasta:fecha,suspendida:false,motivo_suspension:null},[["id","eq",existing.id]]);
-      } else {
-        await db.ins("habilitaciones",{entity_type:"persona",persona_id:pid,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_hasta:fecha,suspendida:false});
+      for(const t of tipos){
+        const existing=getHab("persona",pid,t,habs);
+        if(existing){
+          await db.upd("habilitaciones",{fecha_hasta:fecha,suspendida:false,motivo_suspension:null},[["id","eq",existing.id]]);
+        } else {
+          await db.ins("habilitaciones",{entity_type:"persona",persona_id:pid,tipo:t,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_hasta:fecha,suspendida:false});
+        }
       }
     }
     setSaving(false);onSaved();onClose();
   };
 
-  const tiposLabel={"sh_ingreso":"S&H Ingreso","sh_chalet":"S&H Subir a Chalet","sh_manejo":"S&H Manejo en Montana"};
+  const TODOS_TIPOS=["sh_ingreso","sh_chalet","sh_manejo","cp_ingreso","cp_almuerzo","cp_cena"];
+  const tiposLabel={"todas":"⭐ TODAS las habilitaciones","sh_ingreso":"S&H Ingreso","sh_chalet":"S&H Subir a Chalet","sh_manejo":"S&H Manejo en Montana","cp_ingreso":"CP Ingreso","cp_almuerzo":"CP Almuerzo","cp_cena":"CP Cena"};
   const selectedCount=Object.values(selected).filter(Boolean).length;
 
   return <div className="mo"><div className="md md-lg">
@@ -752,6 +770,63 @@ function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
       {step==="fecha"&&<button className="bcanc" onClick={()=>setStep("personas")}>Atras</button>}
       <button className="bcanc" onClick={onClose}>Cancelar</button>
       {step==="fecha"&&<button className="bp" disabled={saving||!fecha} onClick={save}>{saving?"Aplicando...":"Aplicar a "+selectedCount+" personas"}</button>}
+    </div>
+  </div></div>;
+}
+
+// ─── HABILITAR TODO MODAL ────────────────────────────────────────────────────
+function HabTodoModal({proyectoId,currentUserId,tipo,onClose,onSaved}){
+  const[fecha,setFecha]=useState("2027-01-01");
+  const[saving,setSaving]=useState(false);
+  const[prog,setProg]=useState(null); // {done, total}
+  const TODOS_TIPOS_P=["sh_ingreso","sh_chalet","sh_manejo","cp_ingreso","cp_almuerzo","cp_cena"];
+  const TODOS_TIPOS_V=["sh_ingreso","sh_manejo"];
+
+  const save=async()=>{
+    if(!fecha)return;
+    setSaving(true);
+    const tipos=tipo==="persona"?TODOS_TIPOS_P:TODOS_TIPOS_V;
+    // Fetch all entities
+    const{data:entities}=tipo==="persona"
+      ?await db.sel("personas",{cols:"id",f:[["deleted_at","is","null"]],lim:5000})
+      :await db.sel("vehiculos",{cols:"id",f:[["activo","eq",true]],lim:2000});
+    const{data:habsExist}=await db.sel("habilitaciones",{f:[["entity_type","eq",tipo==="persona"?"persona":"vehiculo"]],lim:10000});
+    const habMap={};
+    (habsExist||[]).forEach(h=>{
+      const eid=tipo==="persona"?h.persona_id:h.vehiculo_id;
+      habMap[`${eid}_${h.tipo}`]=h.id;
+    });
+    const total=(entities||[]).length*tipos.length;
+    let done=0;
+    for(const ent of(entities||[])){
+      for(const t of tipos){
+        const key=`${ent.id}_${t}`;
+        if(habMap[key]){
+          await db.upd("habilitaciones",{fecha_hasta:fecha,suspendida:false,motivo_suspension:null},[["id","eq",habMap[key]]]);
+        } else {
+          const payload={entity_type:tipo==="persona"?"persona":"vehiculo",tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_hasta:fecha,suspendida:false};
+          if(tipo==="persona")payload.persona_id=ent.id;else payload.vehiculo_id=ent.id;
+          payload.tipo=t;
+          await db.ins("habilitaciones",payload);
+        }
+        done++;
+        if(done%20===0)setProg({done,total});
+      }
+    }
+    setSaving(false);setProg(null);onSaved();onClose();
+  };
+
+  return <div className="mo"><div className="md" style={{maxWidth:400}}>
+    <div className="mh"><div className="mt">⭐ Habilitar todo — {tipo==="persona"?"Personal":"Vehiculos"}</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div style={{color:"var(--tx2)",fontSize:13,marginBottom:16}}>
+        Aplica <strong>todas</strong> las habilitaciones a {tipo==="persona"?"todas las personas":"todos los vehículos"} del sistema. Los que ya tienen habilitación actualiza la fecha; los que no la tienen la crea.
+      </div>
+      <div className="f"><label>Fecha de vencimiento</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/></div>
+      {prog&&<div style={{marginTop:12,fontSize:13,color:"var(--tx2)",textAlign:"center"}}>{prog.done} / {prog.total} habilitaciones...</div>}
+      <button className="bp" style={{marginTop:8,background:"rgba(16,185,129,.2)",border:"2px solid var(--gr)",color:"var(--gr)"}} disabled={saving||!fecha} onClick={save}>
+        {saving?"Procesando...":"Aplicar a todos"}
+      </button>
     </div>
   </div></div>;
 }
@@ -1030,6 +1105,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const[filterEst,setFilterEst]=useState("");
   const[showModal,setShowModal]=useState(false);
   const[showMasivo,setShowMasivo]=useState(false);
+  const[showMasivoTodo,setShowMasivoTodo]=useState(false);
   const[editP,setEditP]=useState(null);
   const[registroP,setRegistroP]=useState(null);
   const[detalleP,setDetalleP]=useState(null); // persona para registro manual
@@ -1039,8 +1115,8 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const load=async()=>{
     setLoading(true);
     const[r1,r2]=await Promise.all([
-      db.sel("personas",{f:[["deleted_at","is","null"]],ord:"apellido.asc"}),
-      db.sel("habilitaciones",{f:[["entity_type","eq","persona"]]}),
+      db.sel("personas",{f:[["deleted_at","is","null"]],ord:"apellido.asc",lim:5000}),
+      db.sel("habilitaciones",{f:[["entity_type","eq","persona"]],lim:5000}),
     ]);
     if(r1.data)setPersonas(r1.data);
     if(r2.data)setHabs(r2.data);
@@ -1067,6 +1143,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const btns=[];
   if(!readOnly&&(canSH||canCP))btns.push(<button key="add" className="badd" onClick={()=>{setEditP(null);setShowModal(true);}}>+ Nuevo</button>);
   if(canSH)btns.push(<button key="mas" className="badd" style={{background:"var(--acc2)",marginLeft:6}} onClick={()=>setShowMasivo(true)}>Hab. masiva por empresa</button>);
+  if(userRole==="admin")btns.push(<button key="todo" className="badd" style={{background:"rgba(16,185,129,.2)",border:"1px solid var(--gr)",color:"var(--gr)",marginLeft:6}} onClick={()=>setShowMasivoTodo(true)}>⭐ Habilitar todo</button>);
   return <div>
     <div className="ph2"><div className="ptit"><span>Personal</span>{readOnly&&<span style={{fontSize:14,fontWeight:400,color:"var(--tx2)",marginLeft:10}}>solo lectura</span>}</div><div style={{display:"flex",gap:6}}>{btns}</div></div>
     <div className="sg">
@@ -1122,6 +1199,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
     {showModal&&<PersonModal p={editP} onClose={()=>setShowModal(false)} onSave={saveP}/>}
     {detalleP&&<PersonaDetalleModal persona={detalleP} proyectoId={proyectoId} onClose={()=>setDetalleP(null)}/>}
     {registroP&&user&&<RegistroManualAcceso persona={registroP} user={user} proyectoId={proyectoId} onClose={()=>setRegistroP(null)} onSaved={()=>setRegistroP(null)}/>}
+    {showMasivoTodo&&<HabTodoModal proyectoId={proyectoId} currentUserId={currentUserId} tipo="persona" onClose={()=>setShowMasivoTodo(false)} onSaved={load}/>}
     {showMasivo&&<HabMasivaModal proyectoId={proyectoId} currentUserId={currentUserId} habs={habs} onClose={()=>setShowMasivo(false)} onSaved={load}/>}
   </div>;
 }
@@ -1172,6 +1250,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
   const[showModal,setShowModal]=useState(false);
   const[editV,setEditV]=useState(null);
   const[showMasivoVeh,setShowMasivoVeh]=useState(false);
+  const[showMasivoTodoVeh,setShowMasivoTodoVeh]=useState(false);
   const[filter,setFilter]=useState("");
   const canSH=userRole==="sh"||userRole==="admin";
   const canEditVeh=canSH||userRole==="logistica";
@@ -1208,6 +1287,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
       <div style={{display:"flex",gap:6}}>
         {(canEditVeh||!readOnly)&&canEditVeh&&<button className="badd" onClick={()=>{setEditV(null);setShowModal(true);}}>+ Nuevo</button>}
         {canSH&&<button className="badd" style={{background:"var(--acc2)"}} onClick={()=>setShowMasivoVeh(true)}>Hab. masiva por empresa</button>}
+        {userRole==="admin"&&<button className="badd" style={{background:"rgba(16,185,129,.2)",border:"1px solid var(--gr)",color:"var(--gr)"}} onClick={()=>setShowMasivoTodoVeh(true)}>⭐ Habilitar todo</button>}
       </div>
     </div>
     <div className="sg">
@@ -1240,6 +1320,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
       </tbody>
     </table></div>}
     {showModal&&<VehModal v={editV} onClose={()=>setShowModal(false)} onSave={saveV}/>}
+    {showMasivoTodoVeh&&<HabTodoModal proyectoId={proyectoId} currentUserId={currentUserId} tipo="vehiculo" onClose={()=>setShowMasivoTodoVeh(false)} onSaved={load}/>}
     {showMasivoVeh&&<HabMasivaVehModal proyectoId={proyectoId} currentUserId={currentUserId} habs={habs} onClose={()=>setShowMasivoVeh(false)} onSaved={load}/>}
   </div>;
 }
