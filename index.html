@@ -1108,7 +1108,8 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const[showMasivoTodo,setShowMasivoTodo]=useState(false);
   const[editP,setEditP]=useState(null);
   const[registroP,setRegistroP]=useState(null);
-  const[detalleP,setDetalleP]=useState(null); // persona para registro manual
+  const[detalleP,setDetalleP]=useState(null);
+  const[habKey,setHabKey]=useState(0); // persona para registro manual
   const canSH=userRole==="sh"||userRole==="admin";
   const canCP=userRole==="cp"||userRole==="admin";
   const readOnly=userRole==="puesto"||userRole==="logistica";
@@ -1120,6 +1121,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
     ]);
     if(r1.data)setPersonas(r1.data);
     if(r2.data)setHabs(r2.data);
+    setHabKey(k=>k+1);
     setLoading(false);
   };
   useEffect(()=>{load();},[]);
@@ -1172,7 +1174,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
           <th className="cp-h" style={{top:28}}>Ingreso</th><th style={{top:28}}>Almuerzo</th><th style={{top:28}}>Cena</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody key={habKey}>
         {filtered.length===0&&<tr><td colSpan={readOnly?10:11} style={{textAlign:"center",color:"var(--tx2)",padding:28}}>Sin registros</td></tr>}
         {filtered.map(p=>{
           const est=personaEstado(p.id,habs);
@@ -1298,7 +1300,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
     <div className="fb"><input className="fi" placeholder="Buscar patente o descripcion..." value={filter} onChange={e=>setFilter(e.target.value)} style={{width:280}}/></div>
     {loading?<Spin/>:<div className="tw"><table>
       <thead><tr><th>Patente</th><th>Tipo</th><th>Descripcion</th><th>Empresa</th><th>Cap.</th><th className="sh-h">S&H Ingreso</th><th className="sh-h" style={{borderLeft:"none"}}>Sub.Chalet</th><th>Estado</th>{!readOnly&&<th></th>}</tr></thead>
-      <tbody>
+      <tbody key={habKey}>
         {filtered.length===0&&<tr><td colSpan={readOnly?8:9} style={{textAlign:"center",color:"var(--tx2)",padding:28}}>Sin vehiculos</td></tr>}
         {filtered.map(v=>{
           const est=vehiculoEstado(v.id,habs);
