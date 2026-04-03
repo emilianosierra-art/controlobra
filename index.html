@@ -603,12 +603,11 @@ function HabModal({hab,tipo,onClose,onSave,onDelete}){
   </div></div>;
 }
 
-function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,onRefresh,tdClass}){
+function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,onRefresh,onHabSaved,tdClass}){
   const[show,setShow]=useState(false);
   const[localHab,setLocalHab]=useState(habProp);
-  // Only sync from parent if we don't have a local override
-  const[hasLocalOverride,setHasLocalOverride]=useState(false);
-  useEffect(()=>{if(!hasLocalOverride)setLocalHab(habProp);},[habProp]);
+  const overrideRef=React.useRef(false);
+  useEffect(()=>{if(!overrideRef.current)setLocalHab(habProp);},[habProp]);
   const hab=localHab;
   const st=habSt(hab);
   const save=async(form)=>{
@@ -625,10 +624,10 @@ function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,curren
       }
       if(!ok){alert("Error: "+JSON.stringify(data));return;}
       const newHab=data&&data[0]?data[0]:{...form,id:hab?.id,tipo,entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null};
-      setHasLocalOverride(true);
+      overrideRef.current=true;
       setLocalHab(newHab);
       setShow(false);
-      setTimeout(()=>onRefresh(),500);
+      if(onHabSaved)onHabSaved(newHab);
     }catch(e){
       alert("Error: "+e.message);
     }
@@ -1127,6 +1126,14 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const canSH=userRole==="sh"||userRole==="admin";
   const canCP=userRole==="cp"||userRole==="admin";
   const readOnly=userRole==="puesto"||userRole==="logistica";
+  const onHabSaved=(newHab)=>{
+    setHabs(prev=>{
+      const idx=prev.findIndex(h=>h.id===newHab.id);
+      if(idx>=0){const next=[...prev];next[idx]=newHab;return next;}
+      return[...prev,newHab];
+    });
+    setHabKey(k=>k+1);
+  };
   const load=async()=>{
     setLoading(true);
     const[r1,r2]=await Promise.all([
@@ -1196,10 +1203,10 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
             <td style={{borderRight:"1px solid var(--bd)",cursor:"pointer"}} onClick={()=>setDetalleP(p)}><div style={{display:"flex",alignItems:"center",gap:8}}><div className="av">{ini(`${p.nombre} ${p.apellido}`)}</div><div><div style={{fontWeight:500}}>{p.nombre} {p.apellido}</div>{p.cargo&&<div style={{fontSize:11,color:"var(--tx2)"}}>{p.cargo}</div>}</div></div></td>
             <td className="mn">{p.dni}</td>
             <td style={{color:"var(--tx2)",fontSize:12,borderRight:"1px solid var(--bd)",maxWidth:130,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.empresa||"—"}</td>
-            <HabCell hab={getHab("persona",p.id,"sh_ingreso",habs)} tipo="sh_ingreso" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load} tdClass="sh-c"/>
+            <HabCell hab={getHab("persona",p.id,"sh_ingreso",habs)} tipo="sh_ingreso" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load} onHabSaved={onHabSaved} tdClass="sh-c"/>
             <HabCell hab={getHab("persona",p.id,"sh_chalet",habs)} tipo="sh_chalet" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
             <HabCell hab={getHab("persona",p.id,"sh_manejo",habs)} tipo="sh_manejo" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
-            <HabCell hab={getHab("persona",p.id,"cp_ingreso",habs)} tipo="cp_ingreso" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canCP&&!readOnly} currentUserId={currentUserId} onRefresh={load} tdClass="cp-c"/>
+            <HabCell hab={getHab("persona",p.id,"cp_ingreso",habs)} tipo="cp_ingreso" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canCP&&!readOnly} currentUserId={currentUserId} onRefresh={load} onHabSaved={onHabSaved} tdClass="cp-c"/>
             <HabCell hab={getHab("persona",p.id,"cp_almuerzo",habs)} tipo="cp_almuerzo" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canCP&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
             <HabCell hab={getHab("persona",p.id,"cp_cena",habs)} tipo="cp_cena" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canCP&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
             <td>{est==="ok"?<span className="est-ok">ok</span>:est==="par"?<span className="est-par">parcial</span>:<span className="est-no">bloq.</span>}</td>
@@ -1271,6 +1278,14 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
   const canSH=userRole==="sh"||userRole==="admin";
   const canEditVeh=canSH||userRole==="logistica";
   const readOnly=userRole==="puesto";
+  const onHabSaved=(newHab)=>{
+    setHabs(prev=>{
+      const idx=prev.findIndex(h=>h.id===newHab.id);
+      if(idx>=0){const next=[...prev];next[idx]=newHab;return next;}
+      return[...prev,newHab];
+    });
+    setHabKey(k=>k+1);
+  };
   const load=async()=>{
     setLoading(true);
     const[r1,r2]=await Promise.all([
@@ -1324,7 +1339,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
             <td style={{color:"var(--tx2)"}}>{v.descripcion||"—"}</td>
             <td style={{color:"var(--tx2)",fontSize:12}}>{v.empresa||"—"}</td>
             <td style={{color:"var(--tx2)"}}>{v.capacidad?`${v.capacidad}p`:"—"}</td>
-            <HabCell hab={getHab("vehiculo",v.id,"sh_ingreso",habs)} tipo="sh_ingreso" entityType="vehiculo" entityId={v.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load} tdClass="sh-c"/>
+            <HabCell hab={getHab("vehiculo",v.id,"sh_ingreso",habs)} tipo="sh_ingreso" entityType="vehiculo" entityId={v.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load} onHabSaved={onHabSaved} tdClass="sh-c"/>
             <HabCell hab={getHab("vehiculo",v.id,"sh_manejo",habs)} tipo="sh_manejo" entityType="vehiculo" entityId={v.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
             <td>{est==="ok"?<span className="est-ok">ok</span>:<span className="est-no">bloq.</span>}</td>
             {!readOnly&&<td><div style={{display:"flex",gap:5}}>
@@ -1425,6 +1440,14 @@ function Registros({defaultPuesto}){
   const[search,setSearch]=useState("");
   const[detalle,setDetalle]=useState(null);
 
+  const onHabSaved=(newHab)=>{
+    setHabs(prev=>{
+      const idx=prev.findIndex(h=>h.id===newHab.id);
+      if(idx>=0){const next=[...prev];next[idx]=newHab;return next;}
+      return[...prev,newHab];
+    });
+    setHabKey(k=>k+1);
+  };
   const load=async()=>{
     setLoading(true);
     const sf=[...(fp?[["puesto","eq",fp]]:[])];
