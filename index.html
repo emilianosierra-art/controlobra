@@ -1303,7 +1303,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
     <div className="fb"><input className="fi" placeholder="Buscar patente o descripcion..." value={filter} onChange={e=>setFilter(e.target.value)} style={{width:280}}/></div>
     {loading?<Spin/>:<div className="tw"><table>
       <thead><tr><th>Patente</th><th>Tipo</th><th>Descripcion</th><th>Empresa</th><th>Cap.</th><th className="sh-h">S&H Ingreso</th><th className="sh-h" style={{borderLeft:"none"}}>Sub.Chalet</th><th>Estado</th>{!readOnly&&<th></th>}</tr></thead>
-      <tbody key={habKey}>
+      <tbody>
         {filtered.length===0&&<tr><td colSpan={readOnly?8:9} style={{textAlign:"center",color:"var(--tx2)",padding:28}}>Sin vehiculos</td></tr>}
         {filtered.map(v=>{
           const est=vehiculoEstado(v.id,habs);
