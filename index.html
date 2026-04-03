@@ -611,7 +611,13 @@ function HabCell({hab,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,
       // Siempre upsert: si existe actualiza, si no crea. Evita errores de constraint único.
       const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,...form};
       if(hab&&hab.id)payload.id=hab.id;
-      const{data,ok}=await db.ins("habilitaciones",payload,true,"entity_type,persona_id,vehiculo_id,tipo,proyecto_id"); // upsert
+      // Si tiene id, actualizar directo; si no, insertar sin on_conflict y manejar error
+      let ok,data;
+      if(hab&&hab.id){
+        ({data,ok}=await db.upd("habilitaciones",{...form,otorgado_por:currentUserId},[["id","eq",hab.id]]));
+      } else {
+        ({data,ok}=await db.ins("habilitaciones",payload));
+      }
       if(!ok){alert("Error ("+JSON.stringify(data?.message||data?.code||data)+")");return;}
       await onRefresh();
       setTimeout(()=>setShow(false),150);
