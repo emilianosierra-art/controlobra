@@ -229,9 +229,10 @@ const db={
     const{data,ok}=await dbq(u,{h:{"Accept":"application/json"}});
     return{data:ok?(Array.isArray(data)?data:[data]):null};
   },
-  ins:async(table,payload)=>{
+  ins:async(table,payload,upsert=false)=>{
     const body=Array.isArray(payload)?payload:[payload];
-    const{data,ok}=await dbq(table,{method:"POST",h:{"Prefer":"return=representation"},body:JSON.stringify(body)});
+    const prefer=upsert?"resolution=merge-duplicates,return=representation":"return=representation";
+    const{data,ok}=await dbq(table,{method:"POST",h:{"Prefer":prefer},body:JSON.stringify(body)});
     return{data:ok?(Array.isArray(data)?data:[data]):null,ok};
   },
   upd:async(table,payload,filters)=>{
@@ -605,14 +606,12 @@ function HabCell({hab,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,
   const st=habSt(hab);
   const save=async(form)=>{
     try{
-      if(hab){
-        const{data,ok}=await db.upd("habilitaciones",form,[["id","eq",hab.id]]);
-        if(!ok){alert("Error al actualizar: "+JSON.stringify(data));return;}
-      } else {
-        const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,...form};
-        const{data,ok}=await db.ins("habilitaciones",payload);
-        if(!ok){console.error("ins hab failed",data);alert("Error al crear: "+JSON.stringify(data));return;}
-      }
+      await refreshToken();
+      // Siempre upsert: si existe actualiza, si no crea. Evita errores de constraint único.
+      const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,...form};
+      if(hab&&hab.id)payload.id=hab.id;
+      const{data,ok}=await db.ins("habilitaciones",payload,true); // upsert
+      if(!ok){alert("Error ("+JSON.stringify(data?.message||data?.code||data)+")");return;}
       await onRefresh();
       setTimeout(()=>setShow(false),150);
     }catch(e){
