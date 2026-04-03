@@ -616,8 +616,8 @@ function HabCell({hab,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,
         ({data,ok}=await db.ins("habilitaciones",payload));
       }
       if(!ok){alert("Error: "+JSON.stringify(data));return;}
+      setShow(false);
       await onRefresh();
-      setTimeout(()=>setShow(false),150);
     }catch(e){
       alert("Error: "+e.message);
     }
