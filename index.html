@@ -606,7 +606,9 @@ function HabModal({hab,tipo,onClose,onSave,onDelete}){
 function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,onRefresh,tdClass}){
   const[show,setShow]=useState(false);
   const[localHab,setLocalHab]=useState(habProp);
-  useEffect(()=>setLocalHab(habProp),[habProp]);
+  // Only sync from parent if we don't have a local override
+  const[hasLocalOverride,setHasLocalOverride]=useState(false);
+  useEffect(()=>{if(!hasLocalOverride)setLocalHab(habProp);},[habProp]);
   const hab=localHab;
   const st=habSt(hab);
   const save=async(form)=>{
@@ -623,9 +625,10 @@ function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,curren
       }
       if(!ok){alert("Error: "+JSON.stringify(data));return;}
       const newHab=data&&data[0]?data[0]:{...form,id:hab?.id,tipo,entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null};
+      setHasLocalOverride(true);
       setLocalHab(newHab);
       setShow(false);
-      onRefresh();
+      setTimeout(()=>onRefresh(),500);
     }catch(e){
       alert("Error: "+e.message);
     }
