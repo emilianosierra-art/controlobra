@@ -614,16 +614,18 @@ function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,curren
       let ok,data;
       if(hab&&hab.id){
         ({data,ok}=await db.upd("habilitaciones",{...form},[["id","eq",hab.id]]));
+        console.log("UPD result:",ok,data);
       } else {
         const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,...form};
+        console.log("INS payload:",payload);
         ({data,ok}=await db.ins("habilitaciones",payload));
+        console.log("INS result:",ok,data);
       }
       if(!ok){alert("Error: "+JSON.stringify(data));return;}
-      // Actualizar estado local inmediatamente sin esperar re-render del padre
       const newHab=data&&data[0]?data[0]:{...form,id:hab?.id,tipo,entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null};
       setLocalHab(newHab);
       setShow(false);
-      onRefresh(); // refresh en background, no bloqueante
+      onRefresh();
     }catch(e){
       alert("Error: "+e.message);
     }
