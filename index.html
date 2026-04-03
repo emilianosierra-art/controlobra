@@ -608,7 +608,6 @@ function HabCell({hab,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,
   const st=habSt(hab);
   const save=async(form)=>{
     try{
-      await refreshToken();
       // Siempre upsert: si existe actualiza, si no crea. Evita errores de constraint único.
       const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,...form};
       if(hab&&hab.id)payload.id=hab.id;
