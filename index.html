@@ -229,10 +229,12 @@ const db={
     const{data,ok}=await dbq(u,{h:{"Accept":"application/json"}});
     return{data:ok?(Array.isArray(data)?data:[data]):null};
   },
-  ins:async(table,payload,upsert=false)=>{
+  ins:async(table,payload,upsert=false,onConflict=null)=>{
     const body=Array.isArray(payload)?payload:[payload];
     const prefer=upsert?"resolution=merge-duplicates,return=representation":"return=representation";
-    const{data,ok}=await dbq(table,{method:"POST",h:{"Prefer":prefer},body:JSON.stringify(body)});
+    let path=table;
+    if(upsert&&onConflict)path+=`?on_conflict=${onConflict}`;
+    const{data,ok}=await dbq(path,{method:"POST",h:{"Prefer":prefer},body:JSON.stringify(body)});
     return{data:ok?(Array.isArray(data)?data:[data]):null,ok};
   },
   upd:async(table,payload,filters)=>{
@@ -610,7 +612,7 @@ function HabCell({hab,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,
       // Siempre upsert: si existe actualiza, si no crea. Evita errores de constraint único.
       const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,...form};
       if(hab&&hab.id)payload.id=hab.id;
-      const{data,ok}=await db.ins("habilitaciones",payload,true); // upsert
+      const{data,ok}=await db.ins("habilitaciones",payload,true,"entity_type,persona_id,vehiculo_id,tipo,proyecto_id"); // upsert
       if(!ok){alert("Error ("+JSON.stringify(data?.message||data?.code||data)+")");return;}
       await onRefresh();
       setTimeout(()=>setShow(false),150);
