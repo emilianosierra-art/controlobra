@@ -608,17 +608,14 @@ function HabCell({hab,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,
   const st=habSt(hab);
   const save=async(form)=>{
     try{
-      // Siempre upsert: si existe actualiza, si no crea. Evita errores de constraint único.
-      const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,...form};
-      if(hab&&hab.id)payload.id=hab.id;
-      // Si tiene id, actualizar directo; si no, insertar sin on_conflict y manejar error
       let ok,data;
       if(hab&&hab.id){
-        ({data,ok}=await db.upd("habilitaciones",{...form,otorgado_por:currentUserId},[["id","eq",hab.id]]));
+        ({data,ok}=await db.upd("habilitaciones",{...form},[["id","eq",hab.id]]));
       } else {
+        const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,...form};
         ({data,ok}=await db.ins("habilitaciones",payload));
       }
-      if(!ok){alert("Error ("+JSON.stringify(data?.message||data?.code||data)+")");return;}
+      if(!ok){alert("Error: "+JSON.stringify(data));return;}
       await onRefresh();
       setTimeout(()=>setShow(false),150);
     }catch(e){
@@ -1293,7 +1290,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
     <div className="ph2">
       <div className="ptit"><span>Vehiculos</span>{readOnly&&<span style={{fontSize:14,fontWeight:400,color:"var(--tx2)",marginLeft:10}}>solo lectura</span>}</div>
       <div style={{display:"flex",gap:6}}>
-        {(canEditVeh||!readOnly)&&canEditVeh&&<button className="badd" onClick={()=>{setEditV(null);setShowModal(true);}}>+ Nuevo</button>}
+        {canEditVeh&&<button className="badd" onClick={()=>{setEditV(null);setShowModal(true);}}>+ Nuevo</button>}
         {canSH&&<button className="badd" style={{background:"var(--acc2)"}} onClick={()=>setShowMasivoVeh(true)}>Hab. masiva por empresa</button>}
         {userRole==="admin"&&<button className="badd" style={{background:"rgba(16,185,129,.2)",border:"1px solid var(--gr)",color:"var(--gr)"}} onClick={()=>setShowMasivoTodoVeh(true)}>⭐ Habilitar todo</button>}
       </div>
