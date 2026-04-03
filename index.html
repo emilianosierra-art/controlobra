@@ -603,8 +603,11 @@ function HabModal({hab,tipo,onClose,onSave,onDelete}){
   </div></div>;
 }
 
-function HabCell({hab,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,onRefresh,tdClass}){
+function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,onRefresh,tdClass}){
   const[show,setShow]=useState(false);
+  const[localHab,setLocalHab]=useState(habProp);
+  useEffect(()=>setLocalHab(habProp),[habProp]);
+  const hab=localHab;
   const st=habSt(hab);
   const save=async(form)=>{
     try{
@@ -616,8 +619,11 @@ function HabCell({hab,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,
         ({data,ok}=await db.ins("habilitaciones",payload));
       }
       if(!ok){alert("Error: "+JSON.stringify(data));return;}
+      // Actualizar estado local inmediatamente sin esperar re-render del padre
+      const newHab=data&&data[0]?data[0]:{...form,id:hab?.id,tipo,entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null};
+      setLocalHab(newHab);
       setShow(false);
-      await onRefresh();
+      onRefresh(); // refresh en background, no bloqueante
     }catch(e){
       alert("Error: "+e.message);
     }
