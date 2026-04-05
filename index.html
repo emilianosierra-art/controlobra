@@ -617,7 +617,7 @@ function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,curren
         ({data,ok}=await db.upd("habilitaciones",{...form},[["id","eq",hab.id]]));
         console.log("UPD result:",ok,data);
       } else {
-        const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,...form};
+        const today_s=today();const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_desde:today_s,...form};
         console.log("INS payload:",payload);
         ({data,ok}=await db.ins("habilitaciones",payload));
         console.log("INS result:",ok,data);
@@ -716,7 +716,7 @@ function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
         if(existing){
           await db.upd("habilitaciones",{fecha_hasta:fecha,suspendida:false,motivo_suspension:null},[["id","eq",existing.id]]);
         } else {
-          await db.ins("habilitaciones",{entity_type:"persona",persona_id:pid,tipo:t,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_hasta:fecha,suspendida:false});
+          await db.ins("habilitaciones",{entity_type:"persona",persona_id:pid,tipo:t,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_desde:today(),fecha_hasta:fecha,suspendida:false});
         }
       }
     }
@@ -1051,7 +1051,7 @@ function HabMasivaVehModal({proyectoId,currentUserId,habs,onClose,onSaved}){
     for(const vid of ids){
       const existing=getHab("vehiculo",vid,tipo,habs);
       if(existing)await db.upd("habilitaciones",{fecha_hasta:fecha,suspendida:false,motivo_suspension:null},[["id","eq",existing.id]]);
-      else await db.ins("habilitaciones",{entity_type:"vehiculo",vehiculo_id:vid,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_hasta:fecha,suspendida:false});
+      else await db.ins("habilitaciones",{entity_type:"vehiculo",vehiculo_id:vid,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_desde:today(),fecha_hasta:fecha,suspendida:false});
     }
     setSaving(false);onSaved();onClose();
   };
