@@ -613,15 +613,12 @@ function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,curren
   const save=async(form)=>{
     try{
       let ok,data;
-      if(hab&&hab.id){
-        ({data,ok}=await db.upd("habilitaciones",{...form},[["id","eq",hab.id]]));
-        console.log("UPD result:",ok,data);
-      } else {
-        const today_s=today();const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_desde:today_s,...form};
-        console.log("INS payload:",payload);
-        ({data,ok}=await db.ins("habilitaciones",payload));
-        console.log("INS result:",ok,data);
-      }
+      const today_s=today();
+      const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_desde:today_s,...form};
+      if(hab&&hab.id)payload.id=hab.id;
+      // Upsert con on_conflict basado en constraint única
+      const onConflict=entityType==="persona"?"persona_id,tipo,proyecto_id":"vehiculo_id,tipo,proyecto_id";
+      ({data,ok}=await db.ins("habilitaciones",payload,true,onConflict));
       if(!ok){alert("Error: "+JSON.stringify(data));return;}
       const newHab=data&&data[0]?data[0]:{...form,id:hab?.id,tipo,entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null};
       overrideRef.current=true;
