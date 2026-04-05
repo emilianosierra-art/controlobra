@@ -254,7 +254,12 @@ const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
 const fmtD=d=>d?d.split("-").reverse().join("/"):"";
 const fmtTs=ts=>new Date(ts).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
 const habSt=h=>{if(!h)return"none";if(h.suspendida)return"sus";if(h.fecha_hasta&&h.fecha_hasta<today())return"exp";return"ok";};
-const getHab=(et,eid,tipo,habs)=>habs.find(h=>h.entity_type===et&&(et==="persona"?h.persona_id:h.vehiculo_id)===eid&&h.tipo===tipo)||null;
+const getHab=(et,eid,tipo,habs)=>{
+  const matches=habs.filter(h=>h.entity_type===et&&(et==="persona"?h.persona_id:h.vehiculo_id)===eid&&h.tipo===tipo);
+  if(!matches.length)return null;
+  // Devolver el mas reciente
+  return matches.sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0))[0];
+};
 const personaEstado=(id,habs)=>{
   const sh=habSt(getHab("persona",id,"sh_ingreso",habs));
   const cp=habSt(getHab("persona",id,"cp_ingreso",habs));
@@ -614,11 +619,14 @@ function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,curren
     try{
       let ok,data;
       const today_s=today();
+      // Borrar existentes para este entity+tipo+proyecto (evita duplicados)
+      const delFilter=entityType==="persona"
+        ?[["persona_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]]
+        :[["vehiculo_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]];
+      await db.del("habilitaciones",delFilter);
+      // Insertar nuevo
       const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_desde:today_s,...form};
-      if(hab&&hab.id)payload.id=hab.id;
-      // Upsert con on_conflict basado en constraint única
-      const onConflict=entityType==="persona"?"persona_id,tipo,proyecto_id":"vehiculo_id,tipo,proyecto_id";
-      ({data,ok}=await db.ins("habilitaciones",payload,true,onConflict));
+      ({data,ok}=await db.ins("habilitaciones",payload));
       if(!ok){alert("Error: "+JSON.stringify(data));return;}
       const newHab=data&&data[0]?data[0]:{...form,id:hab?.id,tipo,entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null};
       overrideRef.current=true;
@@ -709,12 +717,9 @@ function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
     const tipos=tipo==="todas"?TODOS_TIPOS:[tipo];
     for(const pid of ids){
       for(const t of tipos){
-        const existing=getHab("persona",pid,t,habs);
-        if(existing){
-          await db.upd("habilitaciones",{fecha_hasta:fecha,suspendida:false,motivo_suspension:null},[["id","eq",existing.id]]);
-        } else {
-          await db.ins("habilitaciones",{entity_type:"persona",persona_id:pid,tipo:t,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_desde:today(),fecha_hasta:fecha,suspendida:false});
-        }
+        // DELETE+INSERT para evitar duplicados
+        await db.del("habilitaciones",[["persona_id","eq",pid],["tipo","eq",t],["proyecto_id","eq",proyectoId]]);
+        await db.ins("habilitaciones",{entity_type:"persona",persona_id:pid,tipo:t,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_desde:today(),fecha_hasta:fecha,suspendida:false});
       }
     }
     setSaving(false);onSaved();onClose();
