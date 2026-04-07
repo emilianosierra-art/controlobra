@@ -608,43 +608,26 @@ function HabModal({hab,tipo,onClose,onSave,onDelete,saving=false}){
   </div></div>;
 }
 
-function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,onRefresh,onHabSaved,tdClass}){
+function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,onRefresh,onHabSaved,tdClass}){
   const[show,setShow]=useState(false);
-  const[hab,setHab]=useState(habProp);
+  const[hab,setHab]=useState(habInit);
   const[saving,setSaving]=useState(false);
-  // NO useEffect - la celda maneja su propio estado local
-  // El padre actualiza habs[] via onHabSaved, lo que causa re-mount con nuevo habProp
   const st=habSt(hab);
 
   const save=async(form)=>{
     setSaving(true);
     try{
-      // 1. Borrar habilitacion existente para este entity+tipo
       const delF=entityType==="persona"
         ?[["persona_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]]
         :[["vehiculo_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]];
       await db.del("habilitaciones",delF);
-      // 2. Insertar nueva
-      const payload={
-        entity_type:entityType,
-        persona_id:entityType==="persona"?entityId:null,
-        vehiculo_id:entityType==="vehiculo"?entityId:null,
-        tipo,proyecto_id:proyectoId,
-        otorgado_por:currentUserId,
-        fecha_desde:today(),
-        ...form
-      };
+      const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_desde:today(),...form};
       const{data,ok}=await db.ins("habilitaciones",payload);
-      if(!ok){alert("Error al guardar: "+JSON.stringify(data));setSaving(false);return;}
-      // 3. Actualizar estado local con el nuevo registro
-      const saved=data&&data[0]?data[0]:{...payload,...form};
+      if(!ok){alert("Error: "+JSON.stringify(data));setSaving(false);return;}
+      const saved=data&&data[0]?data[0]:payload;
       setHab(saved);
       setShow(false);
-      if(onHabSaved)onHabSaved(saved);
-      else onRefresh&&onRefresh();
-    }catch(e){
-      alert("Error: "+e.message);
-    }
+    }catch(e){alert("Error: "+e.message);}
     setSaving(false);
   };
 
@@ -654,21 +637,15 @@ function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,curren
       ?[["persona_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]]
       :[["vehiculo_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]];
     await db.del("habilitaciones",delF);
-    setHab(null);
-    setShow(false);
-    onRefresh&&onRefresh();
+    setHab(null);setShow(false);
   };
 
   return <td className={tdClass||""} style={{minWidth:88}}>
     {st==="none"
-      ?canEdit
-        ?<button className="hc-add" onClick={()=>setShow(true)}>+ Agregar</button>
-        :<span style={{color:"var(--tx2)",opacity:.3,fontSize:12}}>—</span>
-      :<div style={{display:"flex",alignItems:"center",gap:3}}>
-        <span className={`hc hc-${st}${canEdit?" hc-edit":""}`} onClick={canEdit?()=>setShow(true):undefined}>
-          {st==="ok"?"ok "+fmtD(hab.fecha_hasta):st==="exp"?"VENC "+fmtD(hab.fecha_hasta):"SUSP"}
-        </span>
-      </div>
+      ?canEdit?<button className="hc-add" onClick={()=>setShow(true)}>+ Agregar</button>:<span style={{color:"var(--tx2)",opacity:.3,fontSize:12}}>—</span>
+      :<span className={`hc hc-${st}${canEdit?" hc-edit":""}`} onClick={canEdit?()=>setShow(true):undefined}>
+        {st==="ok"?"ok "+fmtD(hab.fecha_hasta):st==="exp"?"VENC "+fmtD(hab.fecha_hasta):"SUSP"}
+      </span>
     }
     {show&&<HabModal hab={hab} tipo={tipo} saving={saving} onClose={()=>setShow(false)} onSave={save} onDelete={hab?remove:null}/>}
   </td>;
