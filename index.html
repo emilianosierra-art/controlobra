@@ -612,6 +612,13 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
   const[show,setShow]=useState(false);
   const[hab,setHab]=useState(habInit);
   const[saving,setSaving]=useState(false);
+  const savedRef=React.useRef(false);
+
+  // Sincronizar con padre al cargar datos, pero no pisar guardado local reciente
+  useEffect(()=>{
+    if(!savedRef.current)setHab(habInit);
+  },[habInit?.id, habInit?.fecha_hasta, habInit?.suspendida]);
+
   const st=habSt(hab);
 
   const save=async(form)=>{
@@ -625,6 +632,7 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
       const{data,ok}=await db.ins("habilitaciones",payload);
       if(!ok){alert("Error: "+JSON.stringify(data));setSaving(false);return;}
       const saved=data&&data[0]?data[0]:payload;
+      savedRef.current=true;
       setHab(saved);
       setShow(false);
     }catch(e){alert("Error: "+e.message);}
@@ -637,6 +645,7 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
       ?[["persona_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]]
       :[["vehiculo_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]];
     await db.del("habilitaciones",delF);
+    savedRef.current=true;
     setHab(null);setShow(false);
   };
 
