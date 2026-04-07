@@ -584,7 +584,7 @@ function MovimientoManual({user,proyectoId,onClose,onSaved}){
 }
 
 // ─── HAB MODAL ────────────────────────────────────────────────────────────────
-function HabModal({hab,tipo,onClose,onSave,onDelete}){
+function HabModal({hab,tipo,onClose,onSave,onDelete,saving=false}){
   const defaultFecha=()=>{const d=new Date();d.setFullYear(d.getFullYear()+1);return d.toISOString().split("T")[0];};
   const[fecha,setFecha]=useState(hab&&hab.fecha_hasta?hab.fecha_hasta.slice(0,10):defaultFecha());
   const[susp,setSusp]=useState(hab?hab.suspendida:false);
@@ -603,75 +603,76 @@ function HabModal({hab,tipo,onClose,onSave,onDelete}){
     <div className="mf">
       {onDelete&&<button className="bcanc" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.3)",flex:"0 0 auto"}} onClick={onDelete}>Eliminar</button>}
       <button className="bcanc" onClick={onClose}>Cancelar</button>
-      <button className="bp" disabled={!fecha} onClick={()=>onSave({fecha_hasta:fecha,suspendida:susp,motivo_suspension:motivo||null})}>Guardar</button>
+      <button className="bp" disabled={!fecha||saving} onClick={()=>onSave({fecha_hasta:fecha,suspendida:susp,motivo_suspension:motivo||null})}>{saving?"Guardando...":"Guardar"}</button>
     </div>
   </div></div>;
 }
 
 function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,onRefresh,onHabSaved,tdClass}){
   const[show,setShow]=useState(false);
-  const[localHab,setLocalHab]=useState(habProp);
-  const overrideRef=React.useRef(false);
-  useEffect(()=>{if(!overrideRef.current)setLocalHab(habProp);},[habProp]);
-  const hab=localHab;
+  const[hab,setHab]=useState(habProp);
+  const[saving,setSaving]=useState(false);
+  useEffect(()=>setHab(habProp),[habProp?.id,habProp?.fecha_hasta,habProp?.suspendida]);
   const st=habSt(hab);
+
   const save=async(form)=>{
+    setSaving(true);
     try{
-      let ok,data;
-      const today_s=today();
-      // Borrar existentes para este entity+tipo+proyecto (evita duplicados)
-      const delFilter=entityType==="persona"
+      // 1. Borrar habilitacion existente para este entity+tipo
+      const delF=entityType==="persona"
         ?[["persona_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]]
         :[["vehiculo_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]];
-      await db.del("habilitaciones",delFilter);
-      // Insertar nuevo
-      const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_desde:today_s,...form};
-      ({data,ok}=await db.ins("habilitaciones",payload));
-      if(!ok){alert("Error: "+JSON.stringify(data));return;}
-      const newHab=data&&data[0]?data[0]:{...form,id:hab?.id,tipo,entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null};
-      overrideRef.current=true;
-      setLocalHab(newHab);
+      await db.del("habilitaciones",delF);
+      // 2. Insertar nueva
+      const payload={
+        entity_type:entityType,
+        persona_id:entityType==="persona"?entityId:null,
+        vehiculo_id:entityType==="vehiculo"?entityId:null,
+        tipo,proyecto_id:proyectoId,
+        otorgado_por:currentUserId,
+        fecha_desde:today(),
+        ...form
+      };
+      const{data,ok}=await db.ins("habilitaciones",payload);
+      if(!ok){alert("Error al guardar: "+JSON.stringify(data));setSaving(false);return;}
+      // 3. Actualizar estado local con el nuevo registro
+      const saved=data&&data[0]?data[0]:{...payload,...form};
+      setHab(saved);
       setShow(false);
-      if(onHabSaved)onHabSaved(newHab);
+      if(onHabSaved)onHabSaved(saved);
+      else onRefresh&&onRefresh();
     }catch(e){
       alert("Error: "+e.message);
     }
+    setSaving(false);
   };
-  const remove=async()=>{if(!confirm("Eliminar esta habilitacion?"))return;await db.del("habilitaciones",[["id","eq",hab.id]]);onRefresh();};
-  const[showInfo,setShowInfo]=useState(false);
-  const[operador,setOperador]=useState(null);
-  const[habHist,setHabHist]=useState([]);
-  const loadInfo=async()=>{
-    if(hab&&hab.otorgado_por){
-      const{data:u}=await db.sel("usuarios",{cols:"id,nombre,rol",f:[["id","eq",hab.otorgado_por]],lim:1});
-      setOperador(u&&u[0]?u[0]:null);
-    }
-    // Fetch history would require audit table - for now show current hab details
-    setShowInfo(true);
+
+  const remove=async()=>{
+    if(!confirm("Eliminar esta habilitacion?"))return;
+    const delF=entityType==="persona"
+      ?[["persona_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]]
+      :[["vehiculo_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]];
+    await db.del("habilitaciones",delF);
+    setHab(null);
+    setShow(false);
+    onRefresh&&onRefresh();
   };
+
   return <td className={tdClass||""} style={{minWidth:88}}>
     {st==="none"
-      ?canEdit?<button className="hc-add" onClick={()=>setShow(true)}>+ Agregar</button>:<span style={{color:"var(--tx2)",opacity:.3,fontSize:12}}>—</span>
+      ?canEdit
+        ?<button className="hc-add" onClick={()=>setShow(true)}>+ Agregar</button>
+        :<span style={{color:"var(--tx2)",opacity:.3,fontSize:12}}>—</span>
       :<div style={{display:"flex",alignItems:"center",gap:3}}>
-        <span className={`hc hc-${st}${canEdit?" hc-edit":""}`} onClick={canEdit?()=>setShow(true):undefined}>{st==="ok"?"ok "+fmtD(hab.fecha_hasta):st==="exp"?"VENC "+fmtD(hab.fecha_hasta):"SUSP"}</span>
-        <button onClick={loadInfo} style={{background:"none",border:"none",color:"var(--tx2)",cursor:"pointer",fontSize:11,padding:"0 2px",opacity:.6}} title="Ver info">ℹ</button>
+        <span className={`hc hc-${st}${canEdit?" hc-edit":""}`} onClick={canEdit?()=>setShow(true):undefined}>
+          {st==="ok"?"ok "+fmtD(hab.fecha_hasta):st==="exp"?"VENC "+fmtD(hab.fecha_hasta):"SUSP"}
+        </span>
       </div>
     }
-    {show&&<HabModal hab={hab} tipo={tipo} onClose={()=>setShow(false)} onSave={save} onDelete={hab?remove:null}/>}
-    {showInfo&&hab&&<div className="mo"><div className="md" style={{maxWidth:340}}>
-      <div className="mh"><div className="mt">Detalle habilitación</div><button className="mc" onClick={()=>setShowInfo(false)}>x</button></div>
-      <div className="mb">
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <div><div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginBottom:2}}>Tipo</div><div style={{fontWeight:600}}>{hab.tipo}</div></div>
-          <div><div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginBottom:2}}>Estado</div><span className={`hc hc-${st}`}>{st==="ok"?"Vigente hasta "+fmtD(hab.fecha_hasta):st==="exp"?"Vencida "+fmtD(hab.fecha_hasta):"Suspendida"}</span></div>
-          <div><div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginBottom:2}}>Otorgada por</div><div style={{fontWeight:500}}>{operador?`${operador.nombre} (${operador.rol})`:"—"}</div></div>
-          {hab.created_at&&<div><div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginBottom:2}}>Fecha de carga</div><div>{fmtTs(hab.created_at)}</div></div>}
-          {hab.motivo_suspension&&<div><div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginBottom:2}}>Motivo suspensión</div><div style={{color:"var(--rd)"}}>{hab.motivo_suspension}</div></div>}
-        </div>
-      </div>
-    </div></div>}
+    {show&&<HabModal hab={hab} tipo={tipo} saving={saving} onClose={()=>setShow(false)} onSave={save} onDelete={hab?remove:null}/>}
   </td>;
 }
+
 
 // ─── HABILITACION MASIVA POR EMPRESA ──────────────────────────────────────────
 function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
@@ -1130,9 +1131,15 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const readOnly=userRole==="puesto"||userRole==="logistica";
   const onHabSaved=(newHab)=>{
     setHabs(prev=>{
-      const idx=prev.findIndex(h=>h.id===newHab.id);
-      if(idx>=0){const next=[...prev];next[idx]=newHab;return next;}
-      return[...prev,newHab];
+      // Remove old hab for same entity+tipo+proyecto
+      const filtered=prev.filter(h=>!(
+        h.entity_type===newHab.entity_type&&
+        h.persona_id===newHab.persona_id&&
+        h.vehiculo_id===newHab.vehiculo_id&&
+        h.tipo===newHab.tipo&&
+        h.proyecto_id===newHab.proyecto_id
+      ));
+      return [...filtered, newHab];
     });
     setHabKey(k=>k+1);
   };
@@ -1282,9 +1289,15 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
   const readOnly=userRole==="puesto";
   const onHabSaved=(newHab)=>{
     setHabs(prev=>{
-      const idx=prev.findIndex(h=>h.id===newHab.id);
-      if(idx>=0){const next=[...prev];next[idx]=newHab;return next;}
-      return[...prev,newHab];
+      // Remove old hab for same entity+tipo+proyecto
+      const filtered=prev.filter(h=>!(
+        h.entity_type===newHab.entity_type&&
+        h.persona_id===newHab.persona_id&&
+        h.vehiculo_id===newHab.vehiculo_id&&
+        h.tipo===newHab.tipo&&
+        h.proyecto_id===newHab.proyecto_id
+      ));
+      return [...filtered, newHab];
     });
     setHabKey(k=>k+1);
   };
@@ -1444,9 +1457,15 @@ function Registros({defaultPuesto}){
 
   const onHabSaved=(newHab)=>{
     setHabs(prev=>{
-      const idx=prev.findIndex(h=>h.id===newHab.id);
-      if(idx>=0){const next=[...prev];next[idx]=newHab;return next;}
-      return[...prev,newHab];
+      // Remove old hab for same entity+tipo+proyecto
+      const filtered=prev.filter(h=>!(
+        h.entity_type===newHab.entity_type&&
+        h.persona_id===newHab.persona_id&&
+        h.vehiculo_id===newHab.vehiculo_id&&
+        h.tipo===newHab.tipo&&
+        h.proyecto_id===newHab.proyecto_id
+      ));
+      return [...filtered, newHab];
     });
     setHabKey(k=>k+1);
   };
