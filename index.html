@@ -612,7 +612,8 @@ function HabCell({hab:habProp,tipo,entityType,entityId,proyectoId,canEdit,curren
   const[show,setShow]=useState(false);
   const[hab,setHab]=useState(habProp);
   const[saving,setSaving]=useState(false);
-  useEffect(()=>setHab(habProp),[habProp?.id,habProp?.fecha_hasta,habProp?.suspendida]);
+  // NO useEffect - la celda maneja su propio estado local
+  // El padre actualiza habs[] via onHabSaved, lo que causa re-mount con nuevo habProp
   const st=habSt(hab);
 
   const save=async(form)=>{
