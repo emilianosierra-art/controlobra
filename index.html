@@ -615,7 +615,7 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
 
   useEffect(()=>{
     if(!savedRef.current)setHab(habInit);
-  },[habInit?.id, habInit?.fecha_hasta, habInit?.suspendida]);
+  },[habInit]);
 
   const _d=new Date();
   const _t=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
