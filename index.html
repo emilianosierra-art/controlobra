@@ -243,6 +243,10 @@ const db={
     if(!ok)console.error("db.upd failed",table,payload,data);
     return{data,ok};
   },
+  rpc:async(fn,params)=>{
+    const{data,ok}=await dbq(`rpc/${fn}`,{method:"POST",h:{},body:JSON.stringify(params)});
+    return{data,ok};
+  },
   del:async(table,filters)=>{
     let u=`${table}?`;filters.forEach(([k,op,v])=>{u+=`&${k}=${op}.${encodeURIComponent(v)}`;});
     await dbq(u,{method:"DELETE"});
@@ -614,7 +618,6 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
   const[saving,setSaving]=useState(false);
   const savedRef=React.useRef(false);
 
-  // Sincronizar con padre al cargar datos, pero no pisar guardado local reciente
   useEffect(()=>{
     if(!savedRef.current)setHab(habInit);
   },[habInit?.id, habInit?.fecha_hasta, habInit?.suspendida]);
@@ -624,14 +627,19 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
   const save=async(form)=>{
     setSaving(true);
     try{
-      const delF=entityType==="persona"
-        ?[["persona_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]]
-        :[["vehiculo_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]];
-      await db.del("habilitaciones",delF);
-      const payload={entity_type:entityType,persona_id:entityType==="persona"?entityId:null,vehiculo_id:entityType==="vehiculo"?entityId:null,tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_desde:today(),...form};
-      const{data,ok}=await db.ins("habilitaciones",payload);
+      const{data,ok}=await db.rpc("set_habilitacion",{
+        p_entity_type:entityType,
+        p_persona_id:entityType==="persona"?entityId:null,
+        p_vehiculo_id:entityType==="vehiculo"?entityId:null,
+        p_tipo:tipo,
+        p_proyecto_id:proyectoId,
+        p_otorgado_por:currentUserId,
+        p_fecha_hasta:form.fecha_hasta,
+        p_suspendida:form.suspendida||false,
+        p_motivo:form.motivo_suspension||null
+      });
       if(!ok){alert("Error: "+JSON.stringify(data));setSaving(false);return;}
-      const saved=data&&data[0]?data[0]:payload;
+      const saved=typeof data==="object"&&data!==null?data:{...form,tipo,entity_type:entityType};
       savedRef.current=true;
       setHab(saved);
       setShow(false);
