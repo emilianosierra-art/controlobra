@@ -607,16 +607,12 @@ function HabModal({hab,tipo,onClose,onSave,onDelete,saving=false}){
   </div></div>;
 }
 
-function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,onRefresh,onHabSaved,tdClass}){
+function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,currentUserId,onRefresh,tdClass}){
   const[show,setShow]=useState(false);
-  const[hab,setHab]=useState(habInit);
+  const[localHab,setLocalHab]=useState(null); // null = usar habInit, object = guardado local
   const[saving,setSaving]=useState(false);
-  const savedRef=React.useRef(false);
 
-  useEffect(()=>{
-    if(!savedRef.current)setHab(habInit);
-  },[habInit]);
-
+  const hab=localHab!==null?localHab:habInit;
   const _d=new Date();
   const _t=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
   const st=!hab?"none":hab.suspendida?"sus":(hab.fecha_hasta&&hab.fecha_hasta<_t)?"exp":"ok";
@@ -637,8 +633,7 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
       });
       if(!ok){alert("Error: "+JSON.stringify(data));setSaving(false);return;}
       const saved=typeof data==="object"&&data!==null?data:{...form,tipo,entity_type:entityType,fecha_hasta:form.fecha_hasta};
-      savedRef.current=true;
-      setHab(saved);
+      setLocalHab(saved);
       setShow(false);
     }catch(e){alert("Error: "+e.message);}
     setSaving(false);
@@ -650,18 +645,20 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
       ?[["persona_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]]
       :[["vehiculo_id","eq",entityId],["tipo","eq",tipo],["proyecto_id","eq",proyectoId]];
     await db.del("habilitaciones",delF);
-    savedRef.current=true;
-    setHab(null);setShow(false);
+    setLocalHab({_deleted:true});
+    setShow(false);
   };
 
-  return <td className={tdClass||""} style={{minWidth:88,background:st==="none"?"rgba(255,0,0,.05)":"rgba(0,255,0,.05)"}}>
+  const habForModal=localHab&&!localHab._deleted?localHab:habInit;
+
+  return <td className={tdClass||""} style={{minWidth:88}}>
     {st==="none"
       ?canEdit?<button className="hc-add" onClick={()=>setShow(true)}>+ Agregar</button>:<span style={{color:"var(--tx2)",opacity:.3,fontSize:12}}>—</span>
       :<span className={`hc hc-${st}${canEdit?" hc-edit":""}`} onClick={canEdit?()=>setShow(true):undefined}>
         {st==="ok"?"ok "+fmtD(hab.fecha_hasta):st==="exp"?"VENC "+fmtD(hab.fecha_hasta):"SUSP"}
       </span>
     }
-    {show&&<HabModal hab={hab} tipo={tipo} saving={saving} onClose={()=>setShow(false)} onSave={save} onDelete={hab?remove:null}/>}
+    {show&&<HabModal hab={habForModal} tipo={tipo} saving={saving} onClose={()=>setShow(false)} onSave={save} onDelete={habForModal?remove:null}/>}
   </td>;
 }
 
