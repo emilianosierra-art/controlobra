@@ -617,7 +617,9 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
     if(!savedRef.current)setHab(habInit);
   },[habInit?.id, habInit?.fecha_hasta, habInit?.suspendida]);
 
-  const st=habSt(hab);
+  const _d=new Date();
+  const _t=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+  const st=!hab?"none":hab.suspendida?"sus":(hab.fecha_hasta&&hab.fecha_hasta<_t)?"exp":"ok";
 
   const save=async(form)=>{
     setSaving(true);
@@ -634,7 +636,7 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
         p_motivo:form.motivo_suspension||null
       });
       if(!ok){alert("Error: "+JSON.stringify(data));setSaving(false);return;}
-      const saved=typeof data==="object"&&data!==null?data:{...form,tipo,entity_type:entityType};
+      const saved=typeof data==="object"&&data!==null?data:{...form,tipo,entity_type:entityType,fecha_hasta:form.fecha_hasta};
       savedRef.current=true;
       setHab(saved);
       setShow(false);
@@ -652,7 +654,7 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
     setHab(null);setShow(false);
   };
 
-  return <td className={tdClass||""} style={{minWidth:88}}>
+  return <td className={tdClass||""} style={{minWidth:88,background:st==="none"?"rgba(255,0,0,.05)":"rgba(0,255,0,.05)"}}>
     {st==="none"
       ?canEdit?<button className="hc-add" onClick={()=>setShow(true)}>+ Agregar</button>:<span style={{color:"var(--tx2)",opacity:.3,fontSize:12}}>—</span>
       :<span className={`hc hc-${st}${canEdit?" hc-edit":""}`} onClick={canEdit?()=>setShow(true):undefined}>
