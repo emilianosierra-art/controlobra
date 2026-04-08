@@ -257,7 +257,7 @@ const today=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMont
 const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
 const fmtD=d=>d?d.split("-").reverse().join("/"):"";
 const fmtTs=ts=>new Date(ts).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
-const habSt=h=>{if(!h)return"none";if(h.suspendida)return"sus";if(h.fecha_hasta&&h.fecha_hasta<today())return"exp";return"ok";};
+const habSt=h=>{if(!h)return"none";if(h.suspendida)return"sus";const _d=new Date();const _t=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;if(h.fecha_hasta&&h.fecha_hasta<_t)return"exp";return"ok";};
 const getHab=(et,eid,tipo,habs)=>habs.find(h=>h.entity_type===et&&(et==="persona"?h.persona_id:h.vehiculo_id)===eid&&h.tipo===tipo)||null;
 const personaEstado=(id,habs)=>{
   const sh=habSt(getHab("persona",id,"sh_ingreso",habs));
