@@ -1139,12 +1139,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
       db.sel("habilitaciones",{f:[["entity_type","eq","persona"]],lim:5000}),
     ]);
     if(r1.data)setPersonas(r1.data);
-    if(r2.data){
-      setHabs(r2.data);
-      // Debug: check if Abalos habs are in the array
-      const test=r2.data.filter(h=>h.persona_id==="ae5fb29d-d532-4c69-9dda-0f43e8532469");
-      console.log("Abalos habs in array:",test.length,test.map(h=>h.tipo+":"+h.fecha_hasta));
-    }
+    if(r2.data)setHabs(r2.data);
     setHabKey(k=>k+1);
     setLoading(false);
   };
