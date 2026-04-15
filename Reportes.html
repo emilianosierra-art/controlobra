@@ -339,6 +339,9 @@
                     <button class="report-button" id="btnConteoPersonalProduccion" disabled>
                         👷 Conteo personal producción
                     </button>
+                    <button class="report-button" id="btnHistoricoEmpresa" disabled>
+                        📊 Histórico por Empresa
+                    </button>
                 </div>
             </div>
 
@@ -478,6 +481,43 @@
         </div>
     </div>
 
+
+    <!-- Modal para Histórico por Empresa -->
+    <div class="modal" id="modalHistoricoEmpresa">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📊 Histórico por Empresa</h2>
+            </div>
+
+            <div class="modal-section">
+                <h3>Rango de Fechas</h3>
+                <label>Fecha desde:</label>
+                <input type="date" id="fechaHistoricoDesde" class="date-input" />
+                <label>Fecha hasta:</label>
+                <input type="date" id="fechaHistoricoHasta" class="date-input" />
+            </div>
+
+            <div class="modal-section">
+                <h3>Empresa</h3>
+                <input type="text" id="nombreEmpresaHistorico" class="date-input" 
+                       placeholder="Ej: DIEGER" 
+                       style="text-transform: uppercase;" />
+                <div class="help-info">
+                    💡 Escribí el nombre exacto de la empresa (se convertirá a MAYÚSCULAS automáticamente)
+                </div>
+            </div>
+
+            <div class="modal-buttons">
+                <button class="btn-modal btn-modal-cancel" onclick="cerrarModalHistoricoEmpresa()">
+                    Cancelar
+                </button>
+                <button class="btn-modal btn-modal-generate" onclick="generarReporteHistoricoEmpresa()">
+                    📥 Generar Excel
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
         let datosActuales = null;
@@ -539,25 +579,26 @@
             document.getElementById('btnParteDiario').disabled = false;
             document.getElementById('btnEstructuraMetalica').disabled = false;
             document.getElementById('btnConteoPersonalProduccion').disabled = false;
+            document.getElementById('btnHistoricoEmpresa').disabled = false;
             
             // Ocultar el loading inicial
             document.getElementById('loading').classList.remove('active');
         });
 
-        async function cargarDatos(fecha = null) {
+        async function cargarDatos(fecha = null, puesto = 2) {
             document.getElementById('loading').classList.add('active');
             document.getElementById('results').classList.remove('active');
 
             try {
                 // Si no se pasa fecha, usar la fecha de hoy
                 const fechaParam = fecha || new Date().toISOString().split('T')[0];
-                const response = await fetch(`${WEB_APP_URL}?action=obtenerDatos&fecha=${fechaParam}&_=${Date.now()}`);
+                const response = await fetch(`${WEB_APP_URL}?action=obtenerDatos&fecha=${fechaParam}&puesto=${puesto}&_=${Date.now()}`);
                 const data = await response.json();
 
                 if (data.success) {
                     datosActuales = data.datos;
                     document.getElementById('loading').classList.remove('active');
-                    console.log(`✓ Datos cargados: ${data.total} registros del libro: ${data.libroUsado || 'ACTUAL'}`)
+                    console.log(`✓ Datos cargados: ${data.total} registros de ${data.hoja || 'Puesto 2'} del libro: ${data.libroUsado || 'ACTUAL'}`)
                 } else {
                     throw new Error(data.error || 'Error al cargar datos');
                 }
@@ -1379,6 +1420,219 @@
             resultsDiv.innerHTML = `<div class="${clase}">${icono} ${mensaje}</div>`;
             resultsDiv.classList.add('active');
         }
+
+        // ===== REPORTE 5: HISTÓRICO POR EMPRESA =====
+        document.getElementById('btnHistoricoEmpresa').addEventListener('click', async () => {
+            abrirModalHistoricoEmpresa();
+        });
+
+        function abrirModalHistoricoEmpresa() {
+            const hoy = new Date().toISOString().split('T')[0];
+            document.getElementById('fechaHistoricoDesde').value = hoy;
+            document.getElementById('fechaHistoricoHasta').value = hoy;
+            document.getElementById('nombreEmpresaHistorico').value = '';
+            document.getElementById('modalHistoricoEmpresa').classList.add('active');
+        }
+
+        function cerrarModalHistoricoEmpresa() {
+            document.getElementById('modalHistoricoEmpresa').classList.remove('active');
+        }
+
+        async function generarReporteHistoricoEmpresa() {
+            const fechaDesde = document.getElementById('fechaHistoricoDesde').value;
+            const fechaHasta = document.getElementById('fechaHistoricoHasta').value;
+            const empresa = document.getElementById('nombreEmpresaHistorico').value.toUpperCase().trim();
+
+            if (!fechaDesde || !fechaHasta) {
+                alert('Por favor, seleccioná ambas fechas');
+                return;
+            }
+
+            if (!empresa) {
+                alert('Por favor, escribí el nombre de la empresa');
+                return;
+            }
+
+            try {
+                mostrarMensaje('🔄 Cargando datos del rango de fechas...', 'success');
+                
+                // Cargar datos de todas las fechas del rango
+                const resultado = await calcularHistoricoEmpresa(fechaDesde, fechaHasta, empresa);
+                
+                if (resultado.puesto1.length === 0 && resultado.puesto2.length === 0) {
+                    alert(`No se encontraron registros de la empresa "${empresa}" en el rango seleccionado`);
+                    return;
+                }
+                
+                generarExcelHistoricoEmpresa(resultado, fechaDesde, fechaHasta, empresa);
+                cerrarModalHistoricoEmpresa();
+                mostrarMensaje('✓ Excel generado exitosamente', 'success');
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        async function calcularHistoricoEmpresa(fechaDesdeStr, fechaHastaStr, empresaBuscada) {
+            const [añoDesde, mesDesde, diaDesde] = fechaDesdeStr.split('-').map(Number);
+            const [añoHasta, mesHasta, diaHasta] = fechaHastaStr.split('-').map(Number);
+            
+            const fechaDesde = new Date(añoDesde, mesDesde - 1, diaDesde, 0, 0, 0);
+            const fechaHasta = new Date(añoHasta, mesHasta - 1, diaHasta, 23, 59, 59);
+
+            // Calcular días en el rango
+            const dias = [];
+            const fechaActual = new Date(fechaDesde);
+            while (fechaActual <= fechaHasta) {
+                dias.push(new Date(fechaActual));
+                fechaActual.setDate(fechaActual.getDate() + 1);
+            }
+
+            console.log(`Cargando datos para ${dias.length} días...`);
+
+            // Cargar datos de cada día
+            const datosPuesto1 = [];
+            const datosPuesto2 = [];
+            
+            for (const dia of dias) {
+                const fechaStr = dia.toISOString().split('T')[0];
+                
+                // Cargar y procesar PUESTO 1
+                await cargarDatos(fechaStr, 1);
+                const registrosPuesto1 = procesarDiaPorEmpresa(datosActuales, dia, empresaBuscada, 1);
+                datosPuesto1.push(...registrosPuesto1);
+                
+                // Cargar y procesar PUESTO 2
+                await cargarDatos(fechaStr, 2);
+                const registrosPuesto2 = procesarDiaPorEmpresa(datosActuales, dia, empresaBuscada, 2);
+                datosPuesto2.push(...registrosPuesto2);
+            }
+
+            // Ordenar por fecha
+            datosPuesto1.sort((a, b) => a.fecha - b.fecha);
+            datosPuesto2.sort((a, b) => a.fecha - b.fecha);
+
+            return { puesto1: datosPuesto1, puesto2: datosPuesto2 };
+        }
+
+        function procesarDiaPorEmpresa(datos, fecha, empresaBuscada, numeroPuesto) {
+            const registros = [];
+            const porDni = new Map();
+
+            // Preparar fecha del día (sin hora)
+            const diaInicio = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 0, 0, 0);
+            const diaFin = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 23, 59, 59);
+
+            datos.forEach(registro => {
+                const puesto = registro.puesto.toString().trim();
+                const empresa = registro.empresa ? registro.empresa.trim().toUpperCase() : '';
+                const dni = registro.dni;
+
+                // Filtrar: solo la empresa buscada
+                if (empresa !== empresaBuscada) return;
+
+                // Filtrar: solo el puesto especificado
+                if (puesto != numeroPuesto) return;
+
+                // Filtrar: solo del día consultado
+                const fechaRegistro = parseFecha(registro.fechaHora);
+                if (!fechaRegistro || fechaRegistro < diaInicio || fechaRegistro > diaFin) return;
+
+                if (!porDni.has(dni)) {
+                    porDni.set(dni, {
+                        dni,
+                        nombre: registro.nombre || '',
+                        apellido: registro.apellido || '',
+                        empresa,
+                        entradas: [],
+                        salidas: []
+                    });
+                }
+
+                const persona = porDni.get(dni);
+                const accion = registro.accion.toUpperCase().trim();
+
+                if (accion === 'ENTRA') {
+                    persona.entradas.push(fechaRegistro);
+                } else if (accion === 'SALE') {
+                    persona.salidas.push(fechaRegistro);
+                }
+            });
+
+            // Convertir a formato de salida
+            porDni.forEach((persona) => {
+                const primeraEntrada = persona.entradas.length > 0 
+                    ? Math.min(...persona.entradas.map(f => f.getTime()))
+                    : null;
+                
+                const ultimaSalida = persona.salidas.length > 0
+                    ? Math.max(...persona.salidas.map(f => f.getTime()))
+                    : null;
+
+                registros.push({
+                    fecha: diaInicio,
+                    nombre: persona.nombre,
+                    apellido: persona.apellido,
+                    empresa: persona.empresa,
+                    horaEntrada: primeraEntrada ? formatearHora(new Date(primeraEntrada)) : '-',
+                    horaSalida: ultimaSalida ? formatearHora(new Date(ultimaSalida)) : '-'
+                });
+            });
+
+            return registros;
+        }
+
+        function generarExcelHistoricoEmpresa(datos, fechaDesde, fechaHasta, empresa) {
+            const wb = XLSX.utils.book_new();
+            
+            // Función para crear hoja
+            function crearHoja(registros, nombrePuesto) {
+                const datosExcel = [];
+                
+                // Encabezados
+                datosExcel.push([`HISTÓRICO POR EMPRESA: ${empresa}`]);
+                datosExcel.push([`Puesto: ${nombrePuesto}`]);
+                datosExcel.push([`Período: ${fechaDesde} al ${fechaHasta}`]);
+                datosExcel.push([]);
+                datosExcel.push(['DÍA', 'HORA ENTRADA', 'HORA SALIDA', 'NOMBRE', 'APELLIDO', 'EMPRESA']);
+
+                // Datos
+                registros.forEach(reg => {
+                    const diaFormateado = `${reg.fecha.getDate().toString().padStart(2, '0')}/${(reg.fecha.getMonth() + 1).toString().padStart(2, '0')}/${reg.fecha.getFullYear()}`;
+                    
+                    datosExcel.push([
+                        diaFormateado,
+                        reg.horaEntrada,
+                        reg.horaSalida,
+                        reg.nombre,
+                        reg.apellido,
+                        reg.empresa
+                    ]);
+                });
+
+                const ws = XLSX.utils.aoa_to_sheet(datosExcel);
+                ws['!cols'] = [
+                    { wch: 12 },  // DÍA
+                    { wch: 15 },  // HORA ENTRADA
+                    { wch: 15 },  // HORA SALIDA
+                    { wch: 20 },  // NOMBRE
+                    { wch: 20 },  // APELLIDO
+                    { wch: 40 }   // EMPRESA
+                ];
+                
+                return ws;
+            }
+            
+            // Crear hoja para Puesto 1
+            const wsPuesto1 = crearHoja(datos.puesto1, 'Puesto 1');
+            XLSX.utils.book_append_sheet(wb, wsPuesto1, 'Puesto 1');
+            
+            // Crear hoja para Puesto 2
+            const wsPuesto2 = crearHoja(datos.puesto2, 'Puesto 2');
+            XLSX.utils.book_append_sheet(wb, wsPuesto2, 'Puesto 2');
+            
+            XLSX.writeFile(wb, `Historico_${empresa}_${fechaDesde}_${fechaHasta}.xlsx`);
+        }
+
     </script>
 </body>
 </html>
