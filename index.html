@@ -856,13 +856,13 @@ function PersonaDetalleModal({persona,proyectoId,onClose}){
       // Historial de accesos (últimos 20)
       const todayStr=today();
       const[{data:regs},{data:mans}]=await Promise.all([
-        db.sel("registros_acceso",{cols:"sesion_id,resultado,orden_escaneo",f:[["persona_id","eq",persona.id]],lim:50}),
-        db.sel("movimientos_manuales",{cols:"id,created_at,direccion,puesto",f:[["persona_id","eq",persona.id]],ord:"created_at.desc",lim:20}),
+        db.sel("registros_acceso",{cols:"sesion_id,resultado,orden_escaneo",f:[["persona_id","eq",persona.id]],lim:2000}),
+        db.sel("movimientos_manuales",{cols:"id,created_at,direccion,puesto",f:[["persona_id","eq",persona.id]],ord:"created_at.desc",lim:30}),
       ]);
       let sesiones=[];
       if(regs&&regs.length){
         const sesIds=[...new Set(regs.map(r=>r.sesion_id))];
-        const{data:ses}=await db.sel("sesiones_acceso",{cols:"id,cerrada_at,direccion,puesto,vehiculo_id",inFilter:["id",sesIds],ord:"cerrada_at.desc"});
+        const{data:ses}=await db.sel("sesiones_acceso",{cols:"id,cerrada_at,direccion,puesto,vehiculo_id",inFilter:["id",sesIds],ord:"cerrada_at.desc",lim:50});
         const vids=[...new Set((ses||[]).filter(s=>s.vehiculo_id).map(s=>s.vehiculo_id))];
         let vm={};
         if(vids.length){const{data:vehs}=await db.sel("vehiculos",{cols:"id,patente",inFilter:["id",vids]});(vehs||[]).forEach(v=>{vm[v.id]=v;});}
@@ -911,6 +911,93 @@ function PersonaDetalleModal({persona,proyectoId,onClose}){
                 <div style={{fontSize:11,color:"var(--tx2)"}}>{fmtTs(s.cerrada_at)}</div>
               </div>
             </div>)}
+          </div>
+        }
+      </>}
+    </div>
+  </div></div>;
+}
+
+// ─── VEHICULO DETALLE MODAL ──────────────────────────────────────────────────
+function VehiculoDetalleModal({vehiculo,proyectoId,onClose}){
+  const[ubicacion,setUbicacion]=useState(null);
+  const[historial,setHistorial]=useState([]);
+  const[loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    const load=async()=>{
+      // Ubicación actual basada en netos P2/P3
+      const[vNet2,vNet3]=await Promise.all([calcNetVehiculos("Puesto 2"),calcNetVehiculos("Puesto 3")]);
+      const enChalet=(vNet3[vehiculo.id]||0)>0;
+      const enP2=(vNet2[vehiculo.id]||0);
+      const enP3=(vNet3[vehiculo.id]||0);
+      if(enChalet)setUbicacion("chalet");
+      else if(enP2>0&&enP3<=0)setUbicacion("camino");
+      else setUbicacion("fuera");
+
+      // Últimas 30 sesiones del vehículo
+      const{data:ses}=await db.sel("sesiones_acceso",{
+        cols:"id,cerrada_at,direccion,puesto,total_personas,total_aprobados,total_rechazados",
+        f:[["vehiculo_id","eq",vehiculo.id]],
+        ord:"cerrada_at.desc",
+        lim:30
+      });
+      let regsBySes={};let personasMap={};
+      if(ses&&ses.length){
+        const sesIds=ses.map(s=>s.id);
+        const{data:regs}=await db.sel("registros_acceso",{cols:"sesion_id,persona_id,dni_raw,resultado",inFilter:["sesion_id",sesIds]});
+        (regs||[]).forEach(r=>{if(!regsBySes[r.sesion_id])regsBySes[r.sesion_id]=[];regsBySes[r.sesion_id].push(r);});
+        const pids=[...new Set((regs||[]).filter(r=>r.persona_id).map(r=>r.persona_id))];
+        if(pids.length){
+          const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido"});
+          (pers||[]).forEach(p=>{personasMap[p.id]=p;});
+        }
+      }
+      setHistorial((ses||[]).map(s=>({...s,regs:regsBySes[s.id]||[],personasMap})));
+      setLoading(false);
+    };
+    load();
+  },[vehiculo.id]);
+
+  const ubColor=ubicacion==="chalet"?"#A78BFA":ubicacion==="camino"?"#60A5FA":"var(--tx2)";
+  const ubLabel=ubicacion==="chalet"?"En Chalet":ubicacion==="camino"?"En Camino (P2 → P3)":"Fuera de la obra";
+  const ubIcon=ubicacion==="chalet"?"🏔️":ubicacion==="camino"?"🚗":"—";
+
+  return <div className="mo"><div className="md">
+    <div className="mh">
+      <div>
+        <div className="mt">{VI[vehiculo.tipo]||"🚗"} {vehiculo.patente}</div>
+        <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>{vehiculo.descripcion||vehiculo.tipo} · {vehiculo.empresa||"—"}</div>
+      </div>
+      <button className="mc" onClick={onClose}>x</button>
+    </div>
+    <div className="mb">
+      {loading?<div style={{textAlign:"center",padding:20,color:"var(--tx2)"}}>Cargando...</div>:<>
+        <div style={{background:"var(--s2)",border:`1px solid ${ubColor}44`,borderRadius:8,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:28}}>{ubIcon}</span>
+          <div>
+            <div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginBottom:2}}>Ubicación ahora</div>
+            <div style={{fontFamily:"var(--fh)",fontSize:16,fontWeight:700,color:ubColor}}>{ubLabel}</div>
+          </div>
+        </div>
+        <div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",letterSpacing:".07em",marginBottom:8}}>Historial de circulación</div>
+        {historial.length===0
+          ?<div style={{color:"var(--tx2)",textAlign:"center",padding:12}}>Sin registros.</div>
+          :<div style={{maxHeight:340,overflowY:"auto"}}>
+            {historial.map(s=>{
+              const ok=s.regs.filter(r=>r.resultado==="aprobado");
+              const names=ok.map(r=>{const p=s.personasMap[r.persona_id];return p?`${p.nombre} ${p.apellido}`:r.dni_raw;});
+              const max=2;
+              const namesStr=names.length===0?"sin pasajeros":names.length<=max?names.join(", "):names.slice(0,max).join(", ")+" y "+(names.length-max)+" más";
+              return <div key={s.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"9px 0",borderBottom:"1px solid var(--bd)"}}>
+                <span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`} style={{fontSize:11,flexShrink:0,marginTop:2}}>{s.direccion}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:500}}>{s.puesto} · {s.total_personas} pers.{(s.total_rechazados||0)>0?<span style={{color:"var(--rd)",marginLeft:6}}>{s.total_rechazados} deneg.</span>:null}</div>
+                  <div style={{fontSize:11,color:"var(--tx2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{namesStr}</div>
+                  <div style={{fontSize:10,color:"var(--tx2)",fontFamily:"var(--fm)",marginTop:2}}>{fmtTs(s.cerrada_at)}</div>
+                </div>
+              </div>;
+            })}
           </div>
         }
       </>}
@@ -1272,6 +1359,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
   const[editV,setEditV]=useState(null);
   const[showMasivoVeh,setShowMasivoVeh]=useState(false);
   const[showMasivoTodoVeh,setShowMasivoTodoVeh]=useState(false);
+  const[detalleV,setDetalleV]=useState(null);
   const[filter,setFilter]=useState("");
   const canSH=userRole==="sh"||userRole==="admin";
   const canEditVeh=canSH||userRole==="logistica";
@@ -1338,7 +1426,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
         {filtered.map(v=>{
           const est=vehiculoEstado(v.id,habs);
           return <tr key={v.id}>
-            <td><span className="mn" style={{fontSize:15,fontWeight:600}}>{v.patente}</span></td>
+            <td style={{cursor:"pointer"}} onClick={()=>setDetalleV(v)}><span className="mn" style={{fontSize:15,fontWeight:600,textDecoration:"underline",textDecorationStyle:"dotted",textDecorationColor:"var(--tx2)"}}>{v.patente}</span></td>
             <td>{VI[v.tipo]||"🚗"} <span className="tag t-v" style={{fontSize:10}}>{v.tipo}</span></td>
             <td style={{color:"var(--tx2)"}}>{v.descripcion||"—"}</td>
             <td style={{color:"var(--tx2)",fontSize:12}}>{v.empresa||"—"}</td>
@@ -1355,6 +1443,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
       </tbody>
     </table></div>}
     {showModal&&<VehModal v={editV} onClose={()=>setShowModal(false)} onSave={saveV}/>}
+    {detalleV&&<VehiculoDetalleModal vehiculo={detalleV} proyectoId={proyectoId} onClose={()=>setDetalleV(null)}/>}
     {showMasivoTodoVeh&&<HabTodoModal proyectoId={proyectoId} currentUserId={currentUserId} tipo="vehiculo" onClose={()=>setShowMasivoTodoVeh(false)} onSaved={load}/>}
     {showMasivoVeh&&<HabMasivaVehModal proyectoId={proyectoId} currentUserId={currentUserId} habs={habs} onClose={()=>setShowMasivoVeh(false)} onSaved={load}/>}
   </div>;
@@ -1674,6 +1763,10 @@ const offlineStore={
     const l=offlineStore.get();l.push(rec);_offlineMem=l;
     try{localStorage.setItem(OFFLINE_KEY,JSON.stringify(l));}catch(e){}
   },
+  set:(arr)=>{
+    _offlineMem=arr||[];
+    try{localStorage.setItem(OFFLINE_KEY,JSON.stringify(_offlineMem));}catch(e){}
+  },
   clear:()=>{_offlineMem=[];try{localStorage.removeItem(OFFLINE_KEY);}catch(e){}},
 };
 
@@ -1724,40 +1817,51 @@ function OfflineModePanel({user,proyectoId,onClose}){
   </div></div>;
 }
 
-function PendingUploads({user,proyectoId,habs,onUploaded}){
+function PendingUploads({user,proyectoId,habs,onUploaded,refreshTrigger}){
   const[pending,setPending]=useState([]);
   const[uploading,setUploading]=useState(false);
   const[done,setDone]=useState(0);
+  const[failed,setFailed]=useState(0);
 
   useEffect(()=>{
     const p=offlineStore.get().filter(r=>r.puesto===user.puesto_nombre);
     setPending(p);
-  },[]);
+  },[refreshTrigger,user.puesto_nombre]);
 
   if(!pending.length)return null;
 
   const uploadAll=async()=>{
-    setUploading(true);
-    let count=0;
-    for(const rec of pending){
+    setUploading(true);setDone(0);setFailed(0);
+    if(!isOnline()){
+      alert("Sin conexión — no se puede subir ahora.");
+      setUploading(false);return;
+    }
+    let count=0;let fail=0;
+    // De los pendientes, los que fallen quedan en 'kept' para reintento posterior
+    const kept=[];
+    // Solo procesar los que correspondan a este puesto; los demás se preservan tal cual
+    const all=offlineStore.get();
+    const toUpload=all.filter(r=>r.puesto===user.puesto_nombre);
+    const otros=all.filter(r=>r.puesto!==user.puesto_nombre);
+    for(const rec of toUpload){
+      let recOk=false;
       try{
-        // Try to find vehiculo by patente
+        // Resolver vehiculo por patente
         let vehId=null,vehOk=false;
         if(rec.patente){
           const{data:v}=await db.sel("vehiculos",{f:[["patente","eq",rec.patente]],lim:1});
           if(v&&v[0]){vehId=v[0].id;vehOk=chkAuth("vehiculo",v[0].id,habs).ok;}
         }
-        // Try to resolve personas by DNI
+        // Resolver personas por DNI
         const personasResolved=[];
         for(const dni of (rec.dnis||[])){
           const{data:p}=await db.sel("personas",{f:[["dni","eq",dni],["deleted_at","is","null"]],lim:1});
           const found=p&&p[0];
-          const r=found?chkAuth("persona",found.id,habs):{ok:false,reason:"DNI no encontrado"};
-          personasResolved.push({raw:dni,person:found||null,...r});
+          const rr=found?chkAuth("persona",found.id,habs):{ok:false,reason:"DNI no encontrado"};
+          personasResolved.push({raw:dni,person:found||null,...rr});
         }
-        // Save as sesion if there's a vehicle, otherwise as movimientos manuales
         if(vehId||personasResolved.length>0){
-          const{data:ses}=await db.ins("sesiones_acceso",{
+          const r1=await db.ins("sesiones_acceso",{
             proyecto_id:proyectoId,puesto:rec.puesto,operador_id:user.id,
             vehiculo_id:vehId,vehiculo_ok:vehOk,direccion:rec.direccion,
             total_personas:personasResolved.length,
@@ -1765,18 +1869,27 @@ function PendingUploads({user,proyectoId,habs,onUploaded}){
             total_rechazados:personasResolved.filter(p=>!p.ok).length,
             cerrada_at:rec.timestamp,
           });
-          if(ses&&ses[0]&&personasResolved.length>0){
-            await db.ins("registros_acceso",personasResolved.map((p,i)=>({
-              sesion_id:ses[0].id,persona_id:p.person?p.person.id:null,dni_raw:p.raw,
+          if(!r1.ok||!r1.data||!r1.data[0])throw new Error("sesion: "+JSON.stringify(r1.data||{}).slice(0,200));
+          if(personasResolved.length>0){
+            const r2=await db.ins("registros_acceso",personasResolved.map((p,i)=>({
+              sesion_id:r1.data[0].id,persona_id:p.person?p.person.id:null,dni_raw:p.raw,
               resultado:p.ok?"aprobado":"rechazado",motivo_rechazo:p.ok?null:p.reason,orden_escaneo:i+1,
             })));
+            if(!r2.ok){
+              try{await db.del("sesiones_acceso",[["id","eq",r1.data[0].id]]);}catch(_){}
+              throw new Error("registros: "+JSON.stringify(r2.data||{}).slice(0,200));
+            }
           }
+          recOk=true;
+        } else {
+          recOk=true; // registro vacío, lo damos por descartado
         }
-        count++;
       }catch(e){console.error("Error subiendo registro offline:",e);}
+      if(recOk)count++;else{fail++;kept.push(rec);}
     }
-    offlineStore.clear();
-    setDone(count);setUploading(false);setPending([]);
+    offlineStore.set([...otros,...kept]);
+    setDone(count);setFailed(fail);setUploading(false);
+    setPending(kept);
     onUploaded&&onUploaded();
   };
 
@@ -1785,9 +1898,10 @@ function PendingUploads({user,proyectoId,habs,onUploaded}){
       <div style={{fontFamily:"var(--fh)",fontSize:16,fontWeight:800,color:"var(--acc)",textTransform:"uppercase"}}>
         {pending.length} registro{pending.length!==1?"s":""} pendiente{pending.length!==1?"s":""} de subir
       </div>
-      <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>Guardados sin internet — ahora hay conexion</div>
+      <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>Guardados sin internet o por fallo del servidor — apretá "Subir ahora" cuando tengas conexión</div>
     </div>
-    {done>0&&<span style={{color:"var(--gr)",fontFamily:"var(--fm)",fontSize:13}}>{done} subidos!</span>}
+    {done>0&&<span style={{color:"var(--gr)",fontFamily:"var(--fm)",fontSize:13}}>{done} subidos</span>}
+    {failed>0&&<span style={{color:"var(--rd)",fontFamily:"var(--fm)",fontSize:13}}>{failed} fallaron</span>}
     <button className="bsc" style={{padding:"8px 18px"}} disabled={uploading} onClick={uploadAll}>
       {uploading?"Subiendo...":"Subir ahora"}
     </button>
@@ -1795,6 +1909,11 @@ function PendingUploads({user,proyectoId,habs,onUploaded}){
 }
 
 function Puesto({user,pid}){
+  const isAdmin=user.rol==="admin";
+  const[adminPuesto,setAdminPuesto]=useState(null);
+  const effPuesto=isAdmin?adminPuesto:user.puesto_nombre;
+  const userEff={...user,puesto_nombre:effPuesto};
+  const[paxSugFrom,setPaxSugFrom]=useState(null); // {puesto, timestamp}
   const[fase,setFase]=useState(F.V);
   const[dir,setDir]=useState("entrada");
   const[val,setVal]=useState("");
@@ -1811,6 +1930,8 @@ function Puesto({user,pid}){
   const ref=useRef();
   const[paxSnap,setPaxSnap]=useState([]);
   const[warnDupVeh,setWarnDupVeh]=useState(null); // {patente, dir} si ya figura adentro
+  const[saveStatus,setSaveStatus]=useState(null); // null | "online" | "offline"
+  const[pendingRefresh,setPendingRefresh]=useState(0);
 
   const[offline,setOffline]=useState(false);
 
@@ -1892,10 +2013,44 @@ function Puesto({user,pid}){
         setHabs(freshHabs);
       }
     }
+    // Sugerir pasajeros si el vehiculo paso hoy por el otro puesto de montaña (P2 ↔ P3)
+    let suggestedPax=null;let suggestedFrom=null;
+    if(found.id&&isOnline()&&(effPuesto==="Puesto 2"||effPuesto==="Puesto 3")){
+      const otherPuesto=effPuesto==="Puesto 2"?"Puesto 3":"Puesto 2";
+      const todayStr=today();
+      try{
+        const{data:lastSes}=await db.sel("sesiones_acceso",{
+          cols:"id,cerrada_at,direccion",
+          f:[["vehiculo_id","eq",found.id],["puesto","eq",otherPuesto],["cerrada_at","gte",todayStr+"T00:00:00"]],
+          ord:"cerrada_at.desc",lim:1
+        });
+        if(lastSes&&lastSes[0]){
+          const{data:regs}=await db.sel("registros_acceso",{
+            cols:"persona_id,resultado",
+            f:[["sesion_id","eq",lastSes[0].id]]
+          });
+          const aprobados=(regs||[]).filter(rr=>rr.persona_id&&rr.resultado==="aprobado");
+          if(aprobados.length){
+            const pids=aprobados.map(rr=>rr.persona_id);
+            const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,dni",inFilter:["id",pids]});
+            const personasMap={};(pers||[]).forEach(p=>{personasMap[p.id]=p;});
+            suggestedPax=aprobados.map(rr=>{
+              const p=personasMap[rr.persona_id];
+              if(!p)return null;
+              const auth=chkAuth("persona",p.id,freshHabs);
+              return {raw:p.dni,person:p,...auth,_sugerido:true};
+            }).filter(Boolean);
+            suggestedFrom={puesto:otherPuesto,timestamp:lastSes[0].cerrada_at,direccion:lastSes[0].direccion};
+          }
+        }
+      }catch(e){console.warn("scanV: error sugiriendo pasajeros",e);}
+    }
     const r=found.id?chkAuth("vehiculo",found.id,freshHabs):{ok:false,reason:"Vehiculo no registrado"};
     setVeh({data:found,...r});setVal("");
+    if(suggestedPax&&suggestedPax.length){setPax(suggestedPax);setPaxSugFrom(suggestedFrom);}
+    else{setPaxSugFrom(null);}
     if(r.ok||found._noRegistrado)setFase(F.P);
-  },[val,habs,user]);
+  },[val,habs,user,effPuesto]);
 
   const scanP=useCallback(async()=>{
     const v=val.trim();if(!v)return;
@@ -1939,50 +2094,76 @@ function Puesto({user,pid}){
     const d=dirFinal||dir;
     setSaving(true);
     setPaxSnap([...pax]); // guardar snapshot antes de cualquier reset
+    setSaveStatus(null);
+    const offlinePayload={
+      puesto:effPuesto,
+      operador_nombre:user.nombre,
+      direccion:d,
+      patente:veh?veh.data.patente:null,
+      vehiculo_id:veh?veh.data.id:null,
+      vehiculo_ok:veh?veh.ok:false,
+      dnis:pax.map(p=>p.raw),
+      paxData:pax.map(p=>({raw:p.raw,person_id:p.person?p.person.id:null,nombre:p.person?`${p.person.nombre} ${p.person.apellido}`:null,ok:p.ok,reason:p.reason||null})),
+      timestamp:new Date().toISOString(),
+    };
     if(!isOnline()){
-      // Sin internet: guardar en offlineStore para subir despues
-      offlineStore.add({
-        puesto:user.puesto_nombre,
-        operador_nombre:user.nombre,
-        direccion:d,
-        patente:veh?veh.data.patente:null,
-        vehiculo_id:veh?veh.data.id:null,
-        vehiculo_ok:veh?veh.ok:false,
-        dnis:pax.map(p=>p.raw),
-        paxData:pax.map(p=>({raw:p.raw,person_id:p.person?p.person.id:null,nombre:p.person?`${p.person.nombre} ${p.person.apellido}`:null,ok:p.ok,reason:p.reason||null})),
-        timestamp:new Date().toISOString(),
-      });
-      setDir(d);setSaving(false);setFase(F.D);
+      offlineStore.add(offlinePayload);
+      setDir(d);setSaving(false);setSaveStatus("offline");setPendingRefresh(k=>k+1);setFase(F.D);
       return;
     }
-    // Intentar subir con timeout de 8 segundos - si falla, guardar offline
+    // Intentar subir con timeout de 8 segundos - si falla o Supabase rechaza, guardar offline
     const saveOnline=async()=>{
-      const{data:ses}=await db.ins("sesiones_acceso",{proyecto_id:pid,puesto:user.puesto_nombre,operador_id:user.id,vehiculo_id:veh.data.id||null,vehiculo_ok:veh.ok,vehiculo_razon:veh.data._noRegistrado?("No registrado: "+veh.data.patente):(veh.reason||null),direccion:d,total_personas:pax.length,total_aprobados:pax.filter(p=>p.ok).length,total_rechazados:pax.filter(p=>!p.ok).length});
-      if(ses&&ses[0])await db.ins("registros_acceso",pax.map((p,i)=>({sesion_id:ses[0].id,persona_id:p.person?p.person.id:null,dni_raw:p.raw,resultado:p.ok?"aprobado":"rechazado",motivo_rechazo:p.ok?null:p.reason,orden_escaneo:i+1})));
+      const r1=await db.ins("sesiones_acceso",{proyecto_id:pid,puesto:effPuesto,operador_id:user.id,vehiculo_id:veh.data.id||null,vehiculo_ok:veh.ok,vehiculo_razon:veh.data._noRegistrado?("No registrado: "+veh.data.patente):(veh.reason||null),direccion:d,total_personas:pax.length,total_aprobados:pax.filter(p=>p.ok).length,total_rechazados:pax.filter(p=>!p.ok).length});
+      if(!r1.ok||!r1.data||!r1.data[0])throw new Error("sesion: "+JSON.stringify(r1.data||{}).slice(0,200));
+      if(pax.length>0){
+        const r2=await db.ins("registros_acceso",pax.map((p,i)=>({sesion_id:r1.data[0].id,persona_id:p.person?p.person.id:null,dni_raw:p.raw,resultado:p.ok?"aprobado":"rechazado",motivo_rechazo:p.ok?null:p.reason,orden_escaneo:i+1})));
+        if(!r2.ok){
+          // Rollback de la sesion para no dejar registros parciales
+          try{await db.del("sesiones_acceso",[["id","eq",r1.data[0].id]]);}catch(_){}
+          throw new Error("registros: "+JSON.stringify(r2.data||{}).slice(0,200));
+        }
+      }
       return true;
     };
     const withTimeout=(promise,ms)=>Promise.race([promise,new Promise((_,rej)=>setTimeout(()=>rej(new Error("timeout")),ms))]);
+    let okOnline=false;
     try{
       await withTimeout(saveOnline(),8000);
+      okOnline=true;
     }catch(e){
-      // Timeout o error de red: guardar offline
       console.warn("cerrar: fallo online, guardando offline:",e.message);
-      offlineStore.add({
-        puesto:user.puesto_nombre,operador_nombre:user.nombre,direccion:d,
-        patente:veh?veh.data.patente:null,vehiculo_id:veh?veh.data.id:null,vehiculo_ok:veh?veh.ok:false,
-        dnis:pax.map(p=>p.raw),
-        paxData:pax.map(p=>({raw:p.raw,person_id:p.person?p.person.id:null,nombre:p.person?`${p.person.nombre} ${p.person.apellido}`:null,ok:p.ok,reason:p.reason||null})),
-        timestamp:new Date().toISOString(),
-      });
+      offlineStore.add(offlinePayload);
     }
-    setDir(d);setSaving(false);setFase(F.D);
+    setDir(d);setSaving(false);setSaveStatus(okOnline?"online":"offline");
+    if(!okOnline)setPendingRefresh(k=>k+1);
+    setFase(F.D);
   };
-  const nueva=()=>{setFase(F.V);setVeh(null);setPax([]);setPaxSnap([]);setVal("");setFlash(null);setRefreshKey(k=>k+1);};
+  const nueva=()=>{setFase(F.V);setVeh(null);setPax([]);setPaxSnap([]);setVal("");setFlash(null);setPaxSugFrom(null);setSaveStatus(null);setRefreshKey(k=>k+1);};
   const dirLabel=dir==="entrada"?"ingreso":"egreso";
+
+  // Admin sin puesto elegido: mostrar selector
+  if(isAdmin&&!adminPuesto){
+    return <div>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontFamily:"var(--fh)",fontSize:26,fontWeight:800,letterSpacing:".05em",color:"var(--acc)",textTransform:"uppercase"}}>Simular Puesto</div>
+          <div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)",marginTop:2}}>Elegí qué puesto querés operar</div>
+        </div>
+        <Clock/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:14}}>
+        {["Puesto 1","Puesto 2","Puesto 3"].map(p=><button key={p} onClick={()=>setAdminPuesto(p)} style={{background:"var(--s1)",border:"2px solid var(--bd)",borderRadius:8,padding:"32px 18px",fontFamily:"var(--fh)",fontSize:24,fontWeight:800,color:"var(--tx)",letterSpacing:".05em",textTransform:"uppercase",cursor:"pointer",transition:"all .15s"}} onMouseOver={e=>{e.currentTarget.style.borderColor="var(--acc)";e.currentTarget.style.color="var(--acc)";}} onMouseOut={e=>{e.currentTarget.style.borderColor="var(--bd)";e.currentTarget.style.color="var(--tx)";}}>{p}</button>)}
+      </div>
+      <div style={{marginTop:20,padding:"12px 16px",background:"rgba(245,158,11,.07)",border:"1px solid rgba(245,158,11,.25)",borderRadius:6,fontSize:13,color:"var(--tx2)"}}>Las fichadas se guardarán como hechas desde el puesto que elijas. Podés cambiarlo en cualquier momento.</div>
+    </div>;
+  }
 
   return <div>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:8}}>
-      <div><div style={{fontFamily:"var(--fh)",fontSize:26,fontWeight:800,letterSpacing:".05em",color:"var(--acc)",textTransform:"uppercase"}}>{user.puesto_nombre}</div><div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)",marginTop:2}}>Control de Acceso</div></div>
+      <div>
+        <div style={{fontFamily:"var(--fh)",fontSize:26,fontWeight:800,letterSpacing:".05em",color:"var(--acc)",textTransform:"uppercase"}}>{effPuesto}{isAdmin&&<span style={{fontSize:11,fontWeight:600,color:"var(--tx2)",marginLeft:10,fontFamily:"var(--fm)",letterSpacing:".05em"}}>(simulando)</span>}</div>
+        <div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)",marginTop:2}}>Control de Acceso{isAdmin&&<button onClick={()=>{nueva();setAdminPuesto(null);}} style={{background:"none",border:"none",color:"var(--acc2)",cursor:"pointer",fontSize:11,fontFamily:"var(--fm)",marginLeft:8,textDecoration:"underline",padding:0}}>cambiar puesto</button>}</div>
+      </div>
       <Clock/>
     </div>
     {offline&&<div style={{background:"rgba(245,158,11,.12)",border:"1px solid rgba(245,158,11,.5)",borderRadius:6,padding:"8px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
@@ -1992,6 +2173,7 @@ function Puesto({user,pid}){
         <div style={{fontSize:12,color:"var(--tx2)"}}>Usando datos del cache local · los registros se subirán cuando vuelva la conexión</div>
       </div>
     </div>}
+    <PendingUploads user={userEff} proyectoId={pid} habs={habs} refreshTrigger={pendingRefresh} onUploaded={()=>{setRefreshKey(k=>k+1);setPendingRefresh(k=>k+1);}}/>
     {cola.length>0&&<div style={{background:"rgba(59,130,246,.1)",border:"1px solid rgba(59,130,246,.3)",borderRadius:6,padding:"10px 14px",marginBottom:10}}>
       <div style={{fontFamily:"var(--fh)",fontSize:13,fontWeight:700,color:"#60A5FA",marginBottom:8}}>
         {cola.length} escaneada{cola.length!==1?"s":""} en pausa
@@ -2027,6 +2209,14 @@ function Puesto({user,pid}){
       <button className="btn-offline" onClick={()=>setShowOffline(true)}>Sin internet — registrar offline</button>
     </>}
             {fase===F.P&&<>
+      {paxSugFrom&&pax.length>0&&pax.some(p=>p._sugerido)&&<div style={{background:"rgba(139,92,246,.1)",border:"1px solid rgba(139,92,246,.4)",borderRadius:6,padding:"9px 14px",marginBottom:10,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        <span style={{fontSize:18}}>💡</span>
+        <div style={{flex:1,minWidth:200}}>
+          <div style={{fontFamily:"var(--fh)",fontSize:13,fontWeight:700,color:"#A78BFA",textTransform:"uppercase",letterSpacing:".05em"}}>{pax.filter(p=>p._sugerido).length} pasajero{pax.filter(p=>p._sugerido).length!==1?"s":""} sugerido{pax.filter(p=>p._sugerido).length!==1?"s":""} de {paxSugFrom.puesto}</div>
+          <div style={{fontSize:11,color:"var(--tx2)",marginTop:1}}>Última pasada por {paxSugFrom.puesto}: {fmtTs(paxSugFrom.timestamp)} · revisá y modificá si hace falta</div>
+        </div>
+        <button onClick={()=>{setPax([]);setPaxSugFrom(null);}} style={{background:"none",border:"1px solid rgba(139,92,246,.4)",color:"#A78BFA",borderRadius:4,padding:"4px 10px",cursor:"pointer",fontSize:11,fontFamily:"var(--fm)",textTransform:"uppercase"}}>Vaciar lista</button>
+      </div>}
       {/* BARRA FIJA ARRIBA: input + botones acción */}
       <div style={{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:8,padding:"12px 14px",marginBottom:10}}>
         <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
@@ -2094,11 +2284,11 @@ function Puesto({user,pid}){
             // Verificar duplicados solo al confirmar ENTRADA
             let dupVeh=null,dupPax=[];
             if(veh&&veh.data.id&&isOnline()){
-              const vNet=await calcNetVehiculos(user.puesto_nombre);
+              const vNet=await calcNetVehiculos(effPuesto);
               if((vNet[veh.data.id]||0)>0)dupVeh=veh.data.patente;
             }
             if(isOnline()&&pax.length>0){
-              const pNet=await calcNet(user.puesto_nombre);
+              const pNet=await calcNet(effPuesto);
               dupPax=pax.filter(p=>p.person&&(pNet[p.person.id]||0)>0).map(p=>`${p.person.nombre} ${p.person.apellido}`);
             }
             if(dupVeh||dupPax.length>0){
@@ -2120,8 +2310,22 @@ function Puesto({user,pid}){
       <button onClick={()=>setFase(F.P)} style={{width:"100%",background:"none",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:5,padding:"9px",cursor:"pointer",fontFamily:"var(--fh)",fontSize:14,textTransform:"uppercase"}}>Volver a pasajeros</button>
     </>}
     {fase===F.D&&<>
+      {saveStatus==="online"&&<div style={{background:"rgba(16,185,129,.1)",border:"2px solid var(--gr)",borderRadius:6,padding:"10px 14px",marginBottom:10,display:"flex",alignItems:"center",gap:12}}>
+        <span style={{fontSize:22}}>✓</span>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:"var(--fh)",fontSize:15,fontWeight:800,color:"var(--gr)",textTransform:"uppercase"}}>Guardado en el servidor</div>
+          <div style={{fontSize:11,color:"var(--tx2)",marginTop:1}}>Confirmado: la fichada quedó registrada en la base de datos</div>
+        </div>
+      </div>}
+      {saveStatus==="offline"&&<div style={{background:"rgba(245,158,11,.12)",border:"2px solid var(--acc)",borderRadius:6,padding:"10px 14px",marginBottom:10,display:"flex",alignItems:"center",gap:12}}>
+        <span style={{fontSize:22}}>⚠️</span>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:"var(--fh)",fontSize:15,fontWeight:800,color:"var(--acc)",textTransform:"uppercase"}}>Guardado en la tablet · pendiente de subir</div>
+          <div style={{fontSize:11,color:"var(--tx2)",marginTop:1}}>Sin conexión o el servidor rechazó el envío. Cuando vuelva internet apretá "Subir ahora" en la barra de pendientes</div>
+        </div>
+      </div>}
       <div className="scard"><div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
-        <div className="stit">Registrado correctamente</div>
+        <div className="stit">{saveStatus==="online"?"Registrado correctamente":saveStatus==="offline"?"Registrado en tablet":"Registrado correctamente"}</div>
         <button onClick={()=>{
           const d=dir==="entrada"?"SUBE":"BAJA";
           const pat=(veh&&veh.data&&veh.data.patente)||"SIN PATENTE";
@@ -2136,7 +2340,7 @@ function Puesto({user,pid}){
       <button className="bnew" onClick={nueva}>+ Nuevo vehiculo</button>
       <button className="btn-manual" onClick={()=>setShowManual(true)}>+ Registrar movimiento sin vehiculo</button>
     </>}
-    <RecentSessions key={refreshKey} puesto={user.puesto_nombre} onSelectSesion={setDetalleSes}/>
+    <RecentSessions key={refreshKey} puesto={effPuesto} onSelectSesion={setDetalleSes}/>
     {warnDupVeh&&<div className="mo"><div className="md">
       <div className="mh"><div className="mt">⚠️ Ya figuran adentro</div><button className="mc" onClick={()=>setWarnDupVeh(null)}>x</button></div>
       <div className="mb">
@@ -2155,13 +2359,13 @@ function Puesto({user,pid}){
               const d=warnDupVeh.dirFinal;
               // Corregir vehículo si hace falta
               if(warnDupVeh.dupVeh&&veh&&veh.data.id){
-                await db.ins("sesiones_acceso",{proyecto_id:pid,puesto:user.puesto_nombre,operador_id:user.id,vehiculo_id:veh.data.id,vehiculo_ok:false,vehiculo_razon:"Salida automatica — correccion doble entrada",direccion:"salida",total_personas:0,total_aprobados:0,total_rechazados:0});
+                await db.ins("sesiones_acceso",{proyecto_id:pid,puesto:effPuesto,operador_id:user.id,vehiculo_id:veh.data.id,vehiculo_ok:false,vehiculo_razon:"Salida automatica — correccion doble entrada",direccion:"salida",total_personas:0,total_aprobados:0,total_rechazados:0});
               }
               // Corregir personas si hace falta
               for(const nombre of(warnDupVeh.dupPax||[])){
                 const p=pax.find(x=>x.person&&`${x.person.nombre} ${x.person.apellido}`===nombre);
                 if(p&&p.person){
-                  await db.ins("movimientos_manuales",{proyecto_id:pid,puesto:user.puesto_nombre,operador_id:user.id,persona_id:p.person.id,dni_raw:p.raw,nombre_raw:nombre,direccion:"salida"});
+                  await db.ins("movimientos_manuales",{proyecto_id:pid,puesto:effPuesto,operador_id:user.id,persona_id:p.person.id,dni_raw:p.raw,nombre_raw:nombre,direccion:"salida"});
                 }
               }
               setWarnDupVeh(null);
@@ -2172,8 +2376,8 @@ function Puesto({user,pid}){
         </div>
       </div>
     </div></div>}
-    {showManual&&<MovimientoManual user={user} proyectoId={pid} onClose={()=>setShowManual(false)} onSaved={()=>setRefreshKey(k=>k+1)}/>}
-    {showOffline&&<OfflineModePanel user={user} proyectoId={pid} onClose={()=>setShowOffline(false)}/>}
+    {showManual&&<MovimientoManual user={userEff} proyectoId={pid} onClose={()=>setShowManual(false)} onSaved={()=>setRefreshKey(k=>k+1)}/>}
+    {showOffline&&<OfflineModePanel user={userEff} proyectoId={pid} onClose={()=>setShowOffline(false)}/>}
     {detalleSes&&<SesionDetalle ses={detalleSes} onClose={()=>setDetalleSes(null)}/>}
   </div>;
 }
