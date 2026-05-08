@@ -1510,7 +1510,15 @@ function SesionDetalle({ses,onClose,onInverted}){
         setInverting(true);
         const r=await db.upd("sesiones_acceso",{direccion:nueva},[["id","eq",ses.id]]);
         setInverting(false);
-        if(!r.ok){alert("No se pudo invertir. Reintentá.");return;}
+        if(!r.ok){alert("Error de red al invertir. Reintentá.");return;}
+        if(!r.data||r.data.length===0){
+          alert("Supabase respondió OK pero no actualizó ninguna fila.\n\nLa política RLS de la tabla sesiones_acceso no permite UPDATE. El admin tiene que agregar una policy de UPDATE en Supabase para que esta función trabaje.");
+          return;
+        }
+        if(r.data[0].direccion!==nueva){
+          alert("La inversión no quedó aplicada (sigue como "+r.data[0].direccion+"). Revisar triggers o políticas RLS en Supabase.");
+          return;
+        }
         onInverted&&onInverted();
         onClose();
       }} style={{background:"rgba(245,158,11,.15)",border:"1px solid var(--acc)",color:"var(--acc)",borderRadius:4,padding:"5px 12px",cursor:"pointer",fontFamily:"var(--fh)",fontSize:12,fontWeight:700,textTransform:"uppercase"}}>
@@ -1662,7 +1670,15 @@ function Registros({defaultPuesto}){
                 const nueva=m.direccion==="entrada"?"salida":"entrada";
                 if(!confirm(`Invertir? Quedará como ${nueva.toUpperCase()} (estaba ${m.direccion.toUpperCase()}).`))return;
                 const r=await db.upd("movimientos_manuales",{direccion:nueva},[["id","eq",m.id]]);
-                if(!r.ok){alert("No se pudo invertir. Reintentá.");return;}
+                if(!r.ok){alert("Error de red al invertir. Reintentá.");return;}
+                if(!r.data||r.data.length===0){
+                  alert("Supabase respondió OK pero no actualizó ninguna fila.\n\nLa política RLS de la tabla movimientos_manuales no permite UPDATE. El admin tiene que agregar una policy de UPDATE en Supabase para que esta función trabaje.");
+                  return;
+                }
+                if(r.data[0].direccion!==nueva){
+                  alert("La inversión no quedó aplicada (sigue como "+r.data[0].direccion+"). Revisar triggers o políticas RLS en Supabase.");
+                  return;
+                }
                 load();
               }} className="bsm" style={{fontSize:11,padding:"3px 8px",color:"var(--acc)",borderColor:"rgba(245,158,11,.3)"}}>↔ invertir</button>
             </td>
@@ -1842,42 +1858,77 @@ function OfflineModePanel({user,proyectoId,onClose}){
   </div></div>;
 }
 
-function PendingUploads({user,proyectoId,habs,onUploaded,refreshTrigger}){
-  const[pending,setPending]=useState([]);
+// Tarjeta de un registro pendiente individual
+function PendingRecordCard({rec,onRemove,old}){
+  const fechaTxt=rec.timestamp?new Date(rec.timestamp).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"sin fecha";
+  const personasTxt=rec.paxData&&rec.paxData.length>0
+    ? rec.paxData.map(p=>p.nombre||`DNI ${p.raw}`).join(", ")
+    : (rec.dnis&&rec.dnis.length>0?`DNIs: ${rec.dnis.join(", ")}`:"sin pasajeros");
+  return <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 12px",border:"1px solid var(--bd)",borderRadius:6,marginBottom:6,background:old?"rgba(239,68,68,.05)":"var(--s2)"}}>
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
+        <span className={`ld ld-${rec.direccion==="entrada"?"in":"out"}`} style={{fontSize:11}}>{rec.direccion||"?"}</span>
+        <span style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)"}}>{fechaTxt}</span>
+        {rec.puesto&&<span style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)"}}>· {rec.puesto}</span>}
+      </div>
+      {rec.patente?<div style={{fontFamily:"var(--fm)",fontSize:14,fontWeight:600}}>{rec.patente}</div>:<div style={{fontSize:12,color:"var(--tx2)",fontStyle:"italic"}}>sin vehículo</div>}
+      <div style={{fontSize:12,color:"var(--tx2)",marginTop:2,wordBreak:"break-word"}}>{personasTxt}</div>
+    </div>
+    <button onClick={onRemove} style={{background:"none",border:"1px solid rgba(239,68,68,.3)",color:"var(--rd)",borderRadius:4,padding:"3px 8px",cursor:"pointer",fontSize:11,flexShrink:0,fontFamily:"var(--fm)"}}>borrar</button>
+  </div>;
+}
+
+// Modal para revisar y gestionar registros pendientes antes de subir
+function PendingDetailModal({user,proyectoId,habs,onClose,onChanged}){
+  const[items,setItems]=useState([]);
   const[uploading,setUploading]=useState(false);
-  const[done,setDone]=useState(0);
-  const[failed,setFailed]=useState(0);
+  const[lastResult,setLastResult]=useState(null); // {done,failed}
 
-  useEffect(()=>{
+  const reload=()=>{
     const p=offlineStore.get().filter(r=>r.puesto===user.puesto_nombre);
-    setPending(p);
-  },[refreshTrigger,user.puesto_nombre]);
+    setItems(p);
+  };
+  useEffect(()=>{reload();},[]);
 
-  if(!pending.length)return null;
+  const todayStr=today();
+  const isToday=(r)=>(r.timestamp||"").startsWith(todayStr);
+  const items_today=items.filter(isToday);
+  const items_old=items.filter(r=>!isToday(r));
 
-  const uploadAll=async()=>{
-    setUploading(true);setDone(0);setFailed(0);
-    if(!isOnline()){
-      alert("Sin conexión — no se puede subir ahora.");
-      setUploading(false);return;
-    }
-    let count=0;let fail=0;
-    // De los pendientes, los que fallen quedan en 'kept' para reintento posterior
-    const kept=[];
-    // Solo procesar los que correspondan a este puesto; los demás se preservan tal cual
+  const recordKey=(r)=>`${r.timestamp||""}|${r.puesto||""}|${r.patente||""}|${(r.dnis||[]).join(",")}`;
+
+  const removeOne=(rec)=>{
+    if(!confirm("Borrar este registro pendiente? No se podrá recuperar y no se subirá."))return;
     const all=offlineStore.get();
-    const toUpload=all.filter(r=>r.puesto===user.puesto_nombre);
-    const otros=all.filter(r=>r.puesto!==user.puesto_nombre);
-    for(const rec of toUpload){
+    const k=recordKey(rec);
+    const idx=all.findIndex(r=>recordKey(r)===k);
+    if(idx>=0){all.splice(idx,1);offlineStore.set(all);}
+    reload();onChanged&&onChanged();
+  };
+
+  const discardOld=()=>{
+    if(items_old.length===0)return;
+    if(!confirm(`Descartar ${items_old.length} registro${items_old.length!==1?"s":""} de días anteriores? No se subirán y no se podrán recuperar.`))return;
+    const all=offlineStore.get();
+    const filtered=all.filter(r=>r.puesto!==user.puesto_nombre||isToday(r));
+    offlineStore.set(filtered);
+    reload();onChanged&&onChanged();
+  };
+
+  const uploadToday=async()=>{
+    if(items_today.length===0)return;
+    if(!isOnline()){alert("Sin conexión — no se puede subir ahora.");return;}
+    setUploading(true);setLastResult(null);
+    let count=0,fail=0;
+    const kept=[];
+    for(const rec of items_today){
       let recOk=false;
       try{
-        // Resolver vehiculo por patente
         let vehId=null,vehOk=false;
         if(rec.patente){
           const{data:v}=await db.sel("vehiculos",{f:[["patente","eq",rec.patente]],lim:1});
           if(v&&v[0]){vehId=v[0].id;vehOk=chkAuth("vehiculo",v[0].id,habs).ok;}
         }
-        // Resolver personas por DNI
         const personasResolved=[];
         for(const dni of (rec.dnis||[])){
           const{data:p}=await db.sel("personas",{f:[["dni","eq",dni],["deleted_at","is","null"]],lim:1});
@@ -1906,31 +1957,93 @@ function PendingUploads({user,proyectoId,habs,onUploaded,refreshTrigger}){
             }
           }
           recOk=true;
-        } else {
-          recOk=true; // registro vacío, lo damos por descartado
-        }
-      }catch(e){console.error("Error subiendo registro offline:",e);}
+        } else recOk=true; // registro vacío
+      }catch(e){console.error("Error subiendo:",e);}
       if(recOk)count++;else{fail++;kept.push(rec);}
     }
-    offlineStore.set([...otros,...kept]);
-    setDone(count);setFailed(fail);setUploading(false);
-    setPending(kept);
-    onUploaded&&onUploaded();
+    // Mantenemos: registros de otros puestos, los viejos de este puesto, y los de hoy que fallaron
+    const all=offlineStore.get();
+    const others=all.filter(r=>r.puesto!==user.puesto_nombre);
+    offlineStore.set([...others,...items_old,...kept]);
+    setLastResult({done:count,failed:fail});
+    setUploading(false);
+    reload();onChanged&&onChanged();
   };
 
-  return <div className="pending-bar">
-    <div style={{flex:1}}>
-      <div style={{fontFamily:"var(--fh)",fontSize:16,fontWeight:800,color:"var(--acc)",textTransform:"uppercase"}}>
-        {pending.length} registro{pending.length!==1?"s":""} pendiente{pending.length!==1?"s":""} de subir
+  return <div className="mo"><div className="md md-lg">
+    <div className="mh">
+      <div>
+        <div className="mt">Registros pendientes — {user.puesto_nombre}</div>
+        <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>{items.length} en total · {items_today.length} de hoy{items_old.length>0?` · ${items_old.length} de días anteriores`:""}</div>
       </div>
-      <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>Guardados sin internet o por fallo del servidor — apretá "Subir ahora" cuando tengas conexión</div>
+      <button className="mc" onClick={onClose}>x</button>
     </div>
-    {done>0&&<span style={{color:"var(--gr)",fontFamily:"var(--fm)",fontSize:13}}>{done} subidos</span>}
-    {failed>0&&<span style={{color:"var(--rd)",fontFamily:"var(--fm)",fontSize:13}}>{failed} fallaron</span>}
-    <button className="bsc" style={{padding:"8px 18px"}} disabled={uploading} onClick={uploadAll}>
-      {uploading?"Subiendo...":"Subir ahora"}
-    </button>
-  </div>;
+    <div className="mb">
+      {lastResult&&<div style={{padding:"10px 14px",borderRadius:6,marginBottom:14,background:lastResult.failed===0?"rgba(16,185,129,.1)":"rgba(245,158,11,.1)",border:"1px solid "+(lastResult.failed===0?"var(--gr)":"var(--acc)"),color:lastResult.failed===0?"var(--gr)":"var(--acc)",fontFamily:"var(--fh)",fontSize:13,fontWeight:700}}>
+        {lastResult.done} subidos{lastResult.failed>0?` · ${lastResult.failed} fallaron (siguen pendientes)`:""}
+      </div>}
+
+      {items_old.length>0&&<>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:8}}>
+          <div style={{fontFamily:"var(--fh)",fontSize:13,color:"var(--rd)",textTransform:"uppercase",letterSpacing:".05em",fontWeight:700}}>
+            ⚠️ De días anteriores ({items_old.length})
+          </div>
+          <button className="bsm bsm-r" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.4)"}} onClick={discardOld}>Descartar todos los viejos</button>
+        </div>
+        <div style={{marginBottom:14,padding:"8px 12px",background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.2)",borderRadius:4,fontSize:12,color:"var(--tx2)"}}>
+          Estos registros quedaron pendientes de días pasados. La app no los sube automáticamente — revisalos y descartalos antes de seguir con los de hoy.
+        </div>
+        {items_old.map((rec)=><PendingRecordCard key={recordKey(rec)} rec={rec} onRemove={()=>removeOne(rec)} old/>)}
+      </>}
+
+      {items_today.length>0&&<>
+        <div style={{fontFamily:"var(--fh)",fontSize:13,color:"var(--acc)",textTransform:"uppercase",letterSpacing:".05em",fontWeight:700,marginTop:items_old.length>0?20:0,marginBottom:8}}>
+          De hoy ({items_today.length})
+        </div>
+        {items_today.map((rec)=><PendingRecordCard key={recordKey(rec)} rec={rec} onRemove={()=>removeOne(rec)}/>)}
+      </>}
+
+      {items.length===0&&<div style={{textAlign:"center",padding:30,color:"var(--tx2)"}}>No hay registros pendientes.</div>}
+    </div>
+    <div className="mf">
+      <button className="bcanc" onClick={onClose}>Cerrar</button>
+      {items_today.length>0&&<button className="bp" disabled={uploading} onClick={uploadToday}>
+        {uploading?"Subiendo...":`Subir ${items_today.length} de hoy`}
+      </button>}
+    </div>
+  </div></div>;
+}
+
+function PendingUploads({user,proyectoId,habs,onUploaded,refreshTrigger}){
+  const[pending,setPending]=useState([]);
+  const[showDetail,setShowDetail]=useState(false);
+  const[localRefresh,setLocalRefresh]=useState(0);
+
+  useEffect(()=>{
+    const p=offlineStore.get().filter(r=>r.puesto===user.puesto_nombre);
+    setPending(p);
+  },[refreshTrigger,user.puesto_nombre,localRefresh]);
+
+  if(!pending.length)return null;
+
+  const todayStr=today();
+  const isToday=(r)=>(r.timestamp||"").startsWith(todayStr);
+  const today_count=pending.filter(isToday).length;
+  const old_count=pending.length-today_count;
+
+  return <>
+    <div className="pending-bar">
+      <div style={{flex:1}}>
+        <div style={{fontFamily:"var(--fh)",fontSize:16,fontWeight:800,color:"var(--acc)",textTransform:"uppercase"}}>
+          {pending.length} registro{pending.length!==1?"s":""} pendiente{pending.length!==1?"s":""}
+          {old_count>0&&<span style={{color:"var(--rd)",fontSize:13,marginLeft:8,fontWeight:600,textTransform:"none"}}>· {old_count} de días anteriores ⚠</span>}
+        </div>
+        <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>{today_count>0?`${today_count} de hoy listos para subir · `:""}Tocá "Ver / gestionar" para revisar antes de subir</div>
+      </div>
+      <button className="bsc" style={{padding:"8px 18px"}} onClick={()=>setShowDetail(true)}>Ver / gestionar</button>
+    </div>
+    {showDetail&&<PendingDetailModal user={user} proyectoId={proyectoId} habs={habs} onClose={()=>setShowDetail(false)} onChanged={()=>{setLocalRefresh(k=>k+1);onUploaded&&onUploaded();}}/>}
+  </>;
 }
 
 function Puesto({user,pid}){
