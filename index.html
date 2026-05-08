@@ -1463,11 +1463,12 @@ function VehModal({v,onClose,onSave}){
 }
 
 // ─── REGISTROS ────────────────────────────────────────────────────────────────
-function SesionDetalle({ses,onClose}){
+function SesionDetalle({ses,onClose,onInverted}){
   const[regs,setRegs]=useState([]);
   const[pers,setPers]=useState([]);
   const[veh,setVeh]=useState(null);
   const[loading,setLoading]=useState(true);
+  const[inverting,setInverting]=useState(false);
   useEffect(()=>{
     const load=async()=>{
       const[{data:r},{data:v}]=await Promise.all([
@@ -1500,6 +1501,21 @@ function SesionDetalle({ses,onClose}){
         }} style={{fontSize:11,padding:"4px 10px"}}>Copiar</button>
         <button className="mc" onClick={onClose}>x</button>
       </div>
+    </div>
+    <div style={{padding:"10px 24px",borderBottom:"1px solid var(--bd)",background:"rgba(245,158,11,.05)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+      <span style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>¿El operario marcó mal el sentido?</span>
+      <button disabled={inverting} onClick={async()=>{
+        const nueva=ses.direccion==="entrada"?"salida":"entrada";
+        if(!confirm(`Confirmás invertir? Quedará como ${nueva.toUpperCase()} en lugar de ${ses.direccion.toUpperCase()}.`))return;
+        setInverting(true);
+        const r=await db.upd("sesiones_acceso",{direccion:nueva},[["id","eq",ses.id]]);
+        setInverting(false);
+        if(!r.ok){alert("No se pudo invertir. Reintentá.");return;}
+        onInverted&&onInverted();
+        onClose();
+      }} style={{background:"rgba(245,158,11,.15)",border:"1px solid var(--acc)",color:"var(--acc)",borderRadius:4,padding:"5px 12px",cursor:"pointer",fontFamily:"var(--fh)",fontSize:12,fontWeight:700,textTransform:"uppercase"}}>
+        ↔ {inverting?"Invirtiendo...":`Pasar a ${ses.direccion==="entrada"?"SALIDA":"ENTRADA"}`}
+      </button>
     </div>
     <div className="mb">
       {veh&&<div style={{marginBottom:14,padding:"10px 14px",background:"var(--s2)",borderRadius:4,display:"flex",gap:12,alignItems:"center"}}>
@@ -1634,19 +1650,28 @@ function Registros({defaultPuesto}){
       {showMan&&manFiltered.length>0&&<>
         <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Movimientos manuales — {manFiltered.length}</div>
         <div className="tw"><table>
-          <thead><tr><th>Hora</th><th>Dir.</th><th>Puesto</th><th>Persona</th><th>DNI</th></tr></thead>
+          <thead><tr><th>Hora</th><th>Dir.</th><th>Puesto</th><th>Persona</th><th>DNI</th><th></th></tr></thead>
           <tbody>{manFiltered.map(m=><tr key={m.id}>
             <td className="mn" style={{fontSize:12,color:"var(--tx2)"}}>{fmtTs(m.created_at)}</td>
             <td><span className={`ld ld-${m.direccion==="entrada"?"in":"out"}`}>{m.direccion}</span></td>
             <td style={{fontSize:12,color:"var(--tx2)"}}>{m.puesto}</td>
             <td style={{fontWeight:500}}>{m.nombre_raw||<span style={{color:"var(--tx2)"}}>Sin identificar</span>}</td>
             <td className="mn" style={{color:"var(--tx2)"}}>{m.dni_raw||"—"}</td>
+            <td>
+              <button onClick={async()=>{
+                const nueva=m.direccion==="entrada"?"salida":"entrada";
+                if(!confirm(`Invertir? Quedará como ${nueva.toUpperCase()} (estaba ${m.direccion.toUpperCase()}).`))return;
+                const r=await db.upd("movimientos_manuales",{direccion:nueva},[["id","eq",m.id]]);
+                if(!r.ok){alert("No se pudo invertir. Reintentá.");return;}
+                load();
+              }} className="bsm" style={{fontSize:11,padding:"3px 8px",color:"var(--acc)",borderColor:"rgba(245,158,11,.3)"}}>↔ invertir</button>
+            </td>
           </tr>)}</tbody>
         </table></div>
       </>}
       {sesFiltered.length===0&&manFiltered.length===0&&<div style={{textAlign:"center",color:"var(--tx2)",padding:40}}>Sin registros para los filtros seleccionados</div>}
     </>}
-    {detalle&&<SesionDetalle ses={detalle} onClose={()=>setDetalle(null)}/>}
+    {detalle&&<SesionDetalle ses={detalle} onClose={()=>setDetalle(null)} onInverted={()=>{setDetalle(null);load();}}/>}
   </div>;
 }
 
@@ -2276,11 +2301,17 @@ function Puesto({user,pid}){
 
     </>}
 
-    {fase===F.C&&<>
+    {fase===F.C&&(()=>{
+      const dirBtn=effPuesto==="Puesto 1"
+        ?{in:{t:"INGRESA",s:"a la obra"},out:{t:"SALE",s:"de la obra"},q:"está"}
+        :effPuesto==="Puesto 2"
+        ?{in:{t:"SUBE",s:"rumbo al chalet"},out:{t:"BAJA",s:"del chalet hacia obra"},q:"va"}
+        :{in:{t:"INGRESA",s:"al chalet"},out:{t:"SALE",s:"del chalet"},q:"está"};
+      return <>
       <div style={{marginBottom:16}}>
-        <div style={{fontFamily:"var(--fh)",fontSize:13,color:"var(--tx2)",letterSpacing:".1em",textTransform:"uppercase",marginBottom:14,textAlign:"center"}}>El vehiculo y {pax.length} persona{pax.length!==1?"s":""} estan...</div>
+        <div style={{fontFamily:"var(--fh)",fontSize:14,color:"var(--acc)",letterSpacing:".1em",textTransform:"uppercase",marginBottom:14,textAlign:"center",fontWeight:700}}>{effPuesto} · El vehículo y {pax.length} persona{pax.length!==1?"s":""} {dirBtn.q}...</div>
         <div className="dir-big" style={{gap:16}}>
-          <button className="dir-big-btn in" style={{padding:"28px 16px",fontSize:28}} onClick={async()=>{
+          <button className="dir-big-btn in" style={{padding:"28px 16px",fontSize:24}} onClick={async()=>{
             // Verificar duplicados solo al confirmar ENTRADA
             let dupVeh=null,dupPax=[];
             if(veh&&veh.data.id&&isOnline()){
@@ -2298,17 +2329,17 @@ function Puesto({user,pid}){
             }
           }}>
             <div style={{fontSize:44,marginBottom:8}}>⬆️</div>
-            SUBIENDO<div style={{fontSize:13,fontWeight:400,marginTop:4,color:"var(--tx2)"}}>Ingresando a la obra</div>
+            {dirBtn.in.t}<div style={{fontSize:13,fontWeight:400,marginTop:4,color:"var(--tx2)"}}>{dirBtn.in.s}</div>
           </button>
-          <button className="dir-big-btn out" style={{padding:"28px 16px",fontSize:28}} onClick={()=>cerrar("salida")}>
+          <button className="dir-big-btn out" style={{padding:"28px 16px",fontSize:24}} onClick={()=>cerrar("salida")}>
             <div style={{fontSize:44,marginBottom:8}}>⬇️</div>
-            BAJANDO<div style={{fontSize:13,fontWeight:400,marginTop:4,color:"var(--tx2)"}}>Saliendo de la obra</div>
+            {dirBtn.out.t}<div style={{fontSize:13,fontWeight:400,marginTop:4,color:"var(--tx2)"}}>{dirBtn.out.s}</div>
           </button>
         </div>
         {saving&&<div style={{textAlign:"center",color:"var(--tx2)",fontFamily:"var(--fm)",fontSize:13,marginTop:14}}>Guardando...</div>}
       </div>
       <button onClick={()=>setFase(F.P)} style={{width:"100%",background:"none",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:5,padding:"9px",cursor:"pointer",fontFamily:"var(--fh)",fontSize:14,textTransform:"uppercase"}}>Volver a pasajeros</button>
-    </>}
+    </>;})()}
     {fase===F.D&&<>
       {saveStatus==="online"&&<div style={{background:"rgba(16,185,129,.1)",border:"2px solid var(--gr)",borderRadius:6,padding:"10px 14px",marginBottom:10,display:"flex",alignItems:"center",gap:12}}>
         <span style={{fontSize:22}}>✓</span>
@@ -2357,16 +2388,24 @@ function Puesto({user,pid}){
           <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
             <button className="bp" style={{background:"rgba(245,158,11,.2)",border:"2px solid var(--acc)",color:"var(--acc)"}} onClick={async()=>{
               const d=warnDupVeh.dirFinal;
+              let correctionFailed=false;
               // Corregir vehículo si hace falta
               if(warnDupVeh.dupVeh&&veh&&veh.data.id){
-                await db.ins("sesiones_acceso",{proyecto_id:pid,puesto:effPuesto,operador_id:user.id,vehiculo_id:veh.data.id,vehiculo_ok:false,vehiculo_razon:"Salida automatica — correccion doble entrada",direccion:"salida",total_personas:0,total_aprobados:0,total_rechazados:0});
+                const r=await db.ins("sesiones_acceso",{proyecto_id:pid,puesto:effPuesto,operador_id:user.id,vehiculo_id:veh.data.id,vehiculo_ok:false,vehiculo_razon:"Salida automatica — correccion doble entrada",direccion:"salida",total_personas:0,total_aprobados:0,total_rechazados:0});
+                if(!r.ok)correctionFailed=true;
               }
               // Corregir personas si hace falta
               for(const nombre of(warnDupVeh.dupPax||[])){
                 const p=pax.find(x=>x.person&&`${x.person.nombre} ${x.person.apellido}`===nombre);
                 if(p&&p.person){
-                  await db.ins("movimientos_manuales",{proyecto_id:pid,puesto:effPuesto,operador_id:user.id,persona_id:p.person.id,dni_raw:p.raw,nombre_raw:nombre,direccion:"salida"});
+                  const r=await db.ins("movimientos_manuales",{proyecto_id:pid,puesto:effPuesto,operador_id:user.id,persona_id:p.person.id,dni_raw:p.raw,nombre_raw:nombre,direccion:"salida"});
+                  if(!r.ok)correctionFailed=true;
                 }
+              }
+              if(correctionFailed){
+                alert("No se pudieron guardar las correcciones (sin internet o error del servidor). No se registró la entrada para evitar duplicados. Probá de nuevo.");
+                setWarnDupVeh(null);
+                return;
               }
               setWarnDupVeh(null);
               cerrar(d);
