@@ -2384,33 +2384,18 @@ function Puesto({user,pid}){
             <div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase",marginBottom:4}}>Personas</div>
             {warnDupVeh.dupPax.map(n=><div key={n} style={{fontWeight:500,marginBottom:3}}>{n}</div>)}
           </div>}
-          <div style={{color:"var(--tx2)",fontSize:13,marginBottom:20}}>Según los registros de hoy ya figuran adentro. Se registrarán salidas automáticas para corregir el conteo y luego se registra la nueva entrada.</div>
+          <div style={{color:"var(--tx2)",fontSize:13,marginBottom:20}}>Según los registros de hoy ya figuran adentro. Lo más probable es que se haya tocado <strong style={{color:"var(--tx)"}}>ENTRADA</strong> por error cuando en realidad <strong style={{color:"var(--gr)"}}>están saliendo</strong>. Se registra como SALIDA.</div>
           <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
-            <button className="bp" style={{background:"rgba(245,158,11,.2)",border:"2px solid var(--acc)",color:"var(--acc)"}} onClick={async()=>{
-              const d=warnDupVeh.dirFinal;
-              let correctionFailed=false;
-              // Corregir vehículo si hace falta
-              if(warnDupVeh.dupVeh&&veh&&veh.data.id){
-                const r=await db.ins("sesiones_acceso",{proyecto_id:pid,puesto:effPuesto,operador_id:user.id,vehiculo_id:veh.data.id,vehiculo_ok:false,vehiculo_razon:"Salida automatica — correccion doble entrada",direccion:"salida",total_personas:0,total_aprobados:0,total_rechazados:0});
-                if(!r.ok)correctionFailed=true;
-              }
-              // Corregir personas si hace falta
-              for(const nombre of(warnDupVeh.dupPax||[])){
-                const p=pax.find(x=>x.person&&`${x.person.nombre} ${x.person.apellido}`===nombre);
-                if(p&&p.person){
-                  const r=await db.ins("movimientos_manuales",{proyecto_id:pid,puesto:effPuesto,operador_id:user.id,persona_id:p.person.id,dni_raw:p.raw,nombre_raw:nombre,direccion:"salida"});
-                  if(!r.ok)correctionFailed=true;
-                }
-              }
-              if(correctionFailed){
-                alert("No se pudieron guardar las correcciones (sin internet o error del servidor). No se registró la entrada para evitar duplicados. Probá de nuevo.");
-                setWarnDupVeh(null);
-                return;
-              }
+            <button className="bp" style={{background:"rgba(16,185,129,.2)",border:"2px solid var(--gr)",color:"var(--gr)"}} onClick={()=>{
               setWarnDupVeh(null);
-              cerrar(d);
-            }}>Corregir y registrar entrada</button>
+              cerrar("salida");
+            }}>↻ Corregir y registrar SALIDA</button>
             <button className="bcanc" onClick={()=>setWarnDupVeh(null)}>Cancelar</button>
+          </div>
+          <div style={{marginTop:16,paddingTop:12,borderTop:"1px solid var(--bd)",textAlign:"center"}}>
+            <button onClick={()=>{setWarnDupVeh(null);cerrar("entrada");}} style={{background:"none",border:"none",color:"var(--tx2)",cursor:"pointer",fontSize:11,fontFamily:"var(--fm)",textDecoration:"underline"}}>
+              Forzar registrar como ENTRADA igual (registro duplicado a propósito)
+            </button>
           </div>
         </div>
       </div>
