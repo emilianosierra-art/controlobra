@@ -1691,6 +1691,97 @@ function Registros({defaultPuesto}){
   </div>;
 }
 
+// ─── SYNC SHEET (export fichadas a Google Sheet) ─────────────────────────────
+const SYNC_URL_KEY="controlobra_sync_url";
+const SYNC_SECRET_KEY="controlobra_sync_secret";
+
+function SyncSheetPanel(){
+  const[url,setUrl]=useState(()=>localStorage.getItem(SYNC_URL_KEY)||"");
+  const[secret,setSecret]=useState(()=>localStorage.getItem(SYNC_SECRET_KEY)||"");
+  const[showConfig,setShowConfig]=useState(false);
+  const[urlDraft,setUrlDraft]=useState(url);
+  const[secretDraft,setSecretDraft]=useState(secret);
+  const[syncing,setSyncing]=useState(false);
+  const[lastStatus,setLastStatus]=useState(null);
+  const[lastError,setLastError]=useState(null);
+
+  const configured=!!(url&&secret);
+
+  const fetchStatus=async()=>{
+    if(!configured)return;
+    try{
+      const r=await fetch(url+"?action=coStatus&secret="+encodeURIComponent(secret));
+      const d=await r.json();
+      if(d&&!d.error)setLastStatus(d);
+    }catch(e){}
+  };
+
+  useEffect(()=>{fetchStatus();},[url,secret]);
+
+  const saveConfig=()=>{
+    localStorage.setItem(SYNC_URL_KEY,urlDraft.trim());
+    localStorage.setItem(SYNC_SECRET_KEY,secretDraft.trim());
+    setUrl(urlDraft.trim());setSecret(secretDraft.trim());
+    setShowConfig(false);
+  };
+
+  const syncNow=async()=>{
+    if(!configured){alert("Falta configurar URL y secret del Apps Script.");return;}
+    setSyncing(true);setLastError(null);
+    try{
+      const r=await fetch(url+"?action=coExport&secret="+encodeURIComponent(secret));
+      const d=await r.json();
+      if(d.error){setLastError("Error: "+d.error);}
+      else{setLastStatus(d);}
+    }catch(e){setLastError("Error de red: "+e.message);}
+    setSyncing(false);
+  };
+
+  const fmtStatus=(s)=>{
+    if(!s||!s.terminado)return null;
+    const cuando=new Date(s.terminado).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+    if(s.primera_corrida)return `${cuando} · primera corrida (punto de partida fijado, sin histórico)`;
+    return `${cuando} · ${s.filas_appendeadas||0} filas nuevas · ${s.sesiones_procesadas||0} sesiones / ${s.manuales_procesados||0} manuales procesados${s.errores?` · ${s.errores} errores`:""}`;
+  };
+
+  return <div style={{marginTop:28,padding:"20px 24px",background:"rgba(139,92,246,.06)",border:"1px solid rgba(139,92,246,.3)",borderRadius:8}}>
+    <div style={{fontFamily:"var(--fh)",fontSize:15,fontWeight:800,color:"#A78BFA",textTransform:"uppercase",marginBottom:6}}>Sincronización con Google Sheet</div>
+    <div style={{fontSize:13,color:"var(--tx2)",marginBottom:14}}>
+      El Apps Script en el sheet exporta las fichadas cada 5 min en automático. Acá podés forzar una sincronización ahora mismo y configurar la conexión.
+    </div>
+    {!configured&&<div style={{padding:"9px 14px",marginBottom:12,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.3)",borderRadius:4,fontSize:13,color:"var(--acc)"}}>
+      ⚠️ Falta configurar URL y secret. Tocá "Configurar conexión" abajo.
+    </div>}
+    {lastStatus&&<div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)",marginBottom:10}}>
+      Última corrida: <strong style={{color:"var(--tx)"}}>{fmtStatus(lastStatus)}</strong>
+    </div>}
+    {lastError&&<div className="err" style={{marginBottom:10}}>{lastError}</div>}
+    <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+      <button onClick={syncNow} disabled={!configured||syncing} style={{background:configured?"rgba(139,92,246,.2)":"var(--s2)",border:"2px solid "+(configured?"#A78BFA":"var(--bd)"),color:configured?"#A78BFA":"var(--tx2)",borderRadius:5,padding:"10px 22px",fontFamily:"var(--fh)",fontSize:15,fontWeight:700,textTransform:"uppercase",cursor:configured&&!syncing?"pointer":"not-allowed",opacity:configured&&!syncing?1:.5}}>
+        {syncing?"Sincronizando...":"Volcar fichadas al sheet ahora"}
+      </button>
+      <button onClick={()=>{setShowConfig(s=>!s);setUrlDraft(url);setSecretDraft(secret);}} className="bcanc">
+        {showConfig?"Cerrar":"Configurar conexión"}
+      </button>
+    </div>
+    {showConfig&&<div style={{marginTop:14,padding:14,background:"var(--s2)",borderRadius:6,border:"1px solid var(--bd)"}}>
+      <div className="f">
+        <label>URL del Apps Script (web app)</label>
+        <input value={urlDraft} onChange={e=>setUrlDraft(e.target.value)} placeholder="https://script.google.com/macros/s/.../exec"/>
+      </div>
+      <div className="f">
+        <label>Secret</label>
+        <input type="password" value={secretDraft} onChange={e=>setSecretDraft(e.target.value)} placeholder="el valor de CO_API_SECRET"/>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button className="bp" onClick={saveConfig} style={{flex:1}}>Guardar</button>
+        <button className="bcanc" onClick={()=>setShowConfig(false)}>Cancelar</button>
+      </div>
+      <div style={{fontSize:11,color:"var(--tx2)",marginTop:10,fontFamily:"var(--fm)"}}>Se guardan solo en este navegador (localStorage). En cada tablet/compu que entre como admin hay que configurarlo una vez.</div>
+    </div>}
+  </div>;
+}
+
 // ─── USUARIOS ─────────────────────────────────────────────────────────────────
 function Usuarios({currentUser}){
   const[list,setList]=useState([]);const[loading,setLoading]=useState(true);
@@ -1725,6 +1816,7 @@ function Usuarios({currentUser}){
         <td style={{color:"var(--tx2)",fontSize:13}}>{u.puesto_nombre||"—"}</td>
       </tr>)}</tbody>
     </table></div>}
+    <SyncSheetPanel/>
     <div style={{marginTop:28,padding:"20px 24px",background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.25)",borderRadius:8}}>
       <div style={{fontFamily:"var(--fh)",fontSize:15,fontWeight:800,color:"var(--rd)",textTransform:"uppercase",marginBottom:6}}>Herramientas de prueba</div>
       <div style={{fontSize:13,color:"var(--tx2)",marginBottom:14}}>Borra todos los registros de hoy. Para pruebas de sistema.</div>
