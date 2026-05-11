@@ -343,19 +343,26 @@ function ChaletMini({proyectoId}){
       const persIdsCamino=Object.entries(net2).filter(([k,v])=>{const enP3=net3[k]||0;return v>0&&enP3<=0;}).map(([k])=>k);
       const vehIdsChalet=Object.entries(vNet3).filter(([_,v])=>v>0).map(([k])=>k);
       const vehIdsCamino=Object.entries(vNet2).filter(([k,v])=>{const enP3=vNet3[k]||0;return v>0&&enP3<=0;}).map(([k])=>k);
-      const allPIds=[...persIdsChalet,...persIdsCamino].filter(k=>k&&k.length===36);
-      const allVIds=[...vehIdsChalet,...vehIdsCamino];
+      const isUUID=(k)=>typeof k==="string"&&k.length===36&&k.indexOf("-")>=0;
+      const allPIds=[...persIdsChalet,...persIdsCamino].filter(isUUID);
+      const allVIds=[...vehIdsChalet,...vehIdsCamino].filter(isUUID);
       const[{data:pers},{data:vehs}]=await Promise.all([
         allPIds.length?db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"}):{data:[]},
         allVIds.length?db.sel("vehiculos",{cols:"id,patente,descripcion,tipo,empresa"}):{data:[]},
       ]);
+      const persMap={};(pers||[]).forEach(p=>{persMap[p.id]=p;});
+      const vehMap={};(vehs||[]).forEach(v=>{vehMap[v.id]=v;});
+      const synthPer=(k)=>({id:k,nombre:"Sin registrar",apellido:"",dni:k,empresa:"DNI no encontrado en la base",_synth:true});
+      const synthVeh=(k)=>{const pat=String(k).indexOf("No registrado:")===0?String(k).replace("No registrado:","").trim():k;return{id:k,patente:pat,descripcion:"Vehículo no registrado en la base",tipo:"Otro",empresa:"",_synth:true};};
+      const buildPer=(ids)=>ids.map(k=>persMap[k]||synthPer(k));
+      const buildVeh=(ids)=>ids.map(k=>vehMap[k]||synthVeh(k));
       setData({
         pc:persIdsChalet.length,pm:persIdsCamino.length,
         vc:vehIdsChalet.length,vm:vehIdsCamino.length,
-        plc:(pers||[]).filter(p=>persIdsChalet.includes(p.id)),
-        plm:(pers||[]).filter(p=>persIdsCamino.includes(p.id)),
-        vlc:(vehs||[]).filter(v=>vehIdsChalet.includes(v.id)),
-        vlm:(vehs||[]).filter(v=>vehIdsCamino.includes(v.id)),
+        plc:buildPer(persIdsChalet),
+        plm:buildPer(persIdsCamino),
+        vlc:buildVeh(vehIdsChalet),
+        vlm:buildVeh(vehIdsCamino),
       });
     } catch(e){
       console.warn("ChaletMini: error de red, manteniendo datos anteriores", e.message);
@@ -467,13 +474,18 @@ function ChaletCounter({proyectoId}){
     const persIdsCamino=Object.entries(net2).filter(([k,v])=>v>0&&!persIdsChalet.includes(k)).map(([k])=>k);
     setCountChalet(inChalet);
     setCountCamino(persIdsCamino.length);
-    // Load persona details
-    const allPersIds=[...persIdsChalet,...persIdsCamino].filter(k=>k&&k.length===36);
+    const isUUID=(k)=>typeof k==="string"&&k.length===36&&k.indexOf("-")>=0;
+    const synthPer=(k)=>({id:k,nombre:"Sin registrar",apellido:"",dni:k,empresa:"DNI no encontrado en la base",_synth:true});
+    const synthVeh=(k)=>{const pat=String(k).indexOf("No registrado:")===0?String(k).replace("No registrado:","").trim():k;return{id:k,patente:pat,descripcion:"Vehículo no registrado en la base",tipo:"Otro",empresa:"",_synth:true};};
+    // Load persona details (incluye placeholders para DNIs no registrados)
+    const allPersIds=[...persIdsChalet,...persIdsCamino].filter(isUUID);
+    let persMap={};
     if(allPersIds.length>0){
       const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"});
-      setPersonas((pers||[]).filter(p=>persIdsChalet.includes(p.id)));
-      setPersonasCamino((pers||[]).filter(p=>persIdsCamino.includes(p.id)));
-    } else {setPersonas([]);setPersonasCamino([]);}
+      (pers||[]).forEach(p=>{persMap[p.id]=p;});
+    }
+    setPersonas(persIdsChalet.map(k=>persMap[k]||synthPer(k)));
+    setPersonasCamino(persIdsCamino.map(k=>persMap[k]||synthPer(k)));
     // Vehiculos en chalet (neto + en P3)
     const vehIdsChalet=Object.entries(vNet3).filter(([_,v])=>v>0).map(([k])=>k);
     // En camino: neto positivo en P2, y neto en P3 <= 0
@@ -483,13 +495,15 @@ function ChaletCounter({proyectoId}){
     }).map(([k])=>k);
     setCountVehChalet(vehIdsChalet.length);
     setCountVehCamino(vehIdsCamino.length);
-    // Load vehiculo details
-    const allVehIds=[...vehIdsChalet,...vehIdsCamino];
+    // Load vehiculo details (incluye placeholders para "No registrado: ...")
+    const allVehIds=[...vehIdsChalet,...vehIdsCamino].filter(isUUID);
+    let vehMap={};
     if(allVehIds.length>0){
       const{data:vehs}=await db.sel("vehiculos",{cols:"id,patente,descripcion,tipo,empresa"});
-      setVehiculos((vehs||[]).filter(v=>vehIdsChalet.includes(v.id)));
-      setVehiculosCamino((vehs||[]).filter(v=>vehIdsCamino.includes(v.id)));
-    } else {setVehiculos([]);setVehiculosCamino([]);}
+      (vehs||[]).forEach(v=>{vehMap[v.id]=v;});
+    }
+    setVehiculos(vehIdsChalet.map(k=>vehMap[k]||synthVeh(k)));
+    setVehiculosCamino(vehIdsCamino.map(k=>vehMap[k]||synthVeh(k)));
     } catch(e){console.warn("ChaletCounter: error de red, manteniendo datos anteriores");}
   };
   useEffect(()=>{load();const i=setInterval(load,5000);return()=>clearInterval(i);},[]);
@@ -2639,21 +2653,26 @@ function PublicDashboard({onBack}){
     }).map(([k])=>k);
     const vehIdsChalet=Object.entries(vNet3).filter(([_,v])=>v>0).map(([k])=>k);
     const vehIdsCamino=Object.entries(vNet2).filter(([k,v])=>{const enP3=vNet3[k]||0;return v>0&&enP3<=0;}).map(([k])=>k);
-    const allPersIds=[...persIdsChalet,...persIdsCamino].filter(k=>k&&k.length===36);
-    const allVehIds=[...vehIdsChalet,...vehIdsCamino];
+    const isUUID=(k)=>typeof k==="string"&&k.length===36&&k.indexOf("-")>=0;
+    const allPersIds=[...persIdsChalet,...persIdsCamino].filter(isUUID);
+    const allVehIds=[...vehIdsChalet,...vehIdsCamino].filter(isUUID);
     const[{data:pers},{data:vehs}]=await Promise.all([
       allPersIds.length?db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"}):{data:[]},
       allVehIds.length?db.sel("vehiculos",{cols:"id,patente,descripcion,tipo,empresa"}):{data:[]},
     ]);
+    const persMap={};(pers||[]).forEach(p=>{persMap[p.id]=p;});
+    const vehMap={};(vehs||[]).forEach(v=>{vehMap[v.id]=v;});
+    const synthPer=(k)=>({id:k,nombre:"Sin registrar",apellido:"",dni:k,empresa:"DNI no encontrado en la base",_synth:true});
+    const synthVeh=(k)=>{const pat=String(k).indexOf("No registrado:")===0?String(k).replace("No registrado:","").trim():k;return{id:k,patente:pat,descripcion:"Vehículo no registrado en la base",tipo:"Otro",empresa:"",_synth:true};};
     setPubChalet({
       persChalet:persIdsChalet.length,
       persCamino:persIdsCamino.length,
       vehChalet:vehIdsChalet.length,
       vehCamino:vehIdsCamino.length,
-      persListChalet:(pers||[]).filter(p=>persIdsChalet.includes(p.id)),
-      persListCamino:(pers||[]).filter(p=>persIdsCamino.includes(p.id)),
-      vehListChalet:(vehs||[]).filter(v=>vehIdsChalet.includes(v.id)),
-      vehListCamino:(vehs||[]).filter(v=>vehIdsCamino.includes(v.id)),
+      persListChalet:persIdsChalet.map(k=>persMap[k]||synthPer(k)),
+      persListCamino:persIdsCamino.map(k=>persMap[k]||synthPer(k)),
+      vehListChalet:vehIdsChalet.map(k=>vehMap[k]||synthVeh(k)),
+      vehListCamino:vehIdsCamino.map(k=>vehMap[k]||synthVeh(k)),
     });
   };
 
