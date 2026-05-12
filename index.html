@@ -276,6 +276,54 @@ const chkAuth=(type,id,habs)=>{
   const reason=ok?null:(!shOk?"Sin habilitacion S&H Ingreso":"Sin habilitacion CP Ingreso");
   return{ok,reason,activeAuths:active};
 };
+// Devuelve pills coloreadas + decisión de bloqueo según el puesto (P1 / P2 / P3).
+// Reglas:
+//  Persona — P1 bloquea si falta sh_ingreso o cp_ingreso. P2/P3 bloquea además si falta sh_chalet.
+//            sh_manejo solo advierte (naranja), nunca bloquea.
+//  Vehiculo — P1 bloquea solo si falta sh_ingreso. P2/P3 bloquea también si falta sh_manejo (subir chalet).
+const getHabPills=(entityType,entityId,habs,puesto)=>{
+  const t_=today();
+  const getStatus=(tipo)=>{
+    const h=habs.find(a=>a.entity_type===entityType&&(entityType==="persona"?a.persona_id:a.vehiculo_id)===entityId&&a.tipo===tipo);
+    if(!h)return"missing";
+    if(h.suspendida)return"suspended";
+    if(h.fecha_hasta&&String(h.fecha_hasta).slice(0,10)<t_)return"expired";
+    return"ok";
+  };
+  const isP1=puesto==="Puesto 1";
+  if(entityType==="persona"){
+    const shIng=getStatus("sh_ingreso"),shCha=getStatus("sh_chalet"),shMan=getStatus("sh_manejo"),cpIng=getStatus("cp_ingreso");
+    const blocks=isP1?(shIng!=="ok"||cpIng!=="ok"):(shIng!=="ok"||shCha!=="ok"||cpIng!=="ok");
+    const reasons=[];
+    if(shIng!=="ok")reasons.push("S&H Ingreso");
+    if(!isP1&&shCha!=="ok")reasons.push("S&H Subir Chalet");
+    if(cpIng!=="ok")reasons.push("CP Ingreso");
+    return{
+      pills:[
+        {label:"S&H Ingreso",short:"ING",color:shIng==="ok"?"green":"red"},
+        {label:"Subir a Chalet",short:"CHA",color:shCha==="ok"?"green":"red"},
+        {label:"Manejo Montaña",short:"MAN",color:shMan==="ok"?"green":"orange"},
+        {label:"CP Ingreso",short:"CP",color:cpIng==="ok"?"green":"red"},
+      ],
+      blocks,
+      reason:blocks?("Falta: "+reasons.join(" + ")):null,
+    };
+  }
+  // vehiculo
+  const shIng=getStatus("sh_ingreso"),shMan=getStatus("sh_manejo");
+  const blocks=isP1?(shIng!=="ok"):(shIng!=="ok"||shMan!=="ok");
+  const reasons=[];
+  if(shIng!=="ok")reasons.push("S&H Ingreso");
+  if(!isP1&&shMan!=="ok")reasons.push("S&H Subir Chalet");
+  return{
+    pills:[
+      {label:"S&H Ingreso",short:"ING",color:shIng==="ok"?"green":"red"},
+      {label:"Subir Chalet",short:"CHA",color:shMan==="ok"?"green":"red"},
+    ],
+    blocks,
+    reason:blocks?("Falta: "+reasons.join(" + ")):null,
+  };
+};
 
 function Spin({t="Cargando..."}){return <div className="load"><div className="spin"/>{t}</div>;}
 function Clock(){
@@ -335,14 +383,11 @@ function ChaletMini({proyectoId}){
   const[showList,setShowList]=useState(null);
   const load=async()=>{
     try{
-      const[net2,net3,vNet2,vNet3]=await Promise.all([
-        calcNet("Puesto 2"),calcNet("Puesto 3"),
-        calcNetVehiculos("Puesto 2"),calcNetVehiculos("Puesto 3"),
-      ]);
-      const persIdsChalet=Object.entries(net3).filter(([_,v])=>v>0).map(([k])=>k);
-      const persIdsCamino=Object.entries(net2).filter(([k,v])=>{const enP3=net3[k]||0;return v>0&&enP3<=0;}).map(([k])=>k);
-      const vehIdsChalet=Object.entries(vNet3).filter(([_,v])=>v>0).map(([k])=>k);
-      const vehIdsCamino=Object.entries(vNet2).filter(([k,v])=>{const enP3=vNet3[k]||0;return v>0&&enP3<=0;}).map(([k])=>k);
+      const pos=await calcPosicionesMontana();
+      const persIdsChalet=Object.entries(pos.persona).filter(([_,p])=>p==="chalet").map(([k])=>k);
+      const persIdsCamino=Object.entries(pos.persona).filter(([_,p])=>p==="camino").map(([k])=>k);
+      const vehIdsChalet=Object.entries(pos.vehiculo).filter(([_,p])=>p==="chalet").map(([k])=>k);
+      const vehIdsCamino=Object.entries(pos.vehiculo).filter(([_,p])=>p==="camino").map(([k])=>k);
       const isUUID=(k)=>typeof k==="string"&&k.length===36&&k.indexOf("-")>=0;
       const allPIds=[...persIdsChalet,...persIdsCamino].filter(isUUID);
       const allVIds=[...vehIdsChalet,...vehIdsCamino].filter(isUUID);
@@ -451,6 +496,73 @@ const calcNetVehiculos=async(puesto)=>{
   return netMap;
 };
 
+// calcPosicionesMontana: control cruzado P2 ↔ P3.
+// Para cada persona/vehículo, mira TODAS sus fichadas del día en P2 y P3 (sesiones + manuales),
+// las ordena por timestamp y decide la posición según la ÚLTIMA. Así, si P3 omitió la salida y P2 la
+// registra, la persona deja de figurar en chalet/camino automáticamente.
+//  - última P3 entrada → "chalet"
+//  - última P3 salida  → "camino" (bajando)
+//  - última P2 entrada → "camino" (subiendo)
+//  - última P2 salida  → "fuera"
+const calcPosicionesMontana=async()=>{
+  const todayStr=today();
+  const[r1,r2,r3,r4]=await Promise.all([
+    db.sel("sesiones_acceso",{f:[["puesto","eq","Puesto 2"],["cerrada_at","gte",todayStr+"T00:00:00"]],ord:"cerrada_at.asc",lim:5000}),
+    db.sel("sesiones_acceso",{f:[["puesto","eq","Puesto 3"],["cerrada_at","gte",todayStr+"T00:00:00"]],ord:"cerrada_at.asc",lim:5000}),
+    db.sel("movimientos_manuales",{f:[["puesto","eq","Puesto 2"],["created_at","gte",todayStr+"T00:00:00"]],ord:"created_at.asc",lim:5000}),
+    db.sel("movimientos_manuales",{f:[["puesto","eq","Puesto 3"],["created_at","gte",todayStr+"T00:00:00"]],ord:"created_at.asc",lim:5000}),
+  ]);
+  const ses=[...(r1.data||[]),...(r2.data||[])];
+  const man=[...(r3.data||[]),...(r4.data||[])];
+  const sesIds=ses.map(s=>s.id);
+  let regs=[];
+  if(sesIds.length>0){
+    const{data}=await db.sel("registros_acceso",{cols:"persona_id,dni_raw,sesion_id",inFilter:["sesion_id",sesIds]});
+    regs=data||[];
+  }
+  const sesById={};ses.forEach(s=>{sesById[s.id]=s;});
+  const dniToId={};regs.forEach(r=>{if(r.persona_id&&r.dni_raw)dniToId[r.dni_raw]=r.persona_id;});
+  const normKey=(pid,dni)=>pid||(dniToId[dni]||dni);
+  const personEvents={},vehEvents={};
+  regs.forEach(r=>{
+    const s=sesById[r.sesion_id];if(!s)return;
+    const key=normKey(r.persona_id,r.dni_raw);
+    if(!personEvents[key])personEvents[key]=[];
+    personEvents[key].push({t:new Date(s.cerrada_at).getTime(),puesto:s.puesto,dir:s.direccion});
+  });
+  man.forEach(m=>{
+    const key=normKey(m.persona_id,m.dni_raw)||("m_"+m.id);
+    if(!personEvents[key])personEvents[key]=[];
+    personEvents[key].push({t:new Date(m.created_at).getTime(),puesto:m.puesto,dir:m.direccion});
+  });
+  ses.forEach(s=>{
+    const key=s.vehiculo_id||(s.vehiculo_razon&&s.vehiculo_razon.startsWith("No registrado:")?s.vehiculo_razon:null);
+    if(!key)return;
+    if(!vehEvents[key])vehEvents[key]=[];
+    vehEvents[key].push({t:new Date(s.cerrada_at).getTime(),puesto:s.puesto,dir:s.direccion});
+  });
+  const classifyLast=(last)=>{
+    if(last.puesto==="Puesto 3"&&last.dir==="entrada")return"chalet";
+    if(last.puesto==="Puesto 3"&&last.dir==="salida")return"camino";
+    if(last.puesto==="Puesto 2"&&last.dir==="entrada")return"camino";
+    return"fuera";
+  };
+  const persona={},vehiculo={},personaLast={},vehiculoLast={};
+  Object.entries(personEvents).forEach(([k,e])=>{
+    e.sort((a,b)=>a.t-b.t);
+    const last=e[e.length-1];
+    persona[k]=classifyLast(last);
+    personaLast[k]=last;
+  });
+  Object.entries(vehEvents).forEach(([k,e])=>{
+    e.sort((a,b)=>a.t-b.t);
+    const last=e[e.length-1];
+    vehiculo[k]=classifyLast(last);
+    vehiculoLast[k]=last;
+  });
+  return{persona,vehiculo,personaLast,vehiculoLast};
+};
+
 function ChaletCounter({proyectoId}){
   const[countChalet,setCountChalet]=useState(null);
   const[countCamino,setCountCamino]=useState(null);
@@ -463,16 +575,11 @@ function ChaletCounter({proyectoId}){
   const[vehiculosCamino,setVehiculosCamino]=useState([]);
   const load=async()=>{
     try{
-    const[net2,net3,vNet2,vNet3]=await Promise.all([
-      calcNet("Puesto 2"),calcNet("Puesto 3"),
-      calcNetVehiculos("Puesto 2"),calcNetVehiculos("Puesto 3"),
-    ]);
-    // Personas en chalet (neto + en P3)
-    const persIdsChalet=Object.entries(net3).filter(([_,v])=>v>0).map(([k])=>k);
-    const inChalet=persIdsChalet.length;
-    // Personas en camino (neto + en P2 pero NO en chalet)
-    const persIdsCamino=Object.entries(net2).filter(([k,v])=>v>0&&!persIdsChalet.includes(k)).map(([k])=>k);
-    setCountChalet(inChalet);
+    const pos=await calcPosicionesMontana();
+    // Posición = última fichada en P2/P3 (control cruzado, no depende de net por puesto)
+    const persIdsChalet=Object.entries(pos.persona).filter(([_,p])=>p==="chalet").map(([k])=>k);
+    const persIdsCamino=Object.entries(pos.persona).filter(([_,p])=>p==="camino").map(([k])=>k);
+    setCountChalet(persIdsChalet.length);
     setCountCamino(persIdsCamino.length);
     const isUUID=(k)=>typeof k==="string"&&k.length===36&&k.indexOf("-")>=0;
     const synthPer=(k)=>({id:k,nombre:"Sin registrar",apellido:"",dni:k,empresa:"DNI no encontrado en la base",_synth:true});
@@ -486,13 +593,9 @@ function ChaletCounter({proyectoId}){
     }
     setPersonas(persIdsChalet.map(k=>persMap[k]||synthPer(k)));
     setPersonasCamino(persIdsCamino.map(k=>persMap[k]||synthPer(k)));
-    // Vehiculos en chalet (neto + en P3)
-    const vehIdsChalet=Object.entries(vNet3).filter(([_,v])=>v>0).map(([k])=>k);
-    // En camino: neto positivo en P2, y neto en P3 <= 0
-    const vehIdsCamino=Object.entries(vNet2).filter(([k,v])=>{
-      const enP3=vNet3[k]||0;
-      return v>0&&enP3<=0;
-    }).map(([k])=>k);
+    // Vehículos (mismo modelo cruzado: última fichada en P2/P3)
+    const vehIdsChalet=Object.entries(pos.vehiculo).filter(([_,p])=>p==="chalet").map(([k])=>k);
+    const vehIdsCamino=Object.entries(pos.vehiculo).filter(([_,p])=>p==="camino").map(([k])=>k);
     setCountVehChalet(vehIdsChalet.length);
     setCountVehCamino(vehIdsCamino.length);
     // Load vehiculo details (incluye placeholders para "No registrado: ...")
@@ -859,13 +962,9 @@ function PersonaDetalleModal({persona,proyectoId,onClose}){
   useEffect(()=>{
     const load=async()=>{
       // Verificar ubicación actual
-      const[net2,net3]=await Promise.all([calcNet("Puesto 2"),calcNet("Puesto 3")]);
-      const enChalet=(net3[persona.id]||0)>0;
-      const enP2=(net2[persona.id]||0)>0;
-      const enP3=(net3[persona.id]||0);
-      if(enChalet)setUbicacion("chalet");
-      else if(enP2>0&&enP3<=0)setUbicacion("camino");
-      else setUbicacion("fuera");
+      const pos=await calcPosicionesMontana();
+      const p=pos.persona[persona.id];
+      setUbicacion(p==="chalet"?"chalet":p==="camino"?"camino":"fuera");
 
       // Historial de accesos (últimos 20)
       const todayStr=today();
@@ -941,13 +1040,9 @@ function VehiculoDetalleModal({vehiculo,proyectoId,onClose}){
   useEffect(()=>{
     const load=async()=>{
       // Ubicación actual basada en netos P2/P3
-      const[vNet2,vNet3]=await Promise.all([calcNetVehiculos("Puesto 2"),calcNetVehiculos("Puesto 3")]);
-      const enChalet=(vNet3[vehiculo.id]||0)>0;
-      const enP2=(vNet2[vehiculo.id]||0);
-      const enP3=(vNet3[vehiculo.id]||0);
-      if(enChalet)setUbicacion("chalet");
-      else if(enP2>0&&enP3<=0)setUbicacion("camino");
-      else setUbicacion("fuera");
+      const pos=await calcPosicionesMontana();
+      const p=pos.vehiculo[vehiculo.id];
+      setUbicacion(p==="chalet"?"chalet":p==="camino"?"camino":"fuera");
 
       // Últimas 30 sesiones del vehículo
       const{data:ses}=await db.sel("sesiones_acceso",{
@@ -1816,8 +1911,8 @@ function Usuarios({currentUser}){
     }catch(e){alert("Error: "+e.message);}
     setResetting(false);
   };
-  const RC={admin:"t-e",sh:"t-v",cp:"t-a",puesto:"t-p",logistica:"t-p"};
-  const RL={admin:"Admin",sh:"S&H",cp:"Control Personal",puesto:"Puesto",logistica:"Logistica"};
+  const RC={admin:"t-e",sh:"t-v",cp:"t-a",puesto:"t-p",logistica:"t-p",cocina_campamento:"t-a",cocina_chalet:"t-a"};
+  const RL={admin:"Admin",sh:"S&H",cp:"Control Personal",puesto:"Puesto",logistica:"Logistica",cocina_campamento:"Cocina Campamento",cocina_chalet:"Cocina Chalet"};
   return <div>
     <div className="ph2"><div className="ptit">Usuarios del <span>Sistema</span></div></div>
     <div style={{marginBottom:14,padding:"12px 16px",background:"rgba(245,158,11,.07)",border:"1px solid rgba(245,158,11,.25)",borderRadius:6,fontSize:13,color:"var(--tx2)"}}>Para crear o modificar usuarios, ingresa al <strong style={{color:"var(--tx)"}}>dashboard de Supabase → Authentication → Users</strong>.</div>
@@ -1838,6 +1933,140 @@ function Usuarios({currentUser}){
         {resetting?"Borrando...":"Reset movimientos de hoy"}
       </button>
     </div>
+  </div>;
+}
+
+// ─── VIANDAS ──────────────────────────────────────────────────────────────────
+// Hora Argentina (GMT-3) actual, devuelve el hour como entero
+const horaArg=()=>{
+  try{return parseInt(new Date().toLocaleString("es-AR",{timeZone:"America/Argentina/Buenos_Aires",hour:"2-digit",hour12:false}));}
+  catch(e){return new Date().getHours();}
+};
+
+function ViandasAddModal({user,proyectoId,existentes,onClose,onAdded}){
+  const[search,setSearch]=useState("");
+  const[personas,setPersonas]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[saving,setSaving]=useState(null);
+  useEffect(()=>{
+    db.sel("personas",{f:[["deleted_at","is","null"]],ord:"apellido.asc",lim:5000}).then(({data})=>{if(data)setPersonas(data);setLoading(false);});
+  },[]);
+  const existSet=new Set(existentes.map(e=>e.persona_id));
+  const filtered=personas.filter(p=>!existSet.has(p.id)).filter(p=>!search||`${p.nombre} ${p.apellido} ${p.dni} ${p.empresa||""}`.toLowerCase().includes(search.toLowerCase()));
+  const add=async(persona)=>{
+    setSaving(persona.id);
+    const todayStr=today();
+    const{ok}=await db.ins("comidas_diarias",{
+      proyecto_id:proyectoId,persona_id:persona.id,fecha:todayStr,
+      tipo:"almuerzo",ubicacion:"chalet",come:true,fuente:"manual",
+      creada_por:user.id,modificada_por:user.id,
+    },true,"persona_id,fecha,tipo");
+    setSaving(null);
+    if(!ok){alert("No se pudo agregar.");return;}
+    onAdded&&onAdded();
+  };
+  return <div className="mo"><div className="md">
+    <div className="mh"><div className="mt">Agregar comensal</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div className="f"><label>Buscar persona</label><input placeholder="Nombre, apellido o DNI..." value={search} onChange={e=>setSearch(e.target.value)} autoFocus/></div>
+      {loading?<Spin/>:<div style={{maxHeight:340,overflowY:"auto",marginTop:4}}>
+        {filtered.slice(0,30).map(p=><div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:5,marginBottom:3,cursor:saving?"wait":"pointer",opacity:saving===p.id?.5:1}} onClick={()=>!saving&&add(p)}>
+          <div className="av">{ini(`${p.nombre} ${p.apellido}`)}</div>
+          <div style={{flex:1}}><div style={{fontWeight:500}}>{p.nombre} {p.apellido}</div><div style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa||"—"} · DNI {p.dni}</div></div>
+          {saving===p.id&&<span style={{fontSize:11,color:"var(--tx2)"}}>agregando...</span>}
+        </div>)}
+        {filtered.length===0&&<div style={{textAlign:"center",color:"var(--tx2)",padding:20,fontSize:13}}>{personas.length===0?"Sin personas":"Sin resultados o ya están en la lista"}</div>}
+      </div>}
+    </div>
+  </div></div>;
+}
+
+function Viandas({user,proyectoId}){
+  const[comidas,setComidas]=useState([]);
+  const[personasMap,setPersonasMap]=useState({});
+  const[lastEvents,setLastEvents]=useState({});
+  const[loading,setLoading]=useState(true);
+  const[showAdd,setShowAdd]=useState(false);
+  const[filterEmpresa,setFilterEmpresa]=useState({});
+  const canEdit=user.rol==="admin"||user.puesto_nombre==="Puesto 2";
+  const todayStr=today();
+
+  const load=async()=>{
+    const[{data:c},pos]=await Promise.all([
+      db.sel("comidas_diarias",{f:[["fecha","eq",todayStr],["tipo","eq","almuerzo"],["ubicacion","eq","chalet"],["come","eq",true]],ord:"creada_at.asc",lim:1000}),
+      calcPosicionesMontana(),
+    ]);
+    const items=c||[];
+    setComidas(items);
+    setLastEvents(pos.personaLast||{});
+    const pids=items.map(x=>x.persona_id);
+    if(pids.length>0){
+      const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,dni",inFilter:["id",pids]});
+      const pm={};(pers||[]).forEach(p=>{pm[p.id]=p;});
+      setPersonasMap(pm);
+    }else setPersonasMap({});
+    setLoading(false);
+  };
+  useEffect(()=>{load();const i=setInterval(load,15000);return()=>clearInterval(i);},[]);
+
+  const quitar=async(c)=>{
+    const p=personasMap[c.persona_id];
+    const nom=p?`${p.nombre} ${p.apellido}`:"esta persona";
+    if(!confirm(`Quitar a ${nom} de la lista de comensales en chalet?`))return;
+    await db.upd("comidas_diarias",{come:false,modificada_por:user.id,modificada_at:new Date().toISOString()},[["id","eq",c.id]]);
+    load();
+  };
+
+  const empresas=[...new Set(comidas.map(c=>{const p=personasMap[c.persona_id];return p?(p.empresa||"Sin empresa"):"—";}))].sort();
+  const activeEmpresas=Object.keys(filterEmpresa).filter(e=>filterEmpresa[e]);
+  const filtered=activeEmpresas.length===0?comidas:comidas.filter(c=>{const p=personasMap[c.persona_id];const e=p?(p.empresa||"Sin empresa"):"—";return filterEmpresa[e];});
+
+  return <div>
+    <div className="ph2">
+      <div className="ptit">Viandas · <span>Almuerzo</span> de hoy</div>
+      {canEdit&&<button className="badd" onClick={()=>setShowAdd(true)}>+ Agregar comensal</button>}
+    </div>
+    <div style={{background:"linear-gradient(135deg,rgba(245,158,11,.15),rgba(139,92,246,.08))",border:"2px solid var(--acc)",borderRadius:10,padding:"18px 24px",marginBottom:18,display:"flex",alignItems:"center",gap:20,flexWrap:"wrap"}}>
+      <div style={{fontFamily:"var(--fh)",fontSize:64,fontWeight:900,color:"var(--acc)",lineHeight:1}}>{filtered.length}</div>
+      <div>
+        <div style={{fontFamily:"var(--fh)",fontSize:18,fontWeight:800,color:"var(--acc)",textTransform:"uppercase",letterSpacing:".05em"}}>Comensales en Chalet</div>
+        <div style={{fontSize:13,color:"var(--tx2)",marginTop:2}}>{fmtD(todayStr)} · actualiza cada 15 seg</div>
+      </div>
+      <button onClick={()=>{
+        const lines=filtered.map(c=>{const p=personasMap[c.persona_id];return p?`${p.nombre} ${p.apellido} — ${p.empresa||""}`:`(${c.persona_id})`;});
+        const txt=`COMENSALES EN CHALET ${fmtD(todayStr)} — TOTAL ${filtered.length}\n\n${lines.join("\n")}`;
+        navigator.clipboard.writeText(txt).catch(()=>{const el=document.createElement("textarea");el.value=txt;document.body.appendChild(el);el.select();document.execCommand("copy");document.body.removeChild(el);});
+      }} style={{background:"rgba(245,158,11,.15)",border:"1px solid var(--acc)",color:"var(--acc)",borderRadius:5,padding:"7px 14px",fontFamily:"var(--fh)",fontSize:13,fontWeight:700,textTransform:"uppercase",cursor:"pointer",marginLeft:"auto"}}>Copiar lista</button>
+    </div>
+    {empresas.length>1&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+      {empresas.map(e=>{const on=!!filterEmpresa[e];return <button key={e} onClick={()=>setFilterEmpresa(f=>({...f,[e]:!f[e]}))} style={{padding:"3px 10px",borderRadius:12,border:"1px solid",fontSize:11,fontFamily:"var(--fm)",cursor:"pointer",background:on?"var(--acc2)":"var(--s2)",color:on?"#fff":"var(--tx2)",borderColor:on?"var(--acc2)":"var(--bd)"}}>{e}</button>;})}
+      {activeEmpresas.length>0&&<button className="bsm" onClick={()=>setFilterEmpresa({})} style={{fontSize:11}}>x Limpiar filtro</button>}
+    </div>}
+    {loading?<Spin/>:<div className="tw"><table>
+      <thead><tr><th>Persona</th><th>Empresa</th><th>Última fichada</th>{canEdit&&<th></th>}</tr></thead>
+      <tbody>
+        {filtered.length===0&&<tr><td colSpan={canEdit?4:3} style={{textAlign:"center",color:"var(--tx2)",padding:28}}>{comidas.length===0?"Aún nadie está contado para almorzar en chalet.":"Sin coincidencias con el filtro."}</td></tr>}
+        {filtered.map(c=>{
+          const p=personasMap[c.persona_id];
+          const le=lastEvents[c.persona_id];
+          return <tr key={c.id}>
+            <td><div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div className="av">{p?ini(`${p.nombre} ${p.apellido}`):"?"}</div>
+              <div>
+                <div style={{fontWeight:500}}>{p?`${p.nombre} ${p.apellido}`:"(persona borrada)"}</div>
+                {p&&<div style={{fontSize:11,color:"var(--tx2)"}}>DNI {p.dni}</div>}
+              </div>
+            </div></td>
+            <td style={{color:"var(--tx2)",fontSize:12}}>{p?p.empresa||"—":"—"}</td>
+            <td style={{fontSize:12,color:"var(--tx2)"}}>
+              {le?<><span className={`ld ld-${le.dir==="entrada"?"in":"out"}`} style={{fontSize:10}}>{le.dir}</span> <span style={{marginLeft:6,fontFamily:"var(--fm)"}}>{le.puesto} · {fmtTs(new Date(le.t).toISOString())}</span></>:"sin fichada hoy"}
+            </td>
+            {canEdit&&<td><button className="bsm bsm-r" onClick={()=>quitar(c)}>Quitar</button></td>}
+          </tr>;
+        })}
+      </tbody>
+    </table></div>}
+    {showAdd&&<ViandasAddModal user={user} proyectoId={proyectoId} existentes={comidas} onClose={()=>setShowAdd(false)} onAdded={()=>{setShowAdd(false);load();}}/>}
   </div>;
 }
 
@@ -2167,7 +2396,7 @@ function Puesto({user,pid}){
   const[saving,setSaving]=useState(false);
   const[habs,setHabs]=useState([]);
   const[showManual,setShowManual]=useState(false);
-  const[showOffline,setShowOffline]=useState(false);
+  const[showOffline,setShowOffline]=useState(false); // legacy, ya no se dispara desde UI
   const[detalleSes,setDetalleSes]=useState(null);
   const[refreshKey,setRefreshKey]=useState(0);
   const[cola,setCola]=useState([]); // escaneadas pausadas
@@ -2176,6 +2405,8 @@ function Puesto({user,pid}){
   const[warnDupVeh,setWarnDupVeh]=useState(null); // {patente, dir} si ya figura adentro
   const[saveStatus,setSaveStatus]=useState(null); // null | "online" | "offline"
   const[pendingRefresh,setPendingRefresh]=useState(0);
+  const[comidasHoy,setComidasHoy]=useState({}); // persona_id -> {id, come, ubicacion}
+  const[warnSalidaComida,setWarnSalidaComida]=useState(null); // {paxNombres, dirFinal}
 
   const[offline,setOffline]=useState(false);
 
@@ -2207,6 +2438,17 @@ function Puesto({user,pid}){
     loadHabs();
   },[pid]);
   useEffect(()=>{setTimeout(()=>ref.current&&ref.current.focus(),80);},[fase,flash]);
+
+  // Carga las comidas de hoy (almuerzo) para alertas al fichar salida y para checkbox en escaneo
+  const loadComidasHoy=async()=>{
+    if(!isOnline())return;
+    try{
+      const{data}=await db.sel("comidas_diarias",{f:[["fecha","eq",today()],["tipo","eq","almuerzo"]],lim:2000});
+      const map={};(data||[]).forEach(c=>{map[c.persona_id]=c;});
+      setComidasHoy(map);
+    }catch(e){console.warn("loadComidasHoy:",e);}
+  };
+  useEffect(()=>{loadComidasHoy();const i=setInterval(loadComidasHoy,30000);return()=>clearInterval(i);},[]);
 
   const sf=d=>{setFlash(d);setTimeout(()=>setFlash(null),2800);};
 
@@ -2281,19 +2523,19 @@ function Puesto({user,pid}){
             suggestedPax=aprobados.map(rr=>{
               const p=personasMap[rr.persona_id];
               if(!p)return null;
-              const auth=chkAuth("persona",p.id,freshHabs);
-              return {raw:p.dni,person:p,...auth,_sugerido:true};
+              const auth=getHabPills("persona",p.id,freshHabs,effPuesto);
+              return {raw:p.dni,person:p,ok:!auth.blocks,reason:auth.reason,pills:auth.pills,activeAuths:[],_sugerido:true};
             }).filter(Boolean);
             suggestedFrom={puesto:otherPuesto,timestamp:lastSes[0].cerrada_at,direccion:lastSes[0].direccion};
           }
         }
       }catch(e){console.warn("scanV: error sugiriendo pasajeros",e);}
     }
-    const r=found.id?chkAuth("vehiculo",found.id,freshHabs):{ok:false,reason:"Vehiculo no registrado"};
-    setVeh({data:found,...r});setVal("");
+    const r=found.id?getHabPills("vehiculo",found.id,freshHabs,effPuesto):{blocks:true,reason:"Vehiculo no registrado",pills:[]};
+    setVeh({data:found,ok:!r.blocks,reason:r.reason,pills:r.pills,activeAuths:[]});setVal("");
     if(suggestedPax&&suggestedPax.length){setPax(suggestedPax);setPaxSugFrom(suggestedFrom);}
     else{setPaxSugFrom(null);}
-    if(r.ok||found._noRegistrado)setFase(F.P);
+    if(!r.blocks||found._noRegistrado)setFase(F.P);
   },[val,habs,user,effPuesto]);
 
   const scanP=useCallback(async()=>{
@@ -2325,11 +2567,18 @@ function Puesto({user,pid}){
       sf({ok:false,label:"SIN REGISTRO",sub:v,reason:"DNI no encontrado"});
       setVal("");return;
     }
-    const r=chkAuth("persona",found.id,habs);
-    setPax(p=>[...p,{raw:found.dni,person:found,...r}]);
-    sf({ok:r.ok,label:r.ok?"ACCESO PERMITIDO":"ACCESO DENEGADO",sub:`${found.nombre} ${found.apellido}`,detail:`DNI ${found.dni} · ${found.empresa||""}`,reason:r.ok?null:r.reason});
+    const r=getHabPills("persona",found.id,habs,effPuesto);
+    const ok=!r.blocks;
+    // Comida de hoy + default checkbox "almorzará arriba"
+    const comidaInfo=comidasHoy[found.id];
+    const tieneComidaHoy=!!(comidaInfo&&comidaInfo.come&&comidaInfo.ubicacion==="chalet"&&comidaInfo.tipo==="almuerzo");
+    const esMontana=effPuesto==="Puesto 2"||effPuesto==="Puesto 3";
+    const comeArribaDefault=esMontana&&horaArg()<13;
+    setPax(p=>[...p,{raw:found.dni,person:found,ok,reason:r.reason,pills:r.pills,activeAuths:[],tieneComidaHoy,comeArriba:tieneComidaHoy||comeArribaDefault}]);
+    const flashExtra=tieneComidaHoy?" · 🍽 ya contado para almorzar arriba":"";
+    sf({ok,label:ok?"ACCESO PERMITIDO":"ACCESO DENEGADO",sub:`${found.nombre} ${found.apellido}${flashExtra}`,detail:`DNI ${found.dni} · ${found.empresa||""}`,reason:ok?null:r.reason});
     setVal("");
-  },[val,habs,pax,user]);
+  },[val,habs,pax,user,effPuesto,comidasHoy]);
 
   const scan=()=>{if(fase===F.V)scanV();else if(fase===F.P)scanP();};
   const onKey=e=>{if(e.key==="Enter")scan();};
@@ -2377,6 +2626,21 @@ function Puesto({user,pid}){
     }catch(e){
       console.warn("cerrar: fallo online, guardando offline:",e.message);
       offlineStore.add(offlinePayload);
+    }
+    // Si la fichada se guardó online + es entrada a P2/P3 antes de las 13: upsert comidas_diarias
+    if(okOnline&&d==="entrada"&&(effPuesto==="Puesto 2"||effPuesto==="Puesto 3")&&horaArg()<13){
+      const todayStr=today();
+      for(const p of pax){
+        if(!p.person||!p.ok)continue;
+        try{
+          await db.ins("comidas_diarias",{
+            proyecto_id:pid,persona_id:p.person.id,fecha:todayStr,
+            tipo:"almuerzo",ubicacion:"chalet",come:p.comeArriba!==false,
+            fuente:"auto",creada_por:user.id,modificada_por:user.id,
+          },true,"persona_id,fecha,tipo");
+        }catch(e){console.warn("upsert comidas_diarias:",e);}
+      }
+      loadComidasHoy();
     }
     setDir(d);setSaving(false);setSaveStatus(okOnline?"online":"offline");
     if(!okOnline)setPendingRefresh(k=>k+1);
@@ -2450,7 +2714,6 @@ function Puesto({user,pid}){
       {flash&&<div className="fl fl-no"><div className="fll">{flash.label}</div><div style={{fontWeight:600,marginTop:2}}>{flash.sub}</div>{flash.reason&&<div style={{fontSize:13,color:"var(--rd)",marginTop:4}}>{flash.reason}</div>}</div>}
       {veh&&!veh.ok&&<div style={{marginTop:10,background:"rgba(239,68,68,.07)",border:"2px solid var(--rd)",borderRadius:8,padding:"16px 20px"}}><div style={{fontFamily:"var(--fh)",fontSize:24,fontWeight:800,color:"var(--rd)"}}>VEHICULO BLOQUEADO</div><div style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:600,marginTop:4}}>{veh.data.patente}</div><div style={{fontSize:13,color:"var(--rd)",marginTop:6}}>{veh.reason}</div><button onClick={()=>setFase(F.P)} style={{marginTop:12,background:"none",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:4,padding:"7px 16px",cursor:"pointer",fontSize:13}}>Registrar igualmente</button></div>}
       <button className="btn-manual" onClick={()=>setShowManual(true)}>+ Registrar movimiento sin vehiculo</button>
-      <button className="btn-offline" onClick={()=>setShowOffline(true)}>Sin internet — registrar offline</button>
     </>}
             {fase===F.P&&<>
       {paxSugFrom&&pax.length>0&&pax.some(p=>p._sugerido)&&<div style={{background:"rgba(139,92,246,.1)",border:"1px solid rgba(139,92,246,.4)",borderRadius:6,padding:"9px 14px",marginBottom:10,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -2483,17 +2746,19 @@ function Puesto({user,pid}){
       {/* Flash debajo del input */}
       {flash&&<div className={`fl fl-${flash.ok?"ok":"no"}`} style={{marginBottom:10}}><div className="fll">{flash.label}</div><div style={{fontWeight:600,marginTop:2}}>{flash.sub}</div>{flash.detail&&<div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)"}}>{flash.detail}</div>}{flash.reason&&<div style={{fontSize:13,color:"var(--rd)",marginTop:4}}>{flash.reason}</div>}</div>}
       {/* Vehículo compacto debajo del input */}
-      {veh&&(()=>{
-        const habChalet=veh.activeAuths&&veh.activeAuths.some(a=>a.tipo==="sh_manejo");
-        return <div className={`vc ${veh.ok?"ok":"no"}`} style={{marginBottom:10}}>
-          <div style={{fontSize:26,lineHeight:1}}>{VI[veh.data.tipo]||"🚗"}</div>
-          <div style={{flex:1}}><div className="vp" style={{fontSize:15}}>{veh.data.patente}</div><div className="vd" style={{fontSize:11}}>{veh.data.descripcion}</div></div>
-          <div style={{display:"flex",gap:5,flexShrink:0}}>
-            <span className={veh.ok?"est-ok":"est-no"} style={{fontSize:10,padding:"2px 6px"}}>Ingreso</span>
-            <span className={habChalet?"est-ok":"est-no"} style={{fontSize:10,padding:"2px 6px"}}>Monta&ntilde;a</span>
-          </div>
-        </div>;
-      })()}
+      {veh&&<div className={`vc ${veh.ok?"ok":"no"}`} style={{marginBottom:10}}>
+        <div style={{fontSize:26,lineHeight:1}}>{VI[veh.data.tipo]||"🚗"}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div className="vp" style={{fontSize:15}}>{veh.data.patente}</div>
+          <div className="vd" style={{fontSize:11}}>{veh.data.descripcion}</div>
+        </div>
+        <div style={{display:"flex",gap:4,flexShrink:0,flexWrap:"wrap",justifyContent:"flex-end",maxWidth:140}}>
+          {(veh.pills||[]).map((pill,i)=>{
+            const cls=pill.color==='green'?"est-ok":pill.color==='red'?"est-no":"est-par";
+            return <span key={i} className={cls} title={pill.label} style={{fontSize:10,padding:"2px 6px"}}>{pill.short}</span>;
+          })}
+        </div>
+      </div>}
       {/* Lista de pasajeros crece hacia abajo */}
       {pax.length>0&&<div style={{marginBottom:10}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
@@ -2507,10 +2772,23 @@ function Puesto({user,pid}){
           {pax.map((p,i)=><div key={i} className={`pi ${p.ok?"ok":"no"}`}>
             <div className={`pd ${p.ok?"ok":"no"}`}/>
             <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",width:22}}>#{i+1}</div>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:600,fontSize:14}}>{p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI: ${p.raw}`}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                <div style={{fontWeight:600,fontSize:14}}>{p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI: ${p.raw}`}</div>
+                {p.tieneComidaHoy&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(245,158,11,.15)",border:"1px solid rgba(245,158,11,.4)",color:"var(--acc)",borderRadius:3,fontFamily:"var(--fm)",fontWeight:600,textTransform:"uppercase",letterSpacing:".05em"}}>🍽 EN LISTA</span>}
+              </div>
               {p.person&&<div style={{fontSize:12,color:"var(--tx2)"}}>{p.person.empresa} · DNI {p.raw}</div>}
               {!p.ok&&<div style={{fontSize:12,color:"var(--rd)"}}>{p.reason}</div>}
+              {p.pills&&p.pills.length>0&&<div style={{display:"flex",gap:3,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
+                {p.pills.map((pill,j)=>{
+                  const cls=pill.color==='green'?"est-ok":pill.color==='red'?"est-no":"est-par";
+                  return <span key={j} className={cls} title={pill.label} style={{fontSize:9,padding:"1px 5px",letterSpacing:".02em"}}>{pill.short}</span>;
+                })}
+                {(effPuesto==="Puesto 2"||effPuesto==="Puesto 3")&&p.person&&p.ok&&<label style={{display:"inline-flex",alignItems:"center",gap:4,marginLeft:6,fontSize:11,color:"var(--tx2)",cursor:"pointer",userSelect:"none"}}>
+                  <input type="checkbox" checked={p.comeArriba!==false} onChange={e=>setPax(px=>px.map((pp,j)=>j===i?{...pp,comeArriba:e.target.checked}:pp))} style={{width:"auto",cursor:"pointer",accentColor:"var(--acc)"}}/>
+                  🍽 almorzará en chalet
+                </label>}
+              </div>}
             </div>
             <button onClick={()=>setPax(px=>px.filter((_,j)=>j!==i))} style={{background:"none",border:"none",color:"var(--rd)",cursor:"pointer",fontSize:16,padding:"0 6px",opacity:.7}}>×</button>
           </div>)}
@@ -2550,7 +2828,18 @@ function Puesto({user,pid}){
             <div style={{fontSize:44,marginBottom:8}}>⬆️</div>
             {dirBtn.in.t}<div style={{fontSize:13,fontWeight:400,marginTop:4,color:"var(--tx2)"}}>{dirBtn.in.s}</div>
           </button>
-          <button className="dir-big-btn out" style={{padding:"28px 16px",fontSize:24}} onClick={()=>cerrar("salida")}>
+          <button className="dir-big-btn out" style={{padding:"28px 16px",fontSize:24}} onClick={()=>{
+            // Si bajamos antes de las 13 y hay gente contada para almorzar arriba, alertar
+            const esMontana=effPuesto==="Puesto 2"||effPuesto==="Puesto 3";
+            if(esMontana&&horaArg()<13){
+              const conComida=pax.filter(pp=>pp.person&&pp.tieneComidaHoy);
+              if(conComida.length>0){
+                setWarnSalidaComida({nombres:conComida.map(pp=>`${pp.person.nombre} ${pp.person.apellido}`),personaIds:conComida.map(pp=>pp.person.id)});
+                return;
+              }
+            }
+            cerrar("salida");
+          }}>
             <div style={{fontSize:44,marginBottom:8}}>⬇️</div>
             {dirBtn.out.t}<div style={{fontSize:13,fontWeight:400,marginTop:4,color:"var(--tx2)"}}>{dirBtn.out.s}</div>
           </button>
@@ -2591,6 +2880,30 @@ function Puesto({user,pid}){
       <button className="btn-manual" onClick={()=>setShowManual(true)}>+ Registrar movimiento sin vehiculo</button>
     </>}
     <RecentSessions key={refreshKey} puesto={effPuesto} onSelectSesion={setDetalleSes}/>
+    {warnSalidaComida&&<div className="mo"><div className="md">
+      <div className="mh"><div className="mt">🍽 Contado para almorzar arriba</div><button className="mc" onClick={()=>setWarnSalidaComida(null)}>x</button></div>
+      <div className="mb">
+        <div style={{padding:"10px 0 12px"}}>
+          <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10}}>Estas personas estaban contadas para almorzar en chalet hoy. Si bajan ahora (antes de las 13:00), seguramente no comen arriba.</div>
+          <div style={{padding:"10px 14px",background:"var(--s2)",borderRadius:6,marginBottom:14}}>
+            {warnSalidaComida.nombres.map((n,i)=><div key={i} style={{fontWeight:500,marginBottom:3}}>· {n}</div>)}
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+            <button className="bp" style={{background:"rgba(16,185,129,.2)",border:"2px solid var(--gr)",color:"var(--gr)"}} onClick={async()=>{
+              // Sacarlos de la lista de comensales + registrar la salida
+              const todayStr=today();
+              for(const pid_ of warnSalidaComida.personaIds){
+                await db.upd("comidas_diarias",{come:false,modificada_por:user.id,modificada_at:new Date().toISOString()},[["persona_id","eq",pid_],["fecha","eq",todayStr],["tipo","eq","almuerzo"]]);
+              }
+              setWarnSalidaComida(null);
+              cerrar("salida");
+            }}>Sacarlos de la lista y registrar salida</button>
+            <button className="bcanc" style={{color:"var(--tx)"}} onClick={()=>{setWarnSalidaComida(null);cerrar("salida");}}>Dejarlos en la lista y registrar salida</button>
+            <button className="bcanc" onClick={()=>setWarnSalidaComida(null)}>Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div></div>}
     {warnDupVeh&&<div className="mo"><div className="md">
       <div className="mh"><div className="mt">⚠️ Ya figuran adentro</div><button className="mc" onClick={()=>setWarnDupVeh(null)}>x</button></div>
       <div className="mb">
@@ -2641,18 +2954,11 @@ function PublicDashboard({onBack}){
   const[pubShowList,setPubShowList]=useState(null);
 
   const loadChalet=async()=>{
-    const[net2,net3,vNet2,vNet3]=await Promise.all([
-      calcNet("Puesto 2"),calcNet("Puesto 3"),
-      calcNetVehiculos("Puesto 2"),calcNetVehiculos("Puesto 3"),
-    ]);
-    const persIdsChalet=Object.entries(net3).filter(([_,v])=>v>0).map(([k])=>k);
-    // En camino: neto positivo en P2, y neto en P3 <= 0 (no llegaron al chalet aun)
-    const persIdsCamino=Object.entries(net2).filter(([k,v])=>{
-      const enP3=net3[k]||0;
-      return v>0&&enP3<=0;
-    }).map(([k])=>k);
-    const vehIdsChalet=Object.entries(vNet3).filter(([_,v])=>v>0).map(([k])=>k);
-    const vehIdsCamino=Object.entries(vNet2).filter(([k,v])=>{const enP3=vNet3[k]||0;return v>0&&enP3<=0;}).map(([k])=>k);
+    const pos=await calcPosicionesMontana();
+    const persIdsChalet=Object.entries(pos.persona).filter(([_,p])=>p==="chalet").map(([k])=>k);
+    const persIdsCamino=Object.entries(pos.persona).filter(([_,p])=>p==="camino").map(([k])=>k);
+    const vehIdsChalet=Object.entries(pos.vehiculo).filter(([_,p])=>p==="chalet").map(([k])=>k);
+    const vehIdsCamino=Object.entries(pos.vehiculo).filter(([_,p])=>p==="camino").map(([k])=>k);
     const isUUID=(k)=>typeof k==="string"&&k.length===36&&k.indexOf("-")>=0;
     const allPersIds=[...persIdsChalet,...persIdsCamino].filter(isUUID);
     const allVehIds=[...vehIdsChalet,...vehIdsCamino].filter(isUUID);
@@ -2967,7 +3273,7 @@ function App(){
 
   const login=async p=>{
     setUser(p);
-    setTab({puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per"}[p.rol]||"per");
+    setTab({puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi"}[p.rol]||"per");
     const{data}=await db.sel("proyectos",{f:[["activo","eq",true]]});
     if(data)setProyectos(data);
     setChecking(false);
@@ -2975,11 +3281,13 @@ function App(){
   const logout=async()=>{await authApi.signOut();setUser(null);setTab(null);setProyectos([]);};
 
   const TABS={
-    puesto:   [{k:"sc",l:"Escanear"},{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"}],
-    sh:       [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"}],
-    cp:       [{k:"per",l:"Personal"},{k:"reg",l:"Registros"}],
-    logistica:[{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"}],
-    admin:    [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"adm",l:"Usuarios"}],
+    puesto:           [{k:"sc",l:"Escanear"},{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"}],
+    sh:               [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"}],
+    cp:               [{k:"per",l:"Personal"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"}],
+    logistica:        [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"}],
+    cocina_campamento:[{k:"vi",l:"Viandas"},{k:"reg",l:"Registros"}],
+    cocina_chalet:    [{k:"vi",l:"Viandas"},{k:"reg",l:"Registros"}],
+    admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"},{k:"adm",l:"Usuarios"}],
   };
 
   if(checking)return <div className="lwrap"><Spin t="Iniciando..."/></div>;
@@ -3002,6 +3310,7 @@ function App(){
       {tab==="veh"&&<VehiculosPanel userRole={user.rol} currentUserId={user.id} proyectoId={pid}/>}
       {tab==="reg"&&<Registros defaultPuesto={user.rol==="puesto"?user.puesto_nombre:""}/>}
       {tab==="sc" &&<Puesto user={user} pid={pid}/>}
+      {tab==="vi" &&<Viandas user={user} proyectoId={pid}/>}
       {tab==="adm"&&<Usuarios currentUser={user}/>}
     </div>
   </div>;
