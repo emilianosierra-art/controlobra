@@ -2508,21 +2508,23 @@ function Puesto({user,pid}){
         setHabs(freshHabs);
       }
     }
-    // Sugerir pasajeros si el vehiculo paso hoy por el otro puesto de montaña (P2 ↔ P3)
+    // Sugerir pasajeros según la ÚLTIMA fichada del vehículo hoy en P2/P3.
+    // Refleja quién va a bordo ahora: si la última fue P3 entrada con 1 persona, sugiere esa 1
+    // (NO la entrada vieja de P2 con más gente). Cubre subida y bajada por igual.
     let suggestedPax=null;let suggestedFrom=null;
     if(found.id&&isOnline()&&(effPuesto==="Puesto 2"||effPuesto==="Puesto 3")){
-      const otherPuesto=effPuesto==="Puesto 2"?"Puesto 3":"Puesto 2";
       const todayStr=today();
       try{
-        const{data:lastSes}=await db.sel("sesiones_acceso",{
-          cols:"id,cerrada_at,direccion",
-          f:[["vehiculo_id","eq",found.id],["puesto","eq",otherPuesto],["cerrada_at","gte",todayStr+"T00:00:00"]],
-          ord:"cerrada_at.desc",lim:1
+        const{data:recentSes}=await db.sel("sesiones_acceso",{
+          cols:"id,cerrada_at,direccion,puesto",
+          f:[["vehiculo_id","eq",found.id],["cerrada_at","gte",todayStr+"T00:00:00"]],
+          ord:"cerrada_at.desc",lim:10
         });
-        if(lastSes&&lastSes[0]){
+        const lastMontana=(recentSes||[]).find(s=>s.puesto==="Puesto 2"||s.puesto==="Puesto 3");
+        if(lastMontana){
           const{data:regs}=await db.sel("registros_acceso",{
             cols:"persona_id,resultado",
-            f:[["sesion_id","eq",lastSes[0].id]]
+            f:[["sesion_id","eq",lastMontana.id]]
           });
           const aprobados=(regs||[]).filter(rr=>rr.persona_id&&rr.resultado==="aprobado");
           if(aprobados.length){
@@ -2535,7 +2537,7 @@ function Puesto({user,pid}){
               const auth=getHabPills("persona",p.id,freshHabs,effPuesto);
               return {raw:p.dni,person:p,ok:!auth.blocks,reason:auth.reason,pills:auth.pills,activeAuths:[],_sugerido:true};
             }).filter(Boolean);
-            suggestedFrom={puesto:otherPuesto,timestamp:lastSes[0].cerrada_at,direccion:lastSes[0].direccion};
+            suggestedFrom={puesto:lastMontana.puesto,timestamp:lastMontana.cerrada_at,direccion:lastMontana.direccion};
           }
         }
       }catch(e){console.warn("scanV: error sugiriendo pasajeros",e);}
@@ -2815,7 +2817,16 @@ function Puesto({user,pid}){
         :{in:{t:"INGRESA",s:"al chalet"},out:{t:"SALE",s:"del chalet"},q:"está"};
       return <>
       <div style={{marginBottom:16}}>
-        <div style={{fontFamily:"var(--fh)",fontSize:14,color:"var(--acc)",letterSpacing:".1em",textTransform:"uppercase",marginBottom:14,textAlign:"center",fontWeight:700}}>{effPuesto} · El vehículo y {pax.length} persona{pax.length!==1?"s":""} {dirBtn.q}...</div>
+        <div style={{fontFamily:"var(--fh)",fontSize:14,color:"var(--acc)",letterSpacing:".1em",textTransform:"uppercase",marginBottom:10,textAlign:"center",fontWeight:700}}>{effPuesto} · El vehículo y {pax.length} persona{pax.length!==1?"s":""} {dirBtn.q}...</div>
+        {/* Red de seguridad: el garitero ve EXACTO qué se va a registrar antes de elegir dirección */}
+        <div style={{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:6,padding:"10px 14px",marginBottom:14}}>
+          <div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Se va a registrar:</div>
+          {veh&&<div style={{fontFamily:"var(--fm)",fontSize:14,fontWeight:600,marginBottom:6}}>🚗 {veh.data.patente}{veh.data.descripcion&&!veh.data._noRegistrado?<span style={{fontSize:12,fontWeight:400,color:"var(--tx2)"}}> · {veh.data.descripcion}</span>:null}</div>}
+          {pax.length===0
+            ?<div style={{fontSize:12,color:"var(--tx2)"}}>Sin pasajeros</div>
+            :<div style={{maxHeight:160,overflowY:"auto"}}>{pax.map((p,i)=><div key={i} style={{fontSize:13,padding:"2px 0",color:p.ok?"var(--tx)":"var(--rd)"}}>· {p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI ${p.raw}`}{!p.ok?" — bloqueado":""}</div>)}</div>
+          }
+        </div>
         <div className="dir-big" style={{gap:16}}>
           <button className="dir-big-btn in" style={{padding:"28px 16px",fontSize:24}} onClick={async()=>{
             // Verificar duplicados solo al confirmar ENTRADA
