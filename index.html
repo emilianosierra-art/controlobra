@@ -2441,6 +2441,10 @@ function Puesto({user,pid}){
       }
     };
     loadHabs();
+    // Refresco automático cada 5 min: el garitero no refresca la página, así que mantenemos
+    // habilitaciones/personas/vehículos al día aunque deje la tablet abierta toda la jornada.
+    const i=setInterval(loadHabs,5*60*1000);
+    return()=>clearInterval(i);
   },[pid]);
   useEffect(()=>{setTimeout(()=>ref.current&&ref.current.focus(),80);},[fase,flash]);
 
