@@ -260,11 +260,16 @@ const fmtTs=ts=>new Date(ts).toLocaleString("es-AR",{day:"2-digit",month:"2-digi
 const habSt=h=>{if(!h)return"none";if(h.suspendida)return"sus";const _d=new Date();const _t=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;if(h.fecha_hasta&&h.fecha_hasta<_t)return"exp";return"ok";};
 const getHab=(et,eid,tipo,habs)=>habs.find(h=>h.entity_type===et&&(et==="persona"?h.persona_id:h.vehiculo_id)===eid&&h.tipo===tipo)||null;
 const personaEstado=(id,habs)=>{
-  const sh=habSt(getHab("persona",id,"sh_ingreso",habs));
-  const cp=habSt(getHab("persona",id,"cp_ingreso",habs));
-  if(sh==="ok"&&cp==="ok")return"ok";
-  if(sh==="ok"||cp==="ok")return"par";
-  return"no";
+  // Bloqueada: falta (vencida, sin fecha o suspendida) el INGRESO de S&H y/o el INGRESO de Control de Personal
+  const shIng=habSt(getHab("persona",id,"sh_ingreso",habs));
+  const cpIng=habSt(getHab("persona",id,"cp_ingreso",habs));
+  if(shIng!=="ok"||cpIng!=="ok")return"no";
+  // Parcial: los dos ingresos OK pero falta alguna otra habilitación S&H (Subir a Chalet / Manejo en Montaña).
+  // Almuerzo y Cena NO afectan el estado, son solo informativas.
+  const shChalet=habSt(getHab("persona",id,"sh_chalet",habs));
+  const shManejo=habSt(getHab("persona",id,"sh_manejo",habs));
+  if(shChalet!=="ok"||shManejo!=="ok")return"par";
+  return"ok";
 };
 const vehiculoEstado=(id,habs)=>habSt(getHab("vehiculo",id,"sh_ingreso",habs))==="ok"?"ok":"no";
 const chkAuth=(type,id,habs)=>{
@@ -3023,7 +3028,7 @@ function PublicDashboard({onBack}){
     if(p&&p[0]){
       const shOk=habOk(p[0].id,"sh_ingreso");
       const cpOk=habOk(p[0].id,"cp_ingreso");
-      setSearchResult({type:"persona",data:p[0],shOk,cpOk,estado:shOk&&cpOk?"ok":shOk||cpOk?"par":"no"});
+      setSearchResult({type:"persona",data:p[0],shOk,cpOk,estado:personaEstado(p[0].id,habs)});
       setSearching(false);return;
     }
     // Intentar como nombre
@@ -3032,7 +3037,7 @@ function PublicDashboard({onBack}){
     if(found.length===1){
       const shOk=habOk(found[0].id,"sh_ingreso");
       const cpOk=habOk(found[0].id,"cp_ingreso");
-      setSearchResult({type:"persona",data:found[0],shOk,cpOk,estado:shOk&&cpOk?"ok":shOk||cpOk?"par":"no"});
+      setSearchResult({type:"persona",data:found[0],shOk,cpOk,estado:personaEstado(found[0].id,habs)});
     } else if(found.length>1){
       setSearchResult({type:"multiple",items:found});
     } else {
