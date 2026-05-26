@@ -190,13 +190,9 @@ const refreshToken=async()=>{
   }catch(e){return false;}
 };
 
-// ─── CACHE OFFLINE ────────────────────────────────────────────────────────────
-const CACHE_KEY="controlobra_cache";
-const cache={
-  save:(data)=>{try{localStorage.setItem(CACHE_KEY,JSON.stringify({...data,ts:Date.now()}));}catch(e){}},
-  load:()=>{try{const s=localStorage.getItem(CACHE_KEY);return s?JSON.parse(s):null;}catch(e){return null;}},
-  clear:()=>{try{localStorage.removeItem(CACHE_KEY);}catch(e){}},
-};
+// ─── CONEXIÓN ─────────────────────────────────────────────────────────────────
+// La app trabaja SOLO online: sin internet no se permite fichar (se usa hoja alternativa).
+// No hay cache ni cola offline para evitar descoordinar conteos entre puestos.
 const isOnline=()=>navigator.onLine;
 const H=(x={})=>({"apikey":SB_KEY,"Authorization":`Bearer ${_tok||SB_KEY}`,"Content-Type":"application/json","Accept-Profile":"obra","Content-Profile":"obra",...x});
 const authApi={
@@ -2131,260 +2127,10 @@ function RecentSessions({puesto,onSelectSesion}){
 }
 
 
-// ─── MODO OFFLINE ─────────────────────────────────────────────────────────────
-const OFFLINE_KEY="controlobra_offline";
-// Usa sessionStorage con fallback a variable en memoria
-let _offlineMem=[];
-const offlineStore={
-  get:()=>{
-    try{const s=localStorage.getItem(OFFLINE_KEY);return s?JSON.parse(s):_offlineMem;}
-    catch(e){return _offlineMem;}
-  },
-  add:(rec)=>{
-    const l=offlineStore.get();l.push(rec);_offlineMem=l;
-    try{localStorage.setItem(OFFLINE_KEY,JSON.stringify(l));}catch(e){}
-  },
-  set:(arr)=>{
-    _offlineMem=arr||[];
-    try{localStorage.setItem(OFFLINE_KEY,JSON.stringify(_offlineMem));}catch(e){}
-  },
-  clear:()=>{_offlineMem=[];try{localStorage.removeItem(OFFLINE_KEY);}catch(e){}},
-};
-
-function OfflineModePanel({user,proyectoId,onClose}){
-  const[dir,setDir]=useState("entrada");
-  const[patente,setPatente]=useState("");
-  const[dnis,setDnis]=useState("");
-  const[saved,setSaved]=useState(false);
-  const isP1=user.puesto_nombre==="Puesto 1";
-  const labels=isP1?{entrada:"Entro",salida:"Salio"}:{entrada:"Subio",salida:"Bajo"};
-  const guardar=()=>{
-    if(!patente.trim()&&!dnis.trim())return;
-    offlineStore.add({
-      puesto:user.puesto_nombre,
-      operador_nombre:user.nombre,
-      direccion:dir,
-      patente:patente.trim().toUpperCase()||null,
-      dnis:dnis.replace(/[;,]+/g,'\n').split('\n').map(d=>d.trim()).filter(Boolean),
-      timestamp:new Date().toISOString(),
-    });
-    setPatente("");setDnis("");setSaved(true);
-    setTimeout(()=>setSaved(false),1800);
-  };
-  return <div className="mo"><div className="md">
-    <div className="mh">
-      <div>
-        <div className="mt">Registro Sin Internet</div>
-        <div style={{fontSize:12,color:"var(--rd)",fontFamily:"var(--fm)",marginTop:2}}>Guardado en tablet — subir cuando vuelva la red</div>
-      </div>
-      <button className="mc" onClick={onClose}>x</button>
-    </div>
-    <div className="mb">
-      {saved&&<div style={{background:"rgba(16,185,129,.1)",border:"1px solid var(--gr)",borderRadius:4,padding:"9px 14px",marginBottom:12,color:"var(--gr)",fontFamily:"var(--fh)",fontSize:15,fontWeight:700}}>Guardado en tablet!</div>}
-      <div className="dtog" style={{marginBottom:14}}>
-        <button className={`db db-in${dir==="entrada"?" on":""}`} onClick={()=>setDir("entrada")}>{labels.entrada}</button>
-        <button className={`db db-out${dir==="salida"?" on":""}`} onClick={()=>setDir("salida")}>{labels.salida}</button>
-      </div>
-      <div className="f"><label>Patente del vehiculo (opcional)</label><input placeholder="AB123CD" value={patente} onChange={e=>setPatente(e.target.value.toUpperCase())}/></div>
-      <div className="f">
-        <label>DNIs de las personas (uno por linea o separados por coma)</label>
-        <textarea placeholder={"30456789\n28123456\n..."} value={dnis} onChange={e=>setDnis(e.target.value)} style={{minHeight:110}}/>
-      </div>
-    </div>
-    <div className="mf">
-      <button className="bcanc" onClick={onClose}>Cerrar</button>
-      <button className="bp" disabled={!patente.trim()&&!dnis.trim()} onClick={guardar}>Guardar en tablet</button>
-    </div>
-  </div></div>;
-}
-
-// Tarjeta de un registro pendiente individual
-function PendingRecordCard({rec,onRemove,old}){
-  const fechaTxt=rec.timestamp?new Date(rec.timestamp).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"sin fecha";
-  const personasTxt=rec.paxData&&rec.paxData.length>0
-    ? rec.paxData.map(p=>p.nombre||`DNI ${p.raw}`).join(", ")
-    : (rec.dnis&&rec.dnis.length>0?`DNIs: ${rec.dnis.join(", ")}`:"sin pasajeros");
-  return <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 12px",border:"1px solid var(--bd)",borderRadius:6,marginBottom:6,background:old?"rgba(239,68,68,.05)":"var(--s2)"}}>
-    <div style={{flex:1,minWidth:0}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4,flexWrap:"wrap"}}>
-        <span className={`ld ld-${rec.direccion==="entrada"?"in":"out"}`} style={{fontSize:11}}>{rec.direccion||"?"}</span>
-        <span style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)"}}>{fechaTxt}</span>
-        {rec.puesto&&<span style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)"}}>· {rec.puesto}</span>}
-      </div>
-      {rec.patente?<div style={{fontFamily:"var(--fm)",fontSize:14,fontWeight:600}}>{rec.patente}</div>:<div style={{fontSize:12,color:"var(--tx2)",fontStyle:"italic"}}>sin vehículo</div>}
-      <div style={{fontSize:12,color:"var(--tx2)",marginTop:2,wordBreak:"break-word"}}>{personasTxt}</div>
-    </div>
-    <button onClick={onRemove} style={{background:"none",border:"1px solid rgba(239,68,68,.3)",color:"var(--rd)",borderRadius:4,padding:"3px 8px",cursor:"pointer",fontSize:11,flexShrink:0,fontFamily:"var(--fm)"}}>borrar</button>
-  </div>;
-}
-
-// Modal para revisar y gestionar registros pendientes antes de subir
-function PendingDetailModal({user,proyectoId,habs,onClose,onChanged}){
-  const[items,setItems]=useState([]);
-  const[uploading,setUploading]=useState(false);
-  const[lastResult,setLastResult]=useState(null); // {done,failed}
-
-  const reload=()=>{
-    const p=offlineStore.get().filter(r=>r.puesto===user.puesto_nombre);
-    setItems(p);
-  };
-  useEffect(()=>{reload();},[]);
-
-  const todayStr=today();
-  const isToday=(r)=>(r.timestamp||"").startsWith(todayStr);
-  const items_today=items.filter(isToday);
-  const items_old=items.filter(r=>!isToday(r));
-
-  const recordKey=(r)=>`${r.timestamp||""}|${r.puesto||""}|${r.patente||""}|${(r.dnis||[]).join(",")}`;
-
-  const removeOne=(rec)=>{
-    if(!confirm("Borrar este registro pendiente? No se podrá recuperar y no se subirá."))return;
-    const all=offlineStore.get();
-    const k=recordKey(rec);
-    const idx=all.findIndex(r=>recordKey(r)===k);
-    if(idx>=0){all.splice(idx,1);offlineStore.set(all);}
-    reload();onChanged&&onChanged();
-  };
-
-  const discardOld=()=>{
-    if(items_old.length===0)return;
-    if(!confirm(`Descartar ${items_old.length} registro${items_old.length!==1?"s":""} de días anteriores? No se subirán y no se podrán recuperar.`))return;
-    const all=offlineStore.get();
-    const filtered=all.filter(r=>r.puesto!==user.puesto_nombre||isToday(r));
-    offlineStore.set(filtered);
-    reload();onChanged&&onChanged();
-  };
-
-  const uploadToday=async()=>{
-    if(items_today.length===0)return;
-    if(!isOnline()){alert("Sin conexión — no se puede subir ahora.");return;}
-    setUploading(true);setLastResult(null);
-    let count=0,fail=0;
-    const kept=[];
-    for(const rec of items_today){
-      let recOk=false;
-      try{
-        let vehId=null,vehOk=false;
-        if(rec.patente){
-          const{data:v}=await db.sel("vehiculos",{f:[["patente","eq",rec.patente]],lim:1});
-          if(v&&v[0]){vehId=v[0].id;vehOk=chkAuth("vehiculo",v[0].id,habs).ok;}
-        }
-        const personasResolved=[];
-        for(const dni of (rec.dnis||[])){
-          const{data:p}=await db.sel("personas",{f:[["dni","eq",dni],["deleted_at","is","null"]],lim:1});
-          const found=p&&p[0];
-          const rr=found?chkAuth("persona",found.id,habs):{ok:false,reason:"DNI no encontrado"};
-          personasResolved.push({raw:dni,person:found||null,...rr});
-        }
-        if(vehId||personasResolved.length>0){
-          const r1=await db.ins("sesiones_acceso",{
-            proyecto_id:proyectoId,puesto:rec.puesto,operador_id:user.id,
-            vehiculo_id:vehId,vehiculo_ok:vehOk,direccion:rec.direccion,
-            total_personas:personasResolved.length,
-            total_aprobados:personasResolved.filter(p=>p.ok).length,
-            total_rechazados:personasResolved.filter(p=>!p.ok).length,
-            cerrada_at:rec.timestamp,
-          });
-          if(!r1.ok||!r1.data||!r1.data[0])throw new Error("sesion: "+JSON.stringify(r1.data||{}).slice(0,200));
-          if(personasResolved.length>0){
-            const r2=await db.ins("registros_acceso",personasResolved.map((p,i)=>({
-              sesion_id:r1.data[0].id,persona_id:p.person?p.person.id:null,dni_raw:p.raw,
-              resultado:p.ok?"aprobado":"rechazado",motivo_rechazo:p.ok?null:p.reason,orden_escaneo:i+1,
-            })));
-            if(!r2.ok){
-              try{await db.del("sesiones_acceso",[["id","eq",r1.data[0].id]]);}catch(_){}
-              throw new Error("registros: "+JSON.stringify(r2.data||{}).slice(0,200));
-            }
-          }
-          recOk=true;
-        } else recOk=true; // registro vacío
-      }catch(e){console.error("Error subiendo:",e);}
-      if(recOk)count++;else{fail++;kept.push(rec);}
-    }
-    // Mantenemos: registros de otros puestos, los viejos de este puesto, y los de hoy que fallaron
-    const all=offlineStore.get();
-    const others=all.filter(r=>r.puesto!==user.puesto_nombre);
-    offlineStore.set([...others,...items_old,...kept]);
-    setLastResult({done:count,failed:fail});
-    setUploading(false);
-    reload();onChanged&&onChanged();
-  };
-
-  return <div className="mo"><div className="md md-lg">
-    <div className="mh">
-      <div>
-        <div className="mt">Registros pendientes — {user.puesto_nombre}</div>
-        <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>{items.length} en total · {items_today.length} de hoy{items_old.length>0?` · ${items_old.length} de días anteriores`:""}</div>
-      </div>
-      <button className="mc" onClick={onClose}>x</button>
-    </div>
-    <div className="mb">
-      {lastResult&&<div style={{padding:"10px 14px",borderRadius:6,marginBottom:14,background:lastResult.failed===0?"rgba(16,185,129,.1)":"rgba(245,158,11,.1)",border:"1px solid "+(lastResult.failed===0?"var(--gr)":"var(--acc)"),color:lastResult.failed===0?"var(--gr)":"var(--acc)",fontFamily:"var(--fh)",fontSize:13,fontWeight:700}}>
-        {lastResult.done} subidos{lastResult.failed>0?` · ${lastResult.failed} fallaron (siguen pendientes)`:""}
-      </div>}
-
-      {items_old.length>0&&<>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,flexWrap:"wrap",gap:8}}>
-          <div style={{fontFamily:"var(--fh)",fontSize:13,color:"var(--rd)",textTransform:"uppercase",letterSpacing:".05em",fontWeight:700}}>
-            ⚠️ De días anteriores ({items_old.length})
-          </div>
-          <button className="bsm bsm-r" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.4)"}} onClick={discardOld}>Descartar todos los viejos</button>
-        </div>
-        <div style={{marginBottom:14,padding:"8px 12px",background:"rgba(239,68,68,.06)",border:"1px solid rgba(239,68,68,.2)",borderRadius:4,fontSize:12,color:"var(--tx2)"}}>
-          Estos registros quedaron pendientes de días pasados. La app no los sube automáticamente — revisalos y descartalos antes de seguir con los de hoy.
-        </div>
-        {items_old.map((rec)=><PendingRecordCard key={recordKey(rec)} rec={rec} onRemove={()=>removeOne(rec)} old/>)}
-      </>}
-
-      {items_today.length>0&&<>
-        <div style={{fontFamily:"var(--fh)",fontSize:13,color:"var(--acc)",textTransform:"uppercase",letterSpacing:".05em",fontWeight:700,marginTop:items_old.length>0?20:0,marginBottom:8}}>
-          De hoy ({items_today.length})
-        </div>
-        {items_today.map((rec)=><PendingRecordCard key={recordKey(rec)} rec={rec} onRemove={()=>removeOne(rec)}/>)}
-      </>}
-
-      {items.length===0&&<div style={{textAlign:"center",padding:30,color:"var(--tx2)"}}>No hay registros pendientes.</div>}
-    </div>
-    <div className="mf">
-      <button className="bcanc" onClick={onClose}>Cerrar</button>
-      {items_today.length>0&&<button className="bp" disabled={uploading} onClick={uploadToday}>
-        {uploading?"Subiendo...":`Subir ${items_today.length} de hoy`}
-      </button>}
-    </div>
-  </div></div>;
-}
-
-function PendingUploads({user,proyectoId,habs,onUploaded,refreshTrigger}){
-  const[pending,setPending]=useState([]);
-  const[showDetail,setShowDetail]=useState(false);
-  const[localRefresh,setLocalRefresh]=useState(0);
-
-  useEffect(()=>{
-    const p=offlineStore.get().filter(r=>r.puesto===user.puesto_nombre);
-    setPending(p);
-  },[refreshTrigger,user.puesto_nombre,localRefresh]);
-
-  if(!pending.length)return null;
-
-  const todayStr=today();
-  const isToday=(r)=>(r.timestamp||"").startsWith(todayStr);
-  const today_count=pending.filter(isToday).length;
-  const old_count=pending.length-today_count;
-
-  return <>
-    <div className="pending-bar">
-      <div style={{flex:1}}>
-        <div style={{fontFamily:"var(--fh)",fontSize:16,fontWeight:800,color:"var(--acc)",textTransform:"uppercase"}}>
-          {pending.length} registro{pending.length!==1?"s":""} pendiente{pending.length!==1?"s":""}
-          {old_count>0&&<span style={{color:"var(--rd)",fontSize:13,marginLeft:8,fontWeight:600,textTransform:"none"}}>· {old_count} de días anteriores ⚠</span>}
-        </div>
-        <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>{today_count>0?`${today_count} de hoy listos para subir · `:""}Tocá "Ver / gestionar" para revisar antes de subir</div>
-      </div>
-      <button className="bsc" style={{padding:"8px 18px"}} onClick={()=>setShowDetail(true)}>Ver / gestionar</button>
-    </div>
-    {showDetail&&<PendingDetailModal user={user} proyectoId={proyectoId} habs={habs} onClose={()=>setShowDetail(false)} onChanged={()=>{setLocalRefresh(k=>k+1);onUploaded&&onUploaded();}}/>}
-  </>;
-}
+// ─── (Funcionalidad offline eliminada) ───────────────────────────────────────
+// La app trabaja solo online. Sin internet no se ficha: el garitero usa la hoja
+// alternativa en papel. Se quitaron offlineStore, OfflineModePanel y PendingUploads
+// para evitar que fichadas viejas se vuelquen a destiempo y descoordinen P2/P3.
 
 function Puesto({user,pid}){
   const isAdmin=user.rol==="admin";
@@ -2401,50 +2147,34 @@ function Puesto({user,pid}){
   const[saving,setSaving]=useState(false);
   const[habs,setHabs]=useState([]);
   const[showManual,setShowManual]=useState(false);
-  const[showOffline,setShowOffline]=useState(false); // legacy, ya no se dispara desde UI
   const[detalleSes,setDetalleSes]=useState(null);
   const[refreshKey,setRefreshKey]=useState(0);
   const[cola,setCola]=useState([]); // escaneadas pausadas
   const ref=useRef();
   const[paxSnap,setPaxSnap]=useState([]);
   const[warnDupVeh,setWarnDupVeh]=useState(null); // {patente, dir} si ya figura adentro
-  const[saveStatus,setSaveStatus]=useState(null); // null | "online" | "offline"
-  const[pendingRefresh,setPendingRefresh]=useState(0);
+  const[saveStatus,setSaveStatus]=useState(null); // null | "online"
   const[comidasHoy,setComidasHoy]=useState({}); // persona_id -> {id, come, ubicacion}
   const[warnSalidaComida,setWarnSalidaComida]=useState(null); // {paxNombres, dirFinal}
 
-  const[offline,setOffline]=useState(false);
+  const[offline,setOffline]=useState(!isOnline()); // sin conexión → banner + no permite fichar
 
   useEffect(()=>{
     const loadHabs=async()=>{
-      if(!isOnline()){
-        // Sin internet: cargar desde cache
-        const cached=cache.load();
-        if(cached&&cached.habs){
-          setHabs(cached.habs);
-          setOffline(true);
-          console.log("Modo offline: usando cache de",new Date(cached.ts).toLocaleString("es-AR"));
-        }
-        return;
-      }
-      // Con internet: cargar y guardar en cache
-      const[{data:h},{data:p},{data:v}]=await Promise.all([
-        db.sel("habilitaciones",{f:[["suspendida","eq",false]],lim:5000}),
-        db.sel("personas",{f:[["deleted_at","is","null"]],lim:5000}),
-        db.sel("vehiculos",{f:[["activo","eq",true]],lim:2000}),
-      ]);
-      if(h)setHabs(h);
-      // Guardar todo en cache para uso offline
-      if(h&&p&&v){
-        cache.save({habs:h,personas:p,vehiculos:v,usuario:user,pid});
-        setOffline(false);
-      }
+      if(!isOnline()){setOffline(true);return;}
+      try{
+        const{data:h}=await db.sel("habilitaciones",{f:[["suspendida","eq",false]],lim:5000});
+        if(h){setHabs(h);setOffline(false);}
+        else setOffline(true);
+      }catch(e){setOffline(true);}
     };
     loadHabs();
-    // Refresco automático cada 5 min: el garitero no refresca la página, así que mantenemos
-    // habilitaciones/personas/vehículos al día aunque deje la tablet abierta toda la jornada.
+    // Refresco cada 5 min para que el garitero (que no refresca la página) tenga las habilitaciones al día.
     const i=setInterval(loadHabs,5*60*1000);
-    return()=>clearInterval(i);
+    // Actualizar el banner de conexión apenas cambia el estado de red del navegador.
+    const upd=()=>{const off=!isOnline();setOffline(off);if(!off)loadHabs();};
+    window.addEventListener('online',upd);window.addEventListener('offline',upd);
+    return()=>{clearInterval(i);window.removeEventListener('online',upd);window.removeEventListener('offline',upd);};
   },[pid]);
   useEffect(()=>{setTimeout(()=>ref.current&&ref.current.focus(),80);},[fase,flash]);
 
@@ -2463,50 +2193,25 @@ function Puesto({user,pid}){
 
   const scanV=useCallback(async()=>{
     const v=val.trim().toUpperCase();if(!v)return;
+    if(!isOnline()){sf({ok:false,label:"SIN CONEXIÓN",sub:"No se puede fichar",reason:"Registrá la fichada en la hoja alternativa"});setVal("");return;}
     let found=null;let freshHabs=habs;
-    if(!isOnline()){
-      const cached=cache.load();
-      if(cached){
-        found=(cached.vehiculos||[]).find(x=>x.patente===v)||null;
-        // Siempre leer habs del cache, no del estado (puede estar desactualizado)
-        freshHabs=cached.habs||[];
-        if(freshHabs.length===0)freshHabs=habs;
-      }
-      if(!found){
-        found={id:null,patente:v,tipo:"Camioneta",descripcion:"No registrado (offline)",_noRegistrado:true};
-        sf({ok:false,label:"VEHICULO NO REGISTRADO",sub:v,reason:"Sin habilitaciones — se registra la pasada igual"});
-      }
-      // Debug: log what we find
-      const vehHabs=freshHabs.filter(h=>h.entity_type==="vehiculo"&&h.vehiculo_id===found.id);
-      console.log("Offline vehicle habs found:", vehHabs.length, "for", found.id);
-    } else {
-      let vData=null,habsVeh=null,habsNew=null;
-      // Buscar vehículo en cache primero
-      const cachedNow=cache.load();
-      if(cachedNow&&cachedNow.vehiculos){
-        found=cachedNow.vehiculos.find(x=>x.patente===v)||null;
-        freshHabs=cachedNow.habs||[];
-      }
-      // Si no está en cache o hay internet, consultar Supabase
-      try{
-        const[r1,r2,r3]=await Promise.all([
-          db.sel("vehiculos",{f:[["patente","eq",v]],lim:1}),
-          db.sel("habilitaciones",{f:[["entity_type","eq","vehiculo"]]}),
-          db.sel("habilitaciones",{f:[["entity_type","eq","persona"]],lim:5000}),
-        ]);
-        if(r1.data&&r1.data[0])found=r1.data[0];
-        habsVeh=r2.data;habsNew=r3.data;
-      }catch(e){
-        console.warn("scanV: fallo consulta Supabase, usando cache");
-      }
-      if(!found){
-        sf({ok:false,label:"VEHICULO NO REGISTRADO",sub:v,reason:"No esta en la base — se registran solo las personas"});
-        found={id:null,patente:v,tipo:"Camioneta",descripcion:"No registrado",_noRegistrado:true};
-      }
-      if(habsVeh||habsNew){
-        freshHabs=[...(habsVeh||[]),...(habsNew||[])];
-        setHabs(freshHabs);
-      }
+    const[r1,r2,r3]=await Promise.all([
+      db.sel("vehiculos",{f:[["patente","eq",v]],lim:1}),
+      db.sel("habilitaciones",{f:[["entity_type","eq","vehiculo"]]}),
+      db.sel("habilitaciones",{f:[["entity_type","eq","persona"]],lim:5000}),
+    ]);
+    if(r2.data===null||r3.data===null){
+      // Las consultas fallaron: conexión inestable → no se ficha
+      setOffline(true);
+      sf({ok:false,label:"CONEXIÓN INESTABLE",sub:"No se pudo consultar la base",reason:"Registrá la fichada en la hoja alternativa"});
+      setVal("");return;
+    }
+    setOffline(false); // la consulta funcionó → hay conexión
+    if(r1.data&&r1.data[0])found=r1.data[0];
+    freshHabs=[...(r2.data||[]),...(r3.data||[])];setHabs(freshHabs);
+    if(!found){
+      sf({ok:false,label:"VEHICULO NO REGISTRADO",sub:v,reason:"No esta en la base — se registran solo las personas"});
+      found={id:null,patente:v,tipo:"Camioneta",descripcion:"No registrado",_noRegistrado:true};
     }
     // Sugerir pasajeros según la ÚLTIMA fichada del vehículo hoy en P2/P3.
     // Refleja quién va a bordo ahora: si la última fue P3 entrada con 1 persona, sugiere esa 1
@@ -2551,28 +2256,18 @@ function Puesto({user,pid}){
 
   const scanP=useCallback(async()=>{
     const v=val.trim();if(!v)return;
+    if(!isOnline()){sf({ok:false,label:"SIN CONEXIÓN",sub:"No se puede fichar",reason:"Registrá la fichada en la hoja alternativa"});setVal("");return;}
     if(pax.some(p=>p.raw===v.toUpperCase())){sf({ok:false,label:"DNI REPETIDO",sub:v,reason:"Ya fue escaneado"});setVal("");return;}
     let found=null;
-    // 1. Buscar SIEMPRE primero en cache local (rápido, sin depender de red)
-    const cached=cache.load();
-    if(cached&&cached.personas){
-      found=(cached.personas||[]).find(x=>x.dni===v)||null;
+    const{data}=await db.sel("personas",{f:[["dni","eq",v],["deleted_at","is","null"]],lim:1});
+    if(data===null){
+      // Consulta falló: conexión inestable → no se ficha
+      setOffline(true);
+      sf({ok:false,label:"CONEXIÓN INESTABLE",sub:"No se pudo consultar la base",reason:"Registrá la fichada en la hoja alternativa"});
+      setVal("");return;
     }
-    // 2. Si no está en cache o hay internet, consultar Supabase
-    if(!found&&isOnline()){
-      try{
-        const{data}=await db.sel("personas",{f:[["dni","eq",v],["deleted_at","is","null"]],lim:1});
-        found=data&&data[0];
-        // Si lo encontramos online, actualizar cache
-        if(found&&cached){
-          const idx=cached.personas.findIndex(p=>p.dni===v);
-          if(idx>=0)cached.personas[idx]=found;else cached.personas.push(found);
-          cache.save(cached);
-        }
-      }catch(e){
-        console.warn("scanP: fallo consulta Supabase, usando solo cache");
-      }
-    }
+    setOffline(false); // la consulta funcionó → hay conexión
+    found=data&&data[0];
     if(!found){
       setPax(p=>[...p,{raw:v.toUpperCase(),person:null,ok:false,reason:"DNI no encontrado",activeAuths:[]}]);
       sf({ok:false,label:"SIN REGISTRO",sub:v,reason:"DNI no encontrado"});
@@ -2596,26 +2291,14 @@ function Puesto({user,pid}){
 
   const cerrar=async(dirFinal)=>{
     const d=dirFinal||dir;
-    setSaving(true);
-    setPaxSnap([...pax]); // guardar snapshot antes de cualquier reset
-    setSaveStatus(null);
-    const offlinePayload={
-      puesto:effPuesto,
-      operador_nombre:user.nombre,
-      direccion:d,
-      patente:veh?veh.data.patente:null,
-      vehiculo_id:veh?veh.data.id:null,
-      vehiculo_ok:veh?veh.ok:false,
-      dnis:pax.map(p=>p.raw),
-      paxData:pax.map(p=>({raw:p.raw,person_id:p.person?p.person.id:null,nombre:p.person?`${p.person.nombre} ${p.person.apellido}`:null,ok:p.ok,reason:p.reason||null})),
-      timestamp:new Date().toISOString(),
-    };
     if(!isOnline()){
-      offlineStore.add(offlinePayload);
-      setDir(d);setSaving(false);setSaveStatus("offline");setPendingRefresh(k=>k+1);setFase(F.D);
+      setOffline(true);
+      alert("SIN CONEXIÓN\n\nLa fichada NO se guardó. Anotá esta pasada en la hoja alternativa.");
       return;
     }
-    // Intentar subir con timeout de 8 segundos - si falla o Supabase rechaza, guardar offline
+    setSaving(true);
+    setPaxSnap([...pax]); // snapshot por si hay que copiar a la hoja alternativa
+    setSaveStatus(null);
     const saveOnline=async()=>{
       const r1=await db.ins("sesiones_acceso",{proyecto_id:pid,puesto:effPuesto,operador_id:user.id,vehiculo_id:veh.data.id||null,vehiculo_ok:veh.ok,vehiculo_razon:veh.data._noRegistrado?("No registrado: "+veh.data.patente):(veh.reason||null),direccion:d,total_personas:pax.length,total_aprobados:pax.filter(p=>p.ok).length,total_rechazados:pax.filter(p=>!p.ok).length});
       if(!r1.ok||!r1.data||!r1.data[0])throw new Error("sesion: "+JSON.stringify(r1.data||{}).slice(0,200));
@@ -2635,11 +2318,18 @@ function Puesto({user,pid}){
       await withTimeout(saveOnline(),8000);
       okOnline=true;
     }catch(e){
-      console.warn("cerrar: fallo online, guardando offline:",e.message);
-      offlineStore.add(offlinePayload);
+      console.warn("cerrar: no se pudo guardar:",e.message);
     }
-    // Si la fichada se guardó online + es entrada a P2/P3 antes de las 13: upsert comidas_diarias
-    if(okOnline&&d==="entrada"&&(effPuesto==="Puesto 2"||effPuesto==="Puesto 3")&&horaArg()<13){
+    if(!okOnline){
+      // No se pudo guardar: NO avanzamos. El garitero usa la hoja alternativa.
+      // Los datos quedan en pantalla (no se limpia pax) por si quiere copiarlos.
+      setOffline(true);
+      setSaving(false);
+      alert("NO SE PUDO GUARDAR (conexión inestable)\n\nLa fichada NO quedó registrada. Anotala en la hoja alternativa.\nLos datos siguen en pantalla por si necesitás copiarlos.");
+      return;
+    }
+    // Guardado OK + entrada a P2/P3 antes de las 13 → upsert comidas_diarias
+    if(d==="entrada"&&(effPuesto==="Puesto 2"||effPuesto==="Puesto 3")&&horaArg()<13){
       const todayStr=today();
       for(const p of pax){
         if(!p.person||!p.ok)continue;
@@ -2653,9 +2343,7 @@ function Puesto({user,pid}){
       }
       loadComidasHoy();
     }
-    setDir(d);setSaving(false);setSaveStatus(okOnline?"online":"offline");
-    if(!okOnline)setPendingRefresh(k=>k+1);
-    setFase(F.D);
+    setDir(d);setSaving(false);setSaveStatus("online");setFase(F.D);
   };
   const nueva=()=>{setFase(F.V);setVeh(null);setPax([]);setPaxSnap([]);setVal("");setFlash(null);setPaxSugFrom(null);setSaveStatus(null);setRefreshKey(k=>k+1);};
   const dirLabel=dir==="entrada"?"ingreso":"egreso";
@@ -2685,14 +2373,13 @@ function Puesto({user,pid}){
       </div>
       <Clock/>
     </div>
-    {offline&&<div style={{background:"rgba(245,158,11,.12)",border:"1px solid rgba(245,158,11,.5)",borderRadius:6,padding:"8px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10}}>
-      <span style={{fontSize:16}}>⚡</span>
-      <div style={{flex:1}}>
-        <div style={{fontFamily:"var(--fh)",fontSize:14,fontWeight:700,color:"var(--acc)",textTransform:"uppercase"}}>Modo Sin Internet</div>
-        <div style={{fontSize:12,color:"var(--tx2)"}}>Usando datos del cache local · los registros se subirán cuando vuelva la conexión</div>
+    {offline&&<div style={{background:"rgba(239,68,68,.15)",border:"2px solid var(--rd)",borderRadius:8,padding:"14px 18px",marginBottom:14,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+      <span style={{fontSize:28}}>📵</span>
+      <div style={{flex:1,minWidth:200}}>
+        <div style={{fontFamily:"var(--fh)",fontSize:18,fontWeight:800,color:"var(--rd)",textTransform:"uppercase",letterSpacing:".03em"}}>Sin conexión o conexión inestable</div>
+        <div style={{fontSize:13,color:"var(--tx)",marginTop:2,fontWeight:600}}>NO se pueden registrar fichadas. Por favor registrá las pasadas en la HOJA ALTERNATIVA hasta que vuelva internet.</div>
       </div>
     </div>}
-    <PendingUploads user={userEff} proyectoId={pid} habs={habs} refreshTrigger={pendingRefresh} onUploaded={()=>{setRefreshKey(k=>k+1);setPendingRefresh(k=>k+1);}}/>
     {cola.length>0&&<div style={{background:"rgba(59,130,246,.1)",border:"1px solid rgba(59,130,246,.3)",borderRadius:6,padding:"10px 14px",marginBottom:10}}>
       <div style={{fontFamily:"var(--fh)",fontSize:13,fontWeight:700,color:"#60A5FA",marginBottom:8}}>
         {cola.length} escaneada{cola.length!==1?"s":""} en pausa
@@ -2876,15 +2563,8 @@ function Puesto({user,pid}){
           <div style={{fontSize:11,color:"var(--tx2)",marginTop:1}}>Confirmado: la fichada quedó registrada en la base de datos</div>
         </div>
       </div>}
-      {saveStatus==="offline"&&<div style={{background:"rgba(245,158,11,.12)",border:"2px solid var(--acc)",borderRadius:6,padding:"10px 14px",marginBottom:10,display:"flex",alignItems:"center",gap:12}}>
-        <span style={{fontSize:22}}>⚠️</span>
-        <div style={{flex:1}}>
-          <div style={{fontFamily:"var(--fh)",fontSize:15,fontWeight:800,color:"var(--acc)",textTransform:"uppercase"}}>Guardado en la tablet · pendiente de subir</div>
-          <div style={{fontSize:11,color:"var(--tx2)",marginTop:1}}>Sin conexión o el servidor rechazó el envío. Cuando vuelva internet apretá "Subir ahora" en la barra de pendientes</div>
-        </div>
-      </div>}
       <div className="scard"><div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
-        <div className="stit">{saveStatus==="online"?"Registrado correctamente":saveStatus==="offline"?"Registrado en tablet":"Registrado correctamente"}</div>
+        <div className="stit">Registrado correctamente</div>
         <button onClick={()=>{
           const d=dir==="entrada"?"SUBE":"BAJA";
           const pat=(veh&&veh.data&&veh.data.patente)||"SIN PATENTE";
@@ -2953,7 +2633,6 @@ function Puesto({user,pid}){
       </div>
     </div></div>}
     {showManual&&<MovimientoManual user={userEff} proyectoId={pid} onClose={()=>setShowManual(false)} onSaved={()=>setRefreshKey(k=>k+1)}/>}
-    {showOffline&&<OfflineModePanel user={userEff} proyectoId={pid} onClose={()=>setShowOffline(false)}/>}
     {detalleSes&&<SesionDetalle ses={detalleSes} onClose={()=>setDetalleSes(null)}/>}
   </div>;
 }
@@ -3243,12 +2922,7 @@ function Login({onLogin,onPublic}){
   const go=async()=>{
     setLoading(true);setErr("");
     if(!isOnline()){
-      // Sin internet: intentar login desde cache
-      const cached=cache.load();
-      if(cached&&cached.usuario&&cached.usuario.email===email){
-        onLogin(cached.usuario);setLoading(false);return;
-      }
-      setErr("Sin internet y sin cache previo. Conectate al menos una vez primero.");
+      setErr("Sin conexión a internet. La app necesita conexión para funcionar — registrá las fichadas en la hoja alternativa hasta que vuelva.");
       setLoading(false);return;
     }
     const r=await authApi.signIn(email,pw);
