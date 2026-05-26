@@ -334,7 +334,7 @@ function Clock(){
 }
 
 // ─── LISTA CON FILTRO EMPRESA ────────────────────────────────────────────────
-function ListaFiltrada({items,tipo,titulo,onClose}){
+function ListaFiltrada({items,tipo,titulo,onClose,onRemove}){
   const empresas=[...new Set(items.map(x=>x.empresa||"Sin empresa").filter(Boolean))].sort();
   const[activas,setActivas]=useState(()=>{
     const s={};empresas.forEach(e=>{s[e]=true;});return s;
@@ -351,6 +351,12 @@ function ListaFiltrada({items,tipo,titulo,onClose}){
     const s={};empresas.forEach(e=>{s[e]=!todasOn;});setActivas(s);
   };
   const filtrados=items.filter(x=>(activas[x.empresa||"Sin empresa"]));
+  const[removing,setRemoving]=useState(null);
+  const handleRemove=async(item)=>{
+    if(removing)return;
+    setRemoving(item.id);
+    try{await onRemove(item);}finally{setRemoving(null);}
+  };
 
   return <div className="mo"><div className="md">
     <div className="mh"><div className="mt">{titulo} — hoy</div><button className="mc" onClick={onClose}>x</button></div>
@@ -372,6 +378,7 @@ function ListaFiltrada({items,tipo,titulo,onClose}){
             ?<><span style={{fontSize:20}}>{VI[item.tipo]||"🚗"}</span><div><div style={{fontFamily:"var(--fm)",fontWeight:600}}>{item.patente}</div><div style={{fontSize:12,color:"var(--tx2)"}}>{item.descripcion||item.tipo} · {item.empresa||"—"}</div></div></>
             :<><div className="av">{ini(`${item.nombre} ${item.apellido}`)}</div><div><div style={{fontWeight:500}}>{item.nombre} {item.apellido}</div><div style={{fontSize:12,color:"var(--tx2)"}}>{item.empresa||"—"} · DNI {item.dni}</div></div></>
           }
+          {onRemove&&<button className="bsm bsm-r" style={{marginLeft:"auto",flexShrink:0}} disabled={removing===item.id} onClick={()=>handleRemove(item)}>{removing===item.id?"...":"Sacar"}</button>}
         </div>)}</div>
       }
     </div>
@@ -379,7 +386,7 @@ function ListaFiltrada({items,tipo,titulo,onClose}){
 }
 
 // ─── CHALET MINI (topbar) ─────────────────────────────────────────────────────
-function ChaletMini({proyectoId}){
+function ChaletMini({proyectoId,user}){
   const[data,setData]=useState({pc:null,pm:0,vc:0,vm:0,plc:[],plm:[],vlc:[],vlm:[]});
   const[showList,setShowList]=useState(null);
   const load=async()=>{
@@ -421,6 +428,17 @@ function ChaletMini({proyectoId}){
     <span style={{fontSize:9,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase"}}>{label}</span>
     <span style={{fontSize:8,color,opacity:.7}}>▾</span>
   </div>;
+  // Sacar a alguien del conteo de montaña: registra una BAJADA manual por Puesto 2
+  // (clasifica como "fuera", sale del camino y del chalet). Empareja por persona_id si
+  // está registrada, o por el dni_raw exacto si no lo está. Solo admin / P2 / P3.
+  const canRemove=!!user&&(user.rol==="admin"||user.puesto_nombre==="Puesto 2"||user.puesto_nombre==="Puesto 3");
+  const sacar=async(item)=>{
+    const nom=item._synth?("DNI "+item.dni):`${item.nombre} ${item.apellido}`.trim();
+    if(!confirm(`¿Sacar a ${nom||item.dni} del conteo de montaña?\n\nSe registra una BAJADA manual por Puesto 2 (queda fuera del camino y del chalet).`))return;
+    const{ok}=await db.ins("movimientos_manuales",{proyecto_id:proyectoId,puesto:"Puesto 2",operador_id:user.id,persona_id:item._synth?null:item.id,dni_raw:item.dni||null,nombre_raw:item._synth?("No registrado: "+(item.dni||"")):`${item.nombre} ${item.apellido}`,direccion:"salida"});
+    if(!ok){alert("No se pudo registrar la salida. Reintentá.");return;}
+    await load();
+  };
   const listData={plc:data.plc,plm:data.plm,vlc:data.vlc,vlm:data.vlm};
   const listTitles={plc:"Personas en Chalet",plm:"Personas en Camino",vlc:"Vehiculos en Chalet",vlm:"Vehiculos en Camino"};
   return <>
@@ -437,6 +455,7 @@ function ChaletMini({proyectoId}){
       tipo={showList.startsWith("v")?"vehiculo":"persona"}
       titulo={listTitles[showList]}
       onClose={()=>setShowList(null)}
+      onRemove={(canRemove&&!showList.startsWith("v"))?sacar:null}
     />}
   </>;
 }
@@ -666,7 +685,10 @@ function MovimientoManual({user,proyectoId,onClose,onSaved}){
   const filtered=personas.filter(p=>search?`${p.nombre} ${p.apellido} ${p.dni} ${p.empresa||""}`.toLowerCase().includes(search.toLowerCase()):true);
   const save=async(persona)=>{
     setSaving(true);
-    await db.ins("movimientos_manuales",{proyecto_id:proyectoId,puesto:user.puesto_nombre,operador_id:user.id,persona_id:persona?persona.id:null,dni_raw:persona?persona.dni:null,nombre_raw:persona?`${persona.nombre} ${persona.apellido}`:null,direccion:dir});
+    // Si la persona NO está en la base, conservamos el DNI tipeado como dni_raw
+    // para que el movimiento pueda emparejarse con la fichada (subida) no registrada.
+    const rawTyped=search.trim().toUpperCase();
+    await db.ins("movimientos_manuales",{proyecto_id:proyectoId,puesto:user.puesto_nombre,operador_id:user.id,persona_id:persona?persona.id:null,dni_raw:persona?persona.dni:(rawTyped||null),nombre_raw:persona?`${persona.nombre} ${persona.apellido}`:(rawTyped?("No registrado: "+rawTyped):null),direccion:dir});
     setSaving(false);onSaved&&onSaved();onClose();
   };
   return <div className="mo"><div className="md">
@@ -693,7 +715,7 @@ function MovimientoManual({user,proyectoId,onClose,onSaved}){
           {filtered.length===0&&<div style={{textAlign:"center",color:"var(--tx2)",padding:20,fontSize:13}}>Sin resultados</div>}
         </div>
         <button onClick={()=>save(null)} style={{marginTop:12,width:"100%",background:"none",border:"1px dashed var(--bd)",color:"var(--tx2)",borderRadius:4,padding:"9px",cursor:"pointer",fontSize:13,fontFamily:"var(--fm)"}}>
-          {saving?"Guardando...":"Registrar sin identificar persona"}
+          {saving?"Guardando...":(search.trim()?`Registrar sin identificar (DNI: ${search.trim().toUpperCase()})`:"Registrar sin identificar persona")}
         </button>
       </>}
     </div>
@@ -2213,9 +2235,11 @@ function Puesto({user,pid}){
       sf({ok:false,label:"VEHICULO NO REGISTRADO",sub:v,reason:"No esta en la base — se registran solo las personas"});
       found={id:null,patente:v,tipo:"Camioneta",descripcion:"No registrado",_noRegistrado:true};
     }
-    // Sugerir pasajeros según la ÚLTIMA fichada del vehículo hoy en P2/P3.
-    // Refleja quién va a bordo ahora: si la última fue P3 entrada con 1 persona, sugiere esa 1
-    // (NO la entrada vieja de P2 con más gente). Cubre subida y bajada por igual.
+    // Sugerencia de pasajeros — SOLO en la pata siguiente del mismo viaje:
+    //  · En P3 (vehículo subiendo): sugerir SOLO si su última sesión de montaña fue P2 + entrada.
+    //  · En P2 (vehículo bajando):  sugerir SOLO si su última sesión de montaña fue P3 + salida.
+    // En cualquier otro caso (P3 bajando del chalet, P2 subiendo de origen, etc.) NO se sugiere:
+    // en el chalet cambia quién baja en cada vehículo, y la subida por P2 es el inicio del viaje.
     let suggestedPax=null;let suggestedFrom=null;
     if(found.id&&isOnline()&&(effPuesto==="Puesto 2"||effPuesto==="Puesto 3")){
       const todayStr=today();
@@ -2226,10 +2250,14 @@ function Puesto({user,pid}){
           ord:"cerrada_at.desc",lim:10
         });
         const lastMontana=(recentSes||[]).find(s=>s.puesto==="Puesto 2"||s.puesto==="Puesto 3");
-        if(lastMontana){
+        const sugerirDesde=
+          (effPuesto==="Puesto 3"&&lastMontana&&lastMontana.puesto==="Puesto 2"&&lastMontana.direccion==="entrada")?lastMontana:
+          (effPuesto==="Puesto 2"&&lastMontana&&lastMontana.puesto==="Puesto 3"&&lastMontana.direccion==="salida")?lastMontana:
+          null;
+        if(sugerirDesde){
           const{data:regs}=await db.sel("registros_acceso",{
             cols:"persona_id,resultado",
-            f:[["sesion_id","eq",lastMontana.id]]
+            f:[["sesion_id","eq",sugerirDesde.id]]
           });
           const aprobados=(regs||[]).filter(rr=>rr.persona_id&&rr.resultado==="aprobado");
           if(aprobados.length){
@@ -2242,7 +2270,7 @@ function Puesto({user,pid}){
               const auth=getHabPills("persona",p.id,freshHabs,effPuesto);
               return {raw:p.dni,person:p,ok:!auth.blocks,reason:auth.reason,pills:auth.pills,activeAuths:[],_sugerido:true};
             }).filter(Boolean);
-            suggestedFrom={puesto:lastMontana.puesto,timestamp:lastMontana.cerrada_at,direccion:lastMontana.direccion};
+            suggestedFrom={puesto:sugerirDesde.puesto,timestamp:sugerirDesde.cerrada_at,direccion:sugerirDesde.direccion};
           }
         }
       }catch(e){console.warn("scanV: error sugiriendo pasajeros",e);}
@@ -2997,7 +3025,7 @@ function App(){
         <button className="btn-out" onClick={logout} style={{flexShrink:0}}>Salir</button>
       </div>
     </div>
-    {pid&&<div style={{background:"var(--s2)",borderBottom:"1px solid var(--bd)",padding:"5px 12px",display:"flex",alignItems:"center",gap:8,overflowX:"auto"}}><ChaletMini proyectoId={pid}/></div>}
+    {pid&&<div style={{background:"var(--s2)",borderBottom:"1px solid var(--bd)",padding:"5px 12px",display:"flex",alignItems:"center",gap:8,overflowX:"auto"}}><ChaletMini proyectoId={pid} user={user}/></div>}
     {tabs.length>1&&<div className="nav">{tabs.map(t=><button key={t.k} className={`nb${tab===t.k?" on":""}`} onClick={()=>setTab(t.k)}>{t.l}</button>)}</div>}
     <div className="main">
       {tab==="per"&&<PersonalPanel userRole={user.rol} currentUserId={user.id} proyectoId={pid} user={user}/>}
