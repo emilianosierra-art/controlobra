@@ -2259,12 +2259,15 @@ function Puesto({user,pid}){
             cols:"persona_id,resultado",
             f:[["sesion_id","eq",sugerirDesde.id]]
           });
-          const aprobados=(regs||[]).filter(rr=>rr.persona_id&&rr.resultado==="aprobado");
-          if(aprobados.length){
-            const pids=aprobados.map(rr=>rr.persona_id);
+          // Incluir TODOS los pasajeros de la sesión origen (aprobados Y bloqueados):
+          // si alguien subió bloqueado por P2, igual tiene que sugerirse al llegar a P3.
+          // El estado (ok/bloqueado) se recalcula más abajo con getHabPills para el puesto actual.
+          const candidatos=(regs||[]).filter(rr=>rr.persona_id);
+          if(candidatos.length){
+            const pids=candidatos.map(rr=>rr.persona_id);
             const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,dni",inFilter:["id",pids]});
             const personasMap={};(pers||[]).forEach(p=>{personasMap[p.id]=p;});
-            suggestedPax=aprobados.map(rr=>{
+            suggestedPax=candidatos.map(rr=>{
               const p=personasMap[rr.persona_id];
               if(!p)return null;
               const auth=getHabPills("persona",p.id,freshHabs,effPuesto);
