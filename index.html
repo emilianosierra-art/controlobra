@@ -439,6 +439,16 @@ function ChaletMini({proyectoId,user}){
     if(!ok){alert("No se pudo registrar la salida. Reintentá.");return;}
     await load();
   };
+  // Sacar un VEHÍCULO del conteo: los vehículos NO usan movimientos_manuales (su posición sale
+  // solo de sesiones_acceso), así que registramos una sesión de salida por Puesto 2 con 0 personas.
+  // Empareja por vehiculo_id (registrado) o por el vehiculo_razon exacto "No registrado: X" (synth).
+  const sacarVeh=async(item)=>{
+    const nombre=item.patente||item.id;
+    if(!confirm(`¿Sacar el vehículo ${nombre} del conteo de montaña?\n\nSe registra una BAJADA por Puesto 2 (queda fuera del camino y del chalet).`))return;
+    const{ok}=await db.ins("sesiones_acceso",{proyecto_id:proyectoId,puesto:"Puesto 2",operador_id:user.id,vehiculo_id:item._synth?null:item.id,vehiculo_ok:true,vehiculo_razon:item._synth?item.id:null,direccion:"salida",total_personas:0,total_aprobados:0,total_rechazados:0});
+    if(!ok){alert("No se pudo sacar el vehículo. Reintentá.");return;}
+    await load();
+  };
   const listData={plc:data.plc,plm:data.plm,vlc:data.vlc,vlm:data.vlm};
   const listTitles={plc:"Personas en Chalet",plm:"Personas en Camino",vlc:"Vehiculos en Chalet",vlm:"Vehiculos en Camino"};
   return <>
@@ -455,7 +465,7 @@ function ChaletMini({proyectoId,user}){
       tipo={showList.startsWith("v")?"vehiculo":"persona"}
       titulo={listTitles[showList]}
       onClose={()=>setShowList(null)}
-      onRemove={(canRemove&&!showList.startsWith("v"))?sacar:null}
+      onRemove={canRemove?(showList.startsWith("v")?sacarVeh:sacar):null}
     />}
   </>;
 }
