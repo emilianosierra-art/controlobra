@@ -387,17 +387,25 @@ function ListaFiltrada({items,tipo,titulo,onClose,onRemove}){
 
 // ─── CHALET MINI (topbar) ─────────────────────────────────────────────────────
 function ChaletMini({proyectoId,user}){
-  const[data,setData]=useState({pc:null,pm:0,vc:0,vm:0,plc:[],plm:[],vlc:[],vlm:[]});
+  const[data,setData]=useState({pc:null,pm:0,vc:0,vm:0,ep:0,plc:[],plm:[],vlc:[],vlm:[],plp:[]});
   const[showList,setShowList]=useState(null);
   const load=async()=>{
     try{
-      const pos=await calcPosicionesMontana();
+      const[pos,pred]=await Promise.all([
+        calcPosicionesMontana(),
+        calcPersonasEnPredio(),
+      ]);
       const persIdsChalet=Object.entries(pos.persona).filter(([_,p])=>p==="chalet").map(([k])=>k);
       const persIdsCamino=Object.entries(pos.persona).filter(([_,p])=>p==="camino").map(([k])=>k);
       const vehIdsChalet=Object.entries(pos.vehiculo).filter(([_,p])=>p==="chalet").map(([k])=>k);
       const vehIdsCamino=Object.entries(pos.vehiculo).filter(([_,p])=>p==="camino").map(([k])=>k);
+      const persIdsPredio=Array.from(pred.inSet);
+      // Fallback extra: si alguien figura en camino/chalet pero no en el set del predio
+      // (podría pasar si el evento P2/P3 se ordena distinto por milisegundos), forzarlo dentro.
+      persIdsChalet.forEach(k=>{if(!pred.inSet.has(k))persIdsPredio.push(k);});
+      persIdsCamino.forEach(k=>{if(!pred.inSet.has(k))persIdsPredio.push(k);});
       const isUUID=(k)=>typeof k==="string"&&k.length===36&&k.indexOf("-")>=0;
-      const allPIds=[...persIdsChalet,...persIdsCamino].filter(isUUID);
+      const allPIds=Array.from(new Set([...persIdsChalet,...persIdsCamino,...persIdsPredio])).filter(isUUID);
       const allVIds=[...vehIdsChalet,...vehIdsCamino].filter(isUUID);
       const[{data:pers},{data:vehs}]=await Promise.all([
         allPIds.length?db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"}):{data:[]},
@@ -412,10 +420,12 @@ function ChaletMini({proyectoId,user}){
       setData({
         pc:persIdsChalet.length,pm:persIdsCamino.length,
         vc:vehIdsChalet.length,vm:vehIdsCamino.length,
+        ep:persIdsPredio.length,
         plc:buildPer(persIdsChalet),
         plm:buildPer(persIdsCamino),
         vlc:buildVeh(vehIdsChalet),
         vlm:buildVeh(vehIdsCamino),
+        plp:buildPer(persIdsPredio),
       });
     } catch(e){
       console.warn("ChaletMini: error de red, manteniendo datos anteriores", e.message);
@@ -449,23 +459,43 @@ function ChaletMini({proyectoId,user}){
     if(!ok){alert("No se pudo sacar el vehículo. Reintentá.");return;}
     await load();
   };
-  const listData={plc:data.plc,plm:data.plm,vlc:data.vlc,vlm:data.vlm};
-  const listTitles={plc:"Personas en Chalet",plm:"Personas en Camino",vlc:"Vehiculos en Chalet",vlm:"Vehiculos en Camino"};
+  // Sacar una persona del PREDIO: registra una SALIDA manual por Puesto 1.
+  // Solo admin. Efecto: al recomputarse calcPersonasEnPredio, su última fichada del día será
+  // "Puesto 1 salida" → sale del conteo EN PREDIO (y por transitividad si estaba en camino/chalet
+  // también deja de sumar ahí, porque el algoritmo se basa en la última fichada global).
+  const canRemovePredio=!!user&&user.rol==="admin";
+  const sacarPredio=async(item)=>{
+    const nom=item._synth?("DNI "+item.dni):`${item.nombre} ${item.apellido}`.trim();
+    if(!confirm(`¿Sacar a ${nom||item.dni} del predio?\n\nSe registra una SALIDA manual por Puesto 1 (la persona queda fuera del predio).`))return;
+    const{ok}=await db.ins("movimientos_manuales",{proyecto_id:proyectoId,puesto:"Puesto 1",operador_id:user.id,persona_id:item._synth?null:item.id,dni_raw:item.dni||null,nombre_raw:item._synth?("No registrado: "+(item.dni||"")):`${item.nombre} ${item.apellido}`,direccion:"salida"});
+    if(!ok){alert("No se pudo registrar la salida. Reintentá.");return;}
+    await load();
+  };
+  const listData={plc:data.plc,plm:data.plm,vlc:data.vlc,vlm:data.vlm,plp:data.plp};
+  const listTitles={plc:"Personas en Chalet",plm:"Personas en Camino",vlc:"Vehiculos en Chalet",vlm:"Vehiculos en Camino",plp:"Personas en el Predio"};
+  // Píldora TOTAL (más grande, color distintivo): personas en el predio.
+  const TotalPill=({n,label,color,listKey})=><div title="Total de personas dentro del predio (basado en Puesto 1, con fallback si aparecen en P2/P3)" style={{display:"flex",alignItems:"center",gap:5,background:"rgba(0,0,0,.4)",border:`1.5px solid ${color}66`,borderRadius:5,padding:"3px 8px",cursor:"pointer"}} onClick={()=>setShowList(listKey)}>
+    <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",letterSpacing:.5}}>{label}</span>
+    <span style={{fontFamily:"var(--fh)",fontSize:16,fontWeight:900,color,lineHeight:1}}>{n}</span>
+    <span style={{fontSize:9,color,opacity:.7}}>▾</span>
+  </div>;
   return <>
     <div style={{display:"flex",alignItems:"center",gap:6}}>
-      <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginRight:1}}>CH</span>
-      <Pill n={data.pc} label="pers" color="#A78BFA" listKey="plc"/>
-      <Pill n={data.vc} label="veh" color="#10B981" listKey="vlc"/>
-      <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginLeft:4,marginRight:1}}>CAM</span>
+      <TotalPill n={data.ep} label="EN PREDIO" color="#F59E0B" listKey="plp"/>
+      <span style={{color:"var(--tx3)",fontSize:16,opacity:.35,margin:"0 2px"}}>│</span>
+      <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginRight:1}}>CAM</span>
       <Pill n={data.pm} label="pers" color="#60A5FA" listKey="plm"/>
       <Pill n={data.vm} label="veh" color="#60A5FA" listKey="vlm"/>
+      <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginLeft:4,marginRight:1}}>CH</span>
+      <Pill n={data.pc} label="pers" color="#A78BFA" listKey="plc"/>
+      <Pill n={data.vc} label="veh" color="#10B981" listKey="vlc"/>
     </div>
     {showList&&<ListaFiltrada
       items={listData[showList]}
       tipo={showList.startsWith("v")?"vehiculo":"persona"}
       titulo={listTitles[showList]}
       onClose={()=>setShowList(null)}
-      onRemove={canRemove?(showList.startsWith("v")?sacarVeh:sacar):null}
+      onRemove={showList==="plp"?(canRemovePredio?sacarPredio:null):(canRemove?(showList.startsWith("v")?sacarVeh:sacar):null)}
     />}
   </>;
 }
@@ -591,6 +621,56 @@ const calcPosicionesMontana=async()=>{
     vehiculoLast[k]=last;
   });
   return{persona,vehiculo,personaLast,vehiculoLast};
+};
+
+// calcPersonasEnPredio: personas dentro del predio hoy.
+// Regla: mira la ULTIMA fichada del día en TODOS los puestos (P1 + P2 + P3, sesiones + manuales).
+//   - Si la última es "Puesto 1 salida" → fuera del predio.
+//   - Cualquier otra cosa (P1 entrada, o P2/P3 entrada/salida) → dentro del predio.
+// Fallback P1-offline: si P1 no registró la entrada (falla, corte de luz, etc.) pero la persona
+// aparece en P2/P3, su última fichada no es P1 salida → automáticamente cuenta como dentro.
+const calcPersonasEnPredio=async()=>{
+  const todayStr=today();
+  const[r1s,r1m,r2s,r3s,r2m,r3m]=await Promise.all([
+    db.sel("sesiones_acceso",{f:[["puesto","eq","Puesto 1"],["cerrada_at","gte",todayStr+"T00:00:00"]],ord:"cerrada_at.asc",lim:5000}),
+    db.sel("movimientos_manuales",{f:[["puesto","eq","Puesto 1"],["created_at","gte",todayStr+"T00:00:00"]],ord:"created_at.asc",lim:5000}),
+    db.sel("sesiones_acceso",{f:[["puesto","eq","Puesto 2"],["cerrada_at","gte",todayStr+"T00:00:00"]],ord:"cerrada_at.asc",lim:5000}),
+    db.sel("sesiones_acceso",{f:[["puesto","eq","Puesto 3"],["cerrada_at","gte",todayStr+"T00:00:00"]],ord:"cerrada_at.asc",lim:5000}),
+    db.sel("movimientos_manuales",{f:[["puesto","eq","Puesto 2"],["created_at","gte",todayStr+"T00:00:00"]],ord:"created_at.asc",lim:5000}),
+    db.sel("movimientos_manuales",{f:[["puesto","eq","Puesto 3"],["created_at","gte",todayStr+"T00:00:00"]],ord:"created_at.asc",lim:5000}),
+  ]);
+  const ses=[...(r1s.data||[]),...(r2s.data||[]),...(r3s.data||[])];
+  const man=[...(r1m.data||[]),...(r2m.data||[]),...(r3m.data||[])];
+  const sesIds=ses.map(s=>s.id);
+  let regs=[];
+  if(sesIds.length>0){
+    const{data}=await db.sel("registros_acceso",{cols:"persona_id,dni_raw,sesion_id",inFilter:["sesion_id",sesIds]});
+    regs=data||[];
+  }
+  const sesById={};ses.forEach(s=>{sesById[s.id]=s;});
+  const dniToId={};regs.forEach(r=>{if(r.persona_id&&r.dni_raw)dniToId[r.dni_raw]=r.persona_id;});
+  const normKey=(pid,dni)=>pid||(dniToId[dni]||dni);
+  const events={};
+  regs.forEach(r=>{
+    const s=sesById[r.sesion_id];if(!s)return;
+    const key=normKey(r.persona_id,r.dni_raw);
+    if(!events[key])events[key]=[];
+    events[key].push({t:new Date(s.cerrada_at).getTime(),puesto:s.puesto,dir:s.direccion});
+  });
+  man.forEach(m=>{
+    const key=normKey(m.persona_id,m.dni_raw)||("m_"+m.id);
+    if(!events[key])events[key]=[];
+    events[key].push({t:new Date(m.created_at).getTime(),puesto:m.puesto,dir:m.direccion});
+  });
+  const inSet=new Set();
+  const lastMap={};
+  Object.entries(events).forEach(([k,e])=>{
+    e.sort((a,b)=>a.t-b.t);
+    const last=e[e.length-1];
+    lastMap[k]=last;
+    if(!(last.puesto==="Puesto 1"&&last.dir==="salida"))inSet.add(k);
+  });
+  return{inSet,lastMap};
 };
 
 function ChaletCounter({proyectoId}){
