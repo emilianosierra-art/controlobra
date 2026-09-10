@@ -163,12 +163,125 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
   .step{font-size:10px;gap:4px;padding:6px 4px}
   .sn{width:18px;height:18px;font-size:10px}
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MÓDULO COMEDOR (nuevo tab "Viandas")
+   Prefijos .cmd- para no chocar con las clases existentes.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.cmd-root{--cmd-pri:#F59E0B;--cmd-ok:#10B981;--cmd-err:#EF4444;--cmd-info:#60A5FA;--cmd-purple:#A78BFA;--cmd-dieta:#FBBF24;font-family:var(--fh);}
+.cmd-puestochip{display:inline-block;font-size:11px;padding:4px 10px;border-radius:4px;text-transform:uppercase;letter-spacing:.5px;font-weight:800;margin-right:8px;}
+.cmd-puestochip.camp{color:var(--cmd-info);background:rgba(96,165,250,.14);border:1px solid rgba(96,165,250,.5);}
+.cmd-puestochip.chal{color:var(--cmd-purple);background:rgba(167,139,250,.14);border:1px solid rgba(167,139,250,.5);}
+.cmd-puestochip.admin{color:var(--cmd-pri);background:rgba(245,158,11,.14);border:1px solid rgba(245,158,11,.5);}
+.cmd-stats{padding:8px 12px;background:var(--s2);border:1px solid var(--bd);border-radius:6px;display:flex;gap:8px;align-items:center;overflow-x:auto;margin-bottom:10px;}
+.cmd-stat{display:flex;align-items:center;gap:6px;background:rgba(0,0,0,.3);border:1px solid var(--bd);border-radius:4px;padding:4px 8px;white-space:nowrap;}
+.cmd-stat .icon{font-size:14px;}
+.cmd-stat .num{font-family:var(--fm);font-weight:800;color:var(--cmd-pri);font-size:13px;}
+.cmd-stat .num .den{color:var(--tx3);font-weight:500;}
+.cmd-stat .lbl{font-size:9px;color:var(--tx2);text-transform:uppercase;letter-spacing:.3px;}
+.cmd-tabs{display:flex;background:var(--s1);border:1px solid var(--bd);border-radius:6px;overflow:hidden;margin-bottom:10px;}
+.cmd-tab{flex:1;padding:10px 8px;text-align:center;background:none;border:none;color:var(--tx2);font-weight:600;border-bottom:2px solid transparent;font-size:13px;cursor:pointer;font-family:var(--fh);}
+.cmd-tab.active{color:var(--cmd-pri);border-bottom-color:var(--cmd-pri);background:rgba(245,158,11,.06);}
+.cmd-datebar{display:flex;align-items:center;gap:8px;margin-bottom:10px;background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;flex-wrap:wrap;}
+.cmd-datebar label{font-size:10px;color:var(--tx2);text-transform:uppercase;font-weight:700;letter-spacing:.5px;}
+.cmd-datebar input[type=date]{background:var(--s2);border:1px solid var(--bd);color:var(--tx);border-radius:4px;padding:6px 8px;font-family:var(--fm);font-size:13px;}
+.cmd-datebar .btnDate{background:var(--s2);border:1px solid var(--bd);color:var(--tx2);padding:6px 10px;border-radius:4px;font-size:11px;font-weight:600;cursor:pointer;}
+.cmd-datebar .btnDate.today{border-color:var(--cmd-pri);color:var(--cmd-pri);}
+.cmd-datebar .warn{margin-left:auto;font-size:10px;color:var(--cmd-dieta);font-weight:700;text-transform:uppercase;letter-spacing:.3px;}
+.cmd-search{width:100%;padding:10px 12px;background:var(--s2);border:1px solid var(--bd);color:var(--tx);border-radius:4px;font-size:14px;margin-bottom:10px;font-family:var(--fh);}
+.cmd-search:focus{outline:none;border-color:var(--cmd-pri);}
+.cmd-fbar{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;align-items:center;}
+.cmd-fbar .lbl{font-size:10px;color:var(--tx3);text-transform:uppercase;font-weight:700;margin-right:4px;}
+.cmd-fbtn{padding:5px 10px;background:var(--s2);border:1px solid var(--bd);color:var(--tx2);border-radius:4px;font-size:11px;text-transform:uppercase;font-weight:600;letter-spacing:.3px;cursor:pointer;font-family:var(--fh);}
+.cmd-fbtn.active{background:rgba(245,158,11,.15);border-color:var(--cmd-pri);color:var(--cmd-pri);}
+.cmd-fbtn.status.active{background:rgba(16,185,129,.15);border-color:var(--cmd-ok);color:var(--cmd-ok);}
+.cmd-fbtn.loc.active{background:rgba(96,165,250,.15);border-color:var(--cmd-info);color:var(--cmd-info);}
+.cmd-fbtn.dieta.active{background:rgba(251,191,36,.18);border-color:var(--cmd-dieta);color:var(--cmd-dieta);}
+.cmd-fclear{margin-left:auto;background:none;border:none;color:var(--tx3);font-size:11px;text-decoration:underline;padding:4px;cursor:pointer;font-family:var(--fh);}
+.cmd-row{background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;margin-bottom:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.cmd-row.dieta{border-left:3px solid var(--cmd-dieta);}
+.cmd-row .info{flex:1;min-width:0;}
+.cmd-row .nameRow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.cmd-row .name{font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cmd-row .badgeDieta{background:var(--cmd-dieta);color:#000;font-size:9px;font-weight:800;padding:1px 5px;border-radius:3px;text-transform:uppercase;letter-spacing:.3px;}
+.cmd-row .letra{font-family:var(--fm);font-size:10px;color:var(--tx3);background:var(--s2);border:1px solid var(--bd);padding:1px 5px;border-radius:3px;margin-left:auto;text-transform:uppercase;}
+.cmd-row .meta{font-size:10px;color:var(--tx2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.cmd-row .meals{display:flex;gap:3px;flex-shrink:0;}
+.cmd-mp{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:4px 5px;border-radius:4px;border:1px solid var(--bd);min-width:36px;background:var(--s2);}
+.cmd-mp .em{font-size:13px;line-height:1;}
+.cmd-mp .lbl{font-size:7px;text-transform:uppercase;color:var(--tx3);margin-top:2px;font-weight:700;letter-spacing:.2px;}
+.cmd-mp.na{opacity:.2;}
+.cmd-mp.pend{background:rgba(16,185,129,.12);border-color:var(--cmd-ok);}
+.cmd-mp.pend .lbl{color:var(--cmd-ok);}
+.cmd-mp.disp{background:rgba(245,158,11,.2);border-color:var(--cmd-pri);}
+.cmd-mp.disp .lbl{color:var(--cmd-pri);}
+.cmd-mp .check{position:absolute;top:-4px;right:-4px;background:var(--cmd-pri);color:#000;border-radius:50%;width:14px;height:14px;font-size:9px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+.cmd-editbtn{background:var(--s2);border:1px dashed var(--tx3);color:var(--tx2);border-radius:4px;padding:5px 9px;font-size:11px;font-weight:700;margin-left:8px;letter-spacing:.3px;text-transform:uppercase;display:flex;align-items:center;gap:3px;cursor:pointer;font-family:var(--fh);}
+.cmd-editbtn:hover{background:var(--s1);border-color:var(--cmd-dieta);color:var(--cmd-dieta);}
+.cmd-editbtn.on{color:#000;background:var(--cmd-dieta);border:1px solid var(--cmd-dieta);border-style:solid;}
+.cmd-dnote{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.4);border-left:3px solid var(--cmd-dieta);border-radius:4px;padding:6px 10px;margin-top:6px;font-size:12px;color:var(--cmd-dieta);width:100%;}
+.cmd-dnote strong{color:#000;background:var(--cmd-dieta);padding:1px 6px;border-radius:3px;font-size:10px;text-transform:uppercase;letter-spacing:.3px;margin-right:6px;font-weight:800;}
+.cmd-prefix{background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;margin-bottom:12px;}
+.cmd-prefix .top{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+.cmd-prefix .top .lbl{font-size:10px;color:var(--tx2);text-transform:uppercase;font-weight:700;letter-spacing:.5px;}
+.cmd-prefix .top .actv{margin-left:auto;font-size:10px;color:var(--cmd-pri);font-weight:800;text-transform:uppercase;}
+.cmd-prefix .top .inactv{margin-left:auto;font-size:10px;color:var(--tx3);font-weight:600;text-transform:uppercase;}
+.cmd-prefix .btns{display:flex;gap:6px;flex-wrap:wrap;}
+.cmd-prefbtn{flex:1;min-width:70px;padding:8px 6px;background:var(--s2);border:2px solid var(--bd);color:var(--tx2);border-radius:6px;display:flex;flex-direction:column;align-items:center;gap:3px;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.3px;cursor:pointer;font-family:var(--fh);}
+.cmd-prefbtn.on{border-color:var(--cmd-pri);color:var(--cmd-pri);background:rgba(245,158,11,.14);}
+.cmd-prefbtn .em{font-size:20px;line-height:1;}
+.cmd-scaninp{display:flex;gap:6px;margin-bottom:10px;}
+.cmd-scaninp input{flex:1;padding:8px 10px;background:var(--s2);border:2px solid var(--cmd-pri);color:var(--tx);border-radius:5px;font-size:14px;font-family:var(--fm);text-align:center;letter-spacing:.5px;font-weight:700;}
+.cmd-scaninp input:focus{outline:none;background:rgba(245,158,11,.06);}
+.cmd-scaninp button{padding:0 14px;background:var(--cmd-pri);border:none;color:#000;font-weight:800;border-radius:5px;font-size:12px;text-transform:uppercase;letter-spacing:.3px;cursor:pointer;font-family:var(--fh);}
+.cmd-pcard{background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:14px;margin-top:8px;}
+.cmd-pcard.dieta{border-left:4px solid var(--cmd-dieta);}
+.cmd-pcard h2{font-size:19px;margin-bottom:2px;line-height:1.2;}
+.cmd-pcard .metaRow{color:var(--tx2);font-size:12px;margin-bottom:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.cmd-pcard .letra{font-family:var(--fm);color:var(--tx);background:var(--s2);border:1px solid var(--bd);padding:2px 6px;border-radius:3px;font-size:11px;font-weight:700;}
+.cmd-dbanner{background:var(--cmd-dieta);color:#000;padding:10px 12px;border-radius:6px;font-weight:800;text-align:center;margin-bottom:10px;font-size:14px;letter-spacing:.3px;text-transform:uppercase;display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;}
+.cmd-mgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.cmd-mbtn{padding:14px 8px;border:2px solid var(--bd);background:var(--s2);color:var(--tx);border-radius:8px;display:flex;flex-direction:column;align-items:center;gap:3px;position:relative;cursor:pointer;font-family:var(--fh);}
+.cmd-mbtn .em{font-size:26px;line-height:1;}
+.cmd-mbtn .lbl{font-weight:800;text-transform:uppercase;font-size:12px;letter-spacing:.5px;}
+.cmd-mbtn .st{font-size:9px;text-transform:uppercase;color:var(--tx3);font-weight:600;letter-spacing:.3px;}
+.cmd-mbtn.na{opacity:.3;cursor:not-allowed;}
+.cmd-mbtn.pend{border-color:var(--cmd-ok);background:rgba(16,185,129,.06);}
+.cmd-mbtn.pend .lbl,.cmd-mbtn.pend .st{color:var(--cmd-ok);}
+.cmd-mbtn.disp{border-color:var(--cmd-pri);background:rgba(245,158,11,.12);}
+.cmd-mbtn.disp .lbl,.cmd-mbtn.disp .st{color:var(--cmd-pri);}
+.cmd-mbtn .dtag{position:absolute;top:6px;right:6px;background:var(--cmd-dieta);color:#000;font-size:8px;font-weight:800;padding:1px 4px;border-radius:2px;letter-spacing:.3px;}
+.cmd-empty{text-align:center;color:var(--tx3);font-size:13px;padding:40px 20px;line-height:1.6;}
+.cmd-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--cmd-ok);color:#000;padding:12px 20px;border-radius:8px;font-weight:800;z-index:100;box-shadow:0 4px 16px rgba(0,0,0,.5);max-width:90vw;text-align:center;}
+.cmd-toast.err{background:var(--cmd-err);color:#fff;}
+.cmd-modov{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px;}
+.cmd-modal{background:var(--s1);border:1px solid var(--bd);border-radius:8px;max-width:440px;width:100%;padding:20px;}
+.cmd-modal h3{font-size:16px;color:var(--cmd-dieta);margin-bottom:4px;font-weight:800;}
+.cmd-modal .who{font-size:13px;color:var(--tx2);margin-bottom:14px;}
+.cmd-modal label{display:block;font-size:10px;color:var(--tx2);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:4px;}
+.cmd-modal textarea{width:100%;padding:10px;background:var(--s2);border:1px solid var(--bd);color:var(--tx);border-radius:6px;font-size:14px;font-family:var(--fh);resize:vertical;min-height:70px;}
+.cmd-modal textarea:focus{outline:none;border-color:var(--cmd-dieta);}
+.cmd-modal .hint{font-size:11px;color:var(--tx3);margin-top:6px;line-height:1.4;}
+.cmd-modal .actions{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;}
+.cmd-modal .btnSave{flex:1;padding:10px;background:var(--cmd-dieta);border:none;color:#000;font-weight:800;border-radius:6px;font-size:13px;text-transform:uppercase;letter-spacing:.3px;cursor:pointer;font-family:var(--fh);}
+.cmd-modal .btnQuit{padding:10px 14px;background:transparent;border:1px solid var(--cmd-err);color:var(--cmd-err);font-weight:700;border-radius:6px;font-size:12px;text-transform:uppercase;letter-spacing:.3px;cursor:pointer;font-family:var(--fh);}
+.cmd-modal .btnCancel{padding:10px 14px;background:transparent;border:1px solid var(--bd);color:var(--tx2);font-weight:600;border-radius:6px;font-size:12px;cursor:pointer;font-family:var(--fh);}
+.cmd-rep{background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:14px;margin-bottom:10px;}
+.cmd-rep h3{font-size:14px;color:var(--cmd-pri);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;font-weight:800;}
+.cmd-rep table{width:100%;border-collapse:collapse;font-size:12px;}
+.cmd-rep th,.cmd-rep td{padding:6px 8px;text-align:left;border-bottom:1px solid var(--bd);}
+.cmd-rep th{color:var(--tx2);text-transform:uppercase;font-size:10px;letter-spacing:.3px;}
+.cmd-rep td.n,.cmd-rep th.n{text-align:right;font-family:var(--fm);font-weight:700;}
+.cmd-ptag{font-size:9px;padding:1px 5px;border-radius:3px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;}
+.cmd-ptag.camp{color:var(--cmd-info);background:rgba(96,165,250,.15);}
+.cmd-ptag.chal{color:var(--cmd-purple);background:rgba(167,139,250,.15);}
+.cmd-ptag.admin{color:var(--cmd-pri);background:rgba(245,158,11,.15);}
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const{useState,useEffect,useRef,useCallback}=React;
+const{useState,useEffect,useRef,useCallback,useMemo}=React;
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -2056,7 +2169,7 @@ const horaArg=()=>{
   catch(e){return new Date().getHours();}
 };
 
-function ViandasAddModal({user,proyectoId,existentes,onClose,onAdded}){
+function ConteoViandasChaletAddModal({user,proyectoId,existentes,onClose,onAdded}){
   const[search,setSearch]=useState("");
   const[personas,setPersonas]=useState([]);
   const[loading,setLoading]=useState(true);
@@ -2094,7 +2207,7 @@ function ViandasAddModal({user,proyectoId,existentes,onClose,onAdded}){
   </div></div>;
 }
 
-function Viandas({user,proyectoId}){
+function ConteoViandasChalet({user,proyectoId}){
   const[comidas,setComidas]=useState([]);
   const[personasMap,setPersonasMap]=useState({});
   const[lastEvents,setLastEvents]=useState({});
@@ -2136,7 +2249,7 @@ function Viandas({user,proyectoId}){
 
   return <div>
     <div className="ph2">
-      <div className="ptit">Viandas · <span>Almuerzo</span> de hoy</div>
+      <div className="ptit">Conteo Viandas Chalet · <span>Almuerzo</span> de hoy</div>
       {canEdit&&<button className="badd" onClick={()=>setShowAdd(true)}>+ Agregar comensal</button>}
     </div>
     <div style={{background:"linear-gradient(135deg,rgba(245,158,11,.15),rgba(139,92,246,.08))",border:"2px solid var(--acc)",borderRadius:10,padding:"18px 24px",marginBottom:18,display:"flex",alignItems:"center",gap:20,flexWrap:"wrap"}}>
@@ -2179,7 +2292,462 @@ function Viandas({user,proyectoId}){
         })}
       </tbody>
     </table></div>}
-    {showAdd&&<ViandasAddModal user={user} proyectoId={proyectoId} existentes={comidas} onClose={()=>setShowAdd(false)} onAdded={()=>{setShowAdd(false);load();}}/>}
+    {showAdd&&<ConteoViandasChaletAddModal user={user} proyectoId={proyectoId} existentes={comidas} onClose={()=>setShowAdd(false)} onAdded={()=>{setShowAdd(false);load();}}/>}
+  </div>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MÓDULO COMEDOR (tab "Viandas" nuevo) — portado del prototipo Rev05.
+// Datos DEMO en memoria/localStorage. Fase B: pasa a Supabase.
+// ═══════════════════════════════════════════════════════════════════════════
+const CMD_COMIDAS=[
+  {key:'desayuno',label:'Desayuno',short:'DES',em:'☕'},
+  {key:'almuerzo',label:'Almuerzo',short:'ALM',em:'🍽️'},
+  {key:'merienda',label:'Merienda',short:'MER',em:'🥐'},
+  {key:'cena',    label:'Cena',    short:'CEN',em:'🌙'},
+];
+const CMD_LETRAS={C:'Campamento',O:'Omega',R:'Río Villegas',H:'Hostel',N:'Sin información',I:'Viaje a obra',V:'Viaje desde obra',F:'Franco'};
+const CMD_NUM_COMIDAS={0:[],1:['desayuno'],2:['desayuno','almuerzo','merienda'],3:['almuerzo','merienda'],4:['almuerzo','merienda','cena'],5:['cena'],6:['desayuno','almuerzo','merienda','cena']};
+const CMD_PERSONAL_DEMO=[
+  {dni:'23607422',nombre:'JULIO CESAR',apellido:'INSFRAN',empresa:'OYS OP - CAPATAZ'},
+  {dni:'20724867',nombre:'GERONIMO',apellido:'ENCINAS',empresa:'OYS OP - CAPATAZ'},
+  {dni:'35077320',nombre:'RAUL ALEJANDRO',apellido:'INGNACIO',empresa:'OYS OP - MECANICO'},
+  {dni:'42402791',nombre:'LEONEL',apellido:'SAULO LUQUET',empresa:'OYS OP - MECANICO'},
+  {dni:'43684287',nombre:'JOAQUIN EMANUEL',apellido:'LINARES',empresa:'OYS OP - MECANICO'},
+  {dni:'95424496',nombre:'GUILLERMO',apellido:'MONTAÑO GUZMAN',empresa:'OYS OP - ELÉCTRICO'},
+  {dni:'94229246',nombre:'JUAN BAUTISTA',apellido:'RUIZ DIAZ RAMIREZ',empresa:'OYS OP - ELÉCTRICO'},
+  {dni:'25070454',nombre:'CARLOS DANIEL',apellido:'BUKVIC',empresa:'OYS OP - ELÉCTRICO'},
+  {dni:'28412304',nombre:'ALBERTO EPIFANIO',apellido:'ROMERO',empresa:'OYS OP - ELÉCTRICO'},
+  {dni:'28970001',nombre:'MATIAS NICOLAS',apellido:'OZUNA',empresa:'OYS OP - ELÉCTRICO'},
+  {dni:'24572561',nombre:'CESAR ANTONIO',apellido:'GIMENEZ',empresa:'OYS OP - CHOFER'},
+  {dni:'93759823',nombre:'SANTIAGO',apellido:'SAAVEDRA SOLA',empresa:'OYS OP - CHOFER'},
+  {dni:'28378077',nombre:'ADAN',apellido:'VALENZUELA',empresa:'OYS OP - CHOFER'},
+  {dni:'29885911',nombre:'FERNANDO',apellido:'PEREZ',empresa:'OYS INTENDENCIA'},
+  {dni:'32032333',nombre:'JONATHAN ERNESTO',apellido:'BRIZUELA',empresa:'OYS OP - SANITARISTA'},
+  {dni:'44588980',nombre:'URIEL',apellido:'DIAZ',empresa:'OYS OP'},
+  {dni:'30034509',nombre:'JUAN GABRIEL',apellido:'BEJARANO',empresa:'OYS OP'},
+  {dni:'35288428',nombre:'LUIS ANTONIO',apellido:'BENITEZ',empresa:'OYS OP'},
+  {dni:'94161703',nombre:'JUAN CARLOS',apellido:'MONTAÑO FERNANDEZ',empresa:'OYS OP'},
+  {dni:'23577171',nombre:'NESTOR GERMAN',apellido:'IBAÑEZ',empresa:'OYS OP'},
+  {dni:'93986219',nombre:'ERLAND ADALID',apellido:'ANTEZANA BARRIOS',empresa:'OYS OP'},
+  {dni:'94275341',nombre:'RAUL',apellido:'AGUILERA',empresa:'OYS OP'},
+  {dni:'21061048',nombre:'JUAN CARLOS',apellido:'ROBLES',empresa:'OYS OP'},
+  {dni:'32130439',nombre:'FERNANDO EMIR',apellido:'PUJADAS',empresa:'OYS JER'},
+  {dni:'39416760',nombre:'VICTORIA',apellido:'CAMARERO',empresa:'OYS JER'},
+  {dni:'14923617',nombre:'FERNANDO',apellido:'MARTINEZ TANOIRA',empresa:'OYS JER'},
+  {dni:'31552172',nombre:'EMILIANO',apellido:'SIERRA',empresa:'OYS JER'},
+  {dni:'35155874',nombre:'JUAN MANUEL',apellido:'ZABALA',empresa:'OYS JER'},
+  {dni:'32691599',nombre:'VANINA LORENA',apellido:'PEREZ',empresa:'OYS JER'},
+  {dni:'34666989',nombre:'MARILYN',apellido:'PACE',empresa:'OYS JER'},
+  {dni:'43446165',nombre:'IGNACIO LEÓN',apellido:'LOPEZ',empresa:'OYS JER'},
+  {dni:'39757363',nombre:'MARIA',apellido:'OYARZUN',empresa:'OYS JER'},
+];
+const CMD_CODES=['O-6','O-6','O-6','O-6','O-6','O-6','O-2','O-2','O-2','C-6','C-6','H-6','H-3','R-6','F-0','F-0','V-2','I-0','N-2'];
+const cmdHash=(s)=>{let h=0;for(let i=0;i<s.length;i++)h=((h<<5)-h+s.charCodeAt(i))|0;return h;};
+const CMD_SHEET=(()=>{
+  const out={};const t=new Date();t.setHours(0,0,0,0);
+  for(let d=-7;d<=5;d++){
+    const dt=new Date(t);dt.setDate(t.getDate()+d);
+    const k=dt.toISOString().slice(0,10);out[k]={};
+    CMD_PERSONAL_DEMO.forEach(p=>{out[k][p.dni]=CMD_CODES[Math.abs(cmdHash(p.dni+'|'+k))%CMD_CODES.length];});
+  }
+  return out;
+})();
+const cmdParseCode=(c)=>{
+  if(!c||typeof c!=='string')return{letra:null,numero:0,comidas:[]};
+  const [l,n]=c.split('-');const num=parseInt(n,10);
+  if(l==='F')return{letra:l,numero:num,comidas:[]};
+  return{letra:l,numero:num,comidas:CMD_NUM_COMIDAS[num]||[]};
+};
+const cmdPersonasFecha=(fecha)=>{
+  const day=CMD_SHEET[fecha]||{};
+  return CMD_PERSONAL_DEMO.map(p=>{
+    const code=day[p.dni];const parsed=cmdParseCode(code);
+    return{...p,id:p.dni,code,letra:parsed.letra,letraNom:CMD_LETRAS[parsed.letra]||'',numero:parsed.numero,comidas:parsed.comidas};
+  }).filter(p=>p.comidas.length>0);
+};
+// Dieta helpers (Rev05+): valor puede ser undefined/true/string/{nota,hasta}
+const cmdGetDietaObj=(v)=>{
+  if(v===undefined||v===null||v===false)return null;
+  if(v===true)return{nota:'',hasta:null};
+  if(typeof v==='string')return{nota:v,hasta:null};
+  if(typeof v==='object')return{nota:v.nota||'',hasta:v.hasta||null};
+  return null;
+};
+const cmdIsDietaActive=(v)=>cmdGetDietaObj(v)!==null;
+const cmdIsDietaActiveForDate=(v,fecha)=>{const o=cmdGetDietaObj(v);if(!o)return false;if(!o.hasta)return true;return fecha<=o.hasta;};
+const cmdGetDietaNote=(v)=>{const o=cmdGetDietaObj(v);return o?o.nota:'';};
+const cmdGetDietaHasta=(v)=>{const o=cmdGetDietaObj(v);return o?(o.hasta||''):'';};
+// Storage + BroadcastChannel
+const CMD_KEY_DESP='mc_comedor_v2_despachos';
+const CMD_KEY_DIETA='mc_comedor_v2_menu_dieta';
+const CMD_BC_NAME='mc_comedor_v2_sync';
+const cmdLoadLS=(k,def)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):def;}catch(e){return def;}};
+const cmdSaveLS=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
+const cmdUuid=()=>(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'_'+Math.random().toString(36).slice(2));
+const cmdBc=(typeof BroadcastChannel!=='undefined')?new BroadcastChannel(CMD_BC_NAME):null;
+const cmdBcSend=(m)=>{try{cmdBc&&cmdBc.postMessage(m);}catch(e){}};
+const cmdIsoDate=(d)=>d.toISOString().slice(0,10);
+const cmdFmtDate=(iso)=>{const[y,m,d]=iso.split('-');return `${d}/${m}/${y}`;};
+const cmdPuestoClass=(p)=>p==='DESPACHO CAMPAMENTO'?'camp':(p==='DESPACHO CHALET'?'chal':'admin');
+const cmdPuestoShort=(p)=>p==='DESPACHO CAMPAMENTO'?'Camp.':(p==='DESPACHO CHALET'?'Chalet':'Admin');
+// Rol de ControlObra → puesto del comedor
+const cmdPuestoFromRol=(rol)=>{
+  if(rol==='cocina_campamento')return 'DESPACHO CAMPAMENTO';
+  if(rol==='cocina_chalet')return 'DESPACHO CHALET';
+  return 'ADMIN';
+};
+
+// ─── Sub-componentes del módulo Comedor ─────────────────────────────────────
+function CmdDietaModal({persona,currentValue,onSave,onQuit,onClose}){
+  const[note,setNote]=useState(cmdGetDietaNote(currentValue));
+  const[hasta,setHasta]=useState(cmdGetDietaHasta(currentValue));
+  const active=cmdIsDietaActive(currentValue);
+  return <div className="cmd-modov" onClick={onClose}>
+    <div className="cmd-modal" onClick={e=>e.stopPropagation()}>
+      <h3>🥗 Menú dieta</h3>
+      <div className="who">{persona.nombre} {persona.apellido} · DNI {persona.dni}</div>
+      <label>Nota / comentario (para la cocina)</label>
+      <textarea autoFocus value={note} onChange={e=>setNote(e.target.value)} placeholder='Ej: "diabético", "sin sal", "vegetariano", "sin gluten"'/>
+      <label style={{marginTop:14}}>Aplica hasta el (opcional)</label>
+      <div style={{display:'flex',gap:6,alignItems:'center'}}>
+        <input type="date" value={hasta} onChange={e=>setHasta(e.target.value)} style={{padding:8,background:'var(--s2)',border:'1px solid var(--bd)',color:'var(--tx)',borderRadius:6,fontFamily:'var(--fm)',fontSize:13,flex:1}}/>
+        {hasta&&<button onClick={()=>setHasta('')} style={{background:'var(--s2)',border:'1px solid var(--bd)',color:'var(--tx3)',padding:'8px 10px',borderRadius:6,fontSize:11,cursor:'pointer'}}>Sin fecha</button>}
+      </div>
+      <div className="hint">Vacío = permanente. Con fecha, la dieta aplica <strong>hasta ese día inclusive</strong>.</div>
+      <div className="actions">
+        <button className="btnSave" onClick={()=>onSave({nota:note,hasta:hasta||null})}>{active?'Actualizar':'Marcar dieta'}</button>
+        {active&&<button className="btnQuit" onClick={onQuit}>Quitar dieta</button>}
+        <button className="btnCancel" onClick={onClose}>Cancelar</button>
+      </div>
+    </div>
+  </div>;
+}
+function CmdMealPill({comida,aplica,despachado,onClick,clickable}){
+  const cls=!aplica?'na':(despachado?'disp':'pend');
+  const canClick=aplica&&clickable&&onClick;
+  return <div className={'cmd-mp '+cls} onClick={canClick?onClick:undefined} style={canClick?{cursor:'pointer'}:undefined} title={canClick?(despachado?'Click para deshacer':'Click para despachar'):undefined}>
+    <span className="em">{comida.em}</span>
+    <span className="lbl">{comida.short}</span>
+    {despachado&&<span className="check">✓</span>}
+  </div>;
+}
+function CmdDateBar({fecha,setFecha}){
+  const today=cmdIsoDate(new Date());
+  const isToday=fecha===today;const isPast=fecha<today;
+  return <div className="cmd-datebar">
+    <label>Fecha</label>
+    <input type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/>
+    {!isToday&&<button className="btnDate today" onClick={()=>setFecha(today)}>← Hoy</button>}
+    {isPast&&<span className="warn">📖 día pasado — solo lectura</span>}
+  </div>;
+}
+function CmdPrefixBar({prefix,togglePref}){
+  const activeList=[...prefix];
+  return <div className="cmd-prefix">
+    <div className="top">
+      <span className="lbl">Modo prefijado</span>
+      {activeList.length>0
+        ?<span className="actv">🔥 Activo: {activeList.map(k=>CMD_COMIDAS.find(c=>c.key===k).em).join('')}</span>
+        :<span className="inactv">Tocá para activar despacho rápido</span>}
+    </div>
+    <div className="btns">
+      {CMD_COMIDAS.map(c=>(
+        <button key={c.key} className={'cmd-prefbtn '+(prefix.has(c.key)?'on':'')} onClick={()=>togglePref(c.key)}>
+          <span className="em">{c.em}</span>
+          <span>{c.short}</span>
+        </button>
+      ))}
+    </div>
+  </div>;
+}
+function CmdListado({personas,despachos,fecha,setFecha,dieta,isAdmin,onOpenDieta,onPick,onDispatch,onUndispatch,canDispatch,isReadOnly}){
+  const[q,setQ]=useState('');
+  const[mealFilters,setMealFilters]=useState(new Set());
+  const[locFilters,setLocFilters]=useState(new Set());
+  const[statusFilter,setStatusFilter]=useState(null);
+  const[dietaOnly,setDietaOnly]=useState(false);
+  const isDisp=(pid,ckey)=>despachos.some(d=>d.personaId===pid&&d.comida===ckey);
+  const getDispId=(pid,ckey)=>(despachos.find(d=>d.personaId===pid&&d.comida===ckey)||{}).id;
+  const toggleMeal=(k)=>setMealFilters(prev=>{const n=new Set(prev);if(n.has(k))n.delete(k);else n.add(k);return n;});
+  const toggleLoc=(l)=>setLocFilters(prev=>{const n=new Set(prev);if(n.has(l))n.delete(l);else n.add(l);return n;});
+  const clearFilters=()=>{setMealFilters(new Set());setLocFilters(new Set());setStatusFilter(null);setDietaOnly(false);setQ('');};
+  const toggleMealFor=(e,p,ckey)=>{
+    e.stopPropagation();
+    if(isReadOnly||!canDispatch)return;
+    if(!p.comidas.includes(ckey))return;
+    const id=getDispId(p.id,ckey);
+    if(id){if(!confirm('¿Deshacer despacho de '+CMD_COMIDAS.find(c=>c.key===ckey).label+' para '+p.nombre+' '+p.apellido+'?'))return;onUndispatch(id);}
+    else onDispatch(p,ckey);
+  };
+  const locCounts=useMemo(()=>{const m={};personas.forEach(p=>{if(p.letra)m[p.letra]=(m[p.letra]||0)+1;});return m;},[personas]);
+  const locKeys=useMemo(()=>Object.keys(locCounts).sort(),[locCounts]);
+  const dietaCount=useMemo(()=>personas.filter(p=>cmdIsDietaActiveForDate(dieta[p.dni],fecha)).length,[personas,dieta,fecha]);
+  const filtered=useMemo(()=>{
+    const s=q.trim().toLowerCase();
+    return personas.filter(p=>{
+      if(s&&!(p.dni.includes(s)||(p.nombre+' '+p.apellido).toLowerCase().includes(s)||(p.empresa||'').toLowerCase().includes(s)))return false;
+      if(locFilters.size>0&&!locFilters.has(p.letra))return false;
+      if(dietaOnly&&!cmdIsDietaActiveForDate(dieta[p.dni],fecha))return false;
+      for(const k of mealFilters)if(!p.comidas.includes(k))return false;
+      if(statusFilter==='pendientes'&&!p.comidas.some(c=>!isDisp(p.id,c)))return false;
+      if(statusFilter==='completos'&&!p.comidas.every(c=>isDisp(p.id,c)))return false;
+      return true;
+    });
+  },[q,personas,despachos,mealFilters,locFilters,statusFilter,dietaOnly,dieta,fecha]);
+  return <div>
+    <CmdDateBar fecha={fecha} setFecha={setFecha}/>
+    <input className="cmd-search" placeholder="Buscar por DNI, nombre o empresa..." value={q} onChange={e=>setQ(e.target.value)}/>
+    <div className="cmd-fbar">
+      <span className="lbl">Estado:</span>
+      <button className={'cmd-fbtn status '+(statusFilter==='pendientes'?'active':'')} onClick={()=>setStatusFilter(statusFilter==='pendientes'?null:'pendientes')}>⏳ Con pendientes</button>
+      <button className={'cmd-fbtn status '+(statusFilter==='completos'?'active':'')} onClick={()=>setStatusFilter(statusFilter==='completos'?null:'completos')}>✓ Completos</button>
+      <button className={'cmd-fbtn dieta '+(dietaOnly?'active':'')} onClick={()=>setDietaOnly(!dietaOnly)}>🥗 Dieta ({dietaCount})</button>
+      {CMD_COMIDAS.map(c=>(
+        <button key={c.key} className={'cmd-fbtn '+(mealFilters.has(c.key)?'active':'')} onClick={()=>toggleMeal(c.key)}>{c.em} {c.short}</button>
+      ))}
+    </div>
+    {locKeys.length>0&&<div className="cmd-fbar">
+      <span className="lbl">Lugar donde duerme:</span>
+      {locKeys.map(l=>(
+        <button key={l} className={'cmd-fbtn loc '+(locFilters.has(l)?'active':'')} onClick={()=>toggleLoc(l)} title={CMD_LETRAS[l]||l}>
+          <span style={{fontFamily:'var(--fm)',fontWeight:800,marginRight:4}}>[{l}]</span>
+          {CMD_LETRAS[l]||l} <span style={{opacity:.6,marginLeft:2}}>({locCounts[l]})</span>
+        </button>
+      ))}
+      {(mealFilters.size>0||locFilters.size>0||statusFilter||dietaOnly||q)&&<button className="cmd-fclear" onClick={clearFilters}>Limpiar todo</button>}
+    </div>}
+    <div style={{fontSize:11,color:'var(--tx3)',marginBottom:8,padding:'0 4px'}}>{filtered.length} persona{filtered.length===1?'':'s'} · {personas.length} en total del día</div>
+    {filtered.length===0?<div className="cmd-empty">Sin resultados con esos filtros.</div>:
+      filtered.map(p=>{
+        const dv=dieta[p.dni];
+        const dietaAplica=cmdIsDietaActiveForDate(dv,fecha);
+        const dietaNote=dietaAplica?cmdGetDietaNote(dv):'';
+        const dietaHasta=cmdGetDietaHasta(dv);
+        const canClickPill=canDispatch&&!isReadOnly;
+        return <div key={p.id} className={'cmd-row'+(dietaAplica?' dieta':'')}>
+          <div className="info" onClick={()=>onPick&&onPick(p)} style={{cursor:onPick?'pointer':'default'}}>
+            <div className="nameRow">
+              <span className="name">{p.nombre} {p.apellido}</span>
+              {dietaAplica&&<span className="badgeDieta">🥗 Dieta</span>}
+              {p.letra&&<span className="letra" title={p.letraNom}>{p.letra}-{p.numero}</span>}
+            </div>
+            <div className="meta">DNI {p.dni} · {p.empresa}</div>
+          </div>
+          <div className="meals" onClick={e=>e.stopPropagation()}>
+            {CMD_COMIDAS.map(c=>(
+              <CmdMealPill key={c.key} comida={c} aplica={p.comidas.includes(c.key)} despachado={isDisp(p.id,c.key)} clickable={canClickPill} onClick={(e)=>toggleMealFor(e,p,c.key)}/>
+            ))}
+            {isAdmin&&!isReadOnly&&(
+              <button className={'cmd-editbtn '+(dietaAplica?'on':'')} onClick={e=>{e.stopPropagation();onOpenDieta(p);}} title="Editar menú dieta">
+                {cmdIsDietaActive(dv)?'🥗 Editar':'🥗 + Dieta'}
+              </button>
+            )}
+          </div>
+          {dietaAplica&&(dietaNote||dietaHasta)&&(
+            <div className="cmd-dnote" onClick={e=>e.stopPropagation()}>
+              {dietaNote&&<><strong>Nota</strong>{dietaNote}</>}
+              {dietaHasta&&<span style={{marginLeft:dietaNote?10:0,opacity:.85,fontSize:11}}>⏱ hasta {cmdFmtDate(dietaHasta)}</span>}
+            </div>
+          )}
+        </div>;
+      })
+    }
+  </div>;
+}
+function CmdEscanear({personas,despachos,dieta,prefix,togglePref,onDispatch,onUndispatch,preloadPersona,clearPreload,fecha,isReadOnly}){
+  const[dni,setDni]=useState('');
+  const[persona,setPersona]=useState(null);
+  const[msg,setMsg]=useState(null);
+  const inputRef=useRef(null);
+  useEffect(()=>{
+    if(preloadPersona){setPersona(preloadPersona);setDni(preloadPersona.dni);clearPreload&&clearPreload();}
+    setTimeout(()=>inputRef.current&&inputRef.current.focus(),30);
+  },[preloadPersona]);
+  const isDisp=(ckey)=>persona&&despachos.some(d=>d.personaId===persona.id&&d.comida===ckey);
+  const getDispId=(ckey)=>persona?(despachos.find(d=>d.personaId===persona.id&&d.comida===ckey)||{}).id:null;
+  const buscar=()=>{
+    const clean=dni.trim();if(!clean)return;
+    if(isReadOnly){setMsg({t:'err',txt:'No se puede despachar en fechas pasadas.'});return;}
+    const p=personas.find(x=>x.dni===clean);
+    if(!p){setMsg({t:'err',txt:'DNI '+clean+' no está en el listado del '+cmdFmtDate(fecha)});setPersona(null);return;}
+    setPersona(p);setMsg(null);
+    const auto=[...prefix].filter(c=>p.comidas.includes(c)&&!despachos.some(d=>d.personaId===p.id&&d.comida===c));
+    auto.forEach(c=>onDispatch(p,c));
+    if(auto.length>0){const ems=auto.map(k=>CMD_COMIDAS.find(c=>c.key===k).em).join(' ');setMsg({t:'ok',txt:ems+' · auto-despachado'});}
+    setDni('');setTimeout(()=>inputRef.current&&inputRef.current.focus(),30);
+  };
+  const tapMeal=(ckey)=>{
+    if(isReadOnly||!persona||!persona.comidas.includes(ckey))return;
+    const id=getDispId(ckey);
+    if(id){if(!confirm('¿Deshacer despacho de '+CMD_COMIDAS.find(c=>c.key===ckey).label+' para '+persona.nombre+' '+persona.apellido+'?'))return;onUndispatch(id);}
+    else onDispatch(persona,ckey);
+  };
+  const reset=()=>{setPersona(null);setDni('');setMsg(null);setTimeout(()=>inputRef.current&&inputRef.current.focus(),30);};
+  const dv=persona?dieta[persona.dni]:undefined;
+  const hasDieta=cmdIsDietaActiveForDate(dv,fecha);
+  const dietaNote=hasDieta?cmdGetDietaNote(dv):'';
+  const dietaHasta=hasDieta?cmdGetDietaHasta(dv):'';
+  return <div>
+    <CmdPrefixBar prefix={prefix} togglePref={togglePref}/>
+    <div className="cmd-scaninp">
+      <input ref={inputRef} placeholder={isReadOnly?'Solo lectura — fecha pasada':'DNI (escaneá o tipeá + Enter)'} value={dni} onChange={e=>setDni(e.target.value)} onKeyDown={e=>e.key==='Enter'&&buscar()} inputMode="numeric" autoFocus disabled={isReadOnly}/>
+      <button onClick={buscar} disabled={isReadOnly}>Buscar</button>
+    </div>
+    {msg&&<div className="cmd-empty" style={{color:msg.t==='err'?'var(--cmd-err)':'var(--cmd-ok)',padding:12}}>{msg.txt}</div>}
+    {persona?<div className={'cmd-pcard'+(hasDieta?' dieta':'')}>
+      <h2>{persona.nombre} {persona.apellido}</h2>
+      <div className="metaRow">
+        <span>DNI {persona.dni}</span><span>·</span><span>{persona.empresa}</span>
+        {persona.letra&&<span className="letra" title={persona.letraNom}>{persona.letra}-{persona.numero} · {persona.letraNom}</span>}
+      </div>
+      {hasDieta&&<div className="cmd-dbanner">
+        <div>🥗 MENÚ DIETA — servir almuerzo dietético</div>
+        {dietaNote&&<div style={{fontSize:12,fontWeight:600,letterSpacing:.2,textTransform:'none',opacity:.85}}>Nota: {dietaNote}</div>}
+        {dietaHasta&&<div style={{fontSize:11,fontWeight:600,textTransform:'none',opacity:.75}}>⏱ aplica hasta {cmdFmtDate(dietaHasta)}</div>}
+      </div>}
+      <div className="cmd-mgrid">
+        {CMD_COMIDAS.map(c=>{
+          const aplica=persona.comidas.includes(c.key);const disp=isDisp(c.key);
+          const cls=!aplica?'na':(disp?'disp':'pend');
+          const showDT=hasDieta&&c.key==='almuerzo'&&aplica;
+          return <button key={c.key} className={'cmd-mbtn '+cls} onClick={()=>tapMeal(c.key)} disabled={!aplica||isReadOnly}>
+            {showDT&&<span className="dtag">DIETA</span>}
+            <span className="em">{c.em}</span>
+            <span className="lbl">{c.label}</span>
+            <span className="st">{!aplica?'No corresponde':(disp?'Despachado ✓ (tocar deshace)':'Tocar para despachar')}</span>
+          </button>;
+        })}
+      </div>
+      <button onClick={reset} style={{marginTop:14,width:'100%',padding:10,background:'var(--s2)',border:'1px solid var(--bd)',color:'var(--tx2)',borderRadius:6,fontWeight:600,cursor:'pointer',fontFamily:'var(--fh)'}}>Escanear otro</button>
+    </div>:(!msg&&<div className="cmd-empty">Escaneá un DNI (o tipealo y Enter)<br/>para ver las comidas de la persona.</div>)}
+  </div>;
+}
+function CmdReporte({personas,despachos,fecha}){
+  const porComida=useMemo(()=>CMD_COMIDAS.map(c=>({
+    ...c,
+    total:personas.filter(p=>p.comidas.includes(c.key)).length,
+    despachadas:despachos.filter(d=>d.comida===c.key).length,
+    camp:despachos.filter(d=>d.comida===c.key&&d.puesto==='DESPACHO CAMPAMENTO').length,
+    chal:despachos.filter(d=>d.comida===c.key&&d.puesto==='DESPACHO CHALET').length,
+  })),[personas,despachos]);
+  return <div>
+    <div className="cmd-rep">
+      <h3>{cmdFmtDate(fecha)} · por tipo de comida</h3>
+      <table>
+        <thead><tr><th>Comida</th><th className="n">Solicitadas</th><th className="n">Despachadas</th><th className="n">Camp.</th><th className="n">Chalet</th><th className="n">Pendientes</th></tr></thead>
+        <tbody>{porComida.map(c=>(
+          <tr key={c.key}>
+            <td>{c.em} {c.label}</td>
+            <td className="n">{c.total}</td>
+            <td className="n" style={{color:'var(--cmd-pri)'}}>{c.despachadas}</td>
+            <td className="n" style={{color:'var(--cmd-info)'}}>{c.camp}</td>
+            <td className="n" style={{color:'var(--cmd-purple)'}}>{c.chal}</td>
+            <td className="n" style={{color:'var(--cmd-ok)'}}>{c.total-c.despachadas}</td>
+          </tr>
+        ))}</tbody>
+      </table>
+    </div>
+    <div className="cmd-rep">
+      <h3>Últimos despachos del día</h3>
+      {despachos.length===0?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Sin despachos aún.</div>:
+        <table>
+          <thead><tr><th>Hora</th><th>Persona</th><th>Comida</th><th>Puesto</th></tr></thead>
+          <tbody>{[...despachos].reverse().slice(0,30).map(d=>{
+            const p=CMD_PERSONAL_DEMO.find(x=>x.dni===d.dni);
+            const c=CMD_COMIDAS.find(x=>x.key===d.comida);
+            return <tr key={d.id}>
+              <td style={{fontFamily:'var(--fm)',fontSize:11}}>{new Date(d.ts).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</td>
+              <td>{p?(p.nombre+' '+p.apellido):d.dni}</td>
+              <td>{c.em} {c.label}</td>
+              <td><span className={'cmd-ptag '+cmdPuestoClass(d.puesto)}>{cmdPuestoShort(d.puesto)}</span></td>
+            </tr>;
+          })}</tbody>
+        </table>}
+      <div style={{marginTop:10,fontSize:10,color:'var(--tx3)',textAlign:'center'}}>Reporte provisional · el semanal (Excel) se rearma cuando el módulo esté en Supabase.</div>
+    </div>
+  </div>;
+}
+
+// ─── Componente Comedor (wrapper del módulo entero) ─────────────────────────
+function Comedor({user,proyectoId}){
+  const isAdmin=user.rol==='admin';
+  const userPuesto=isAdmin?null:cmdPuestoFromRol(user.rol);  // null para admin; DESPACHO CAMPAMENTO / CHALET para cocineros
+  const[subtab,setSubtab]=useState(isAdmin?'listado':'scan');
+  const[fecha,setFecha]=useState(()=>cmdIsoDate(new Date()));
+  const[despachos,setDespachos]=useState(()=>cmdLoadLS(CMD_KEY_DESP,[]));
+  const[dieta,setDieta]=useState(()=>cmdLoadLS(CMD_KEY_DIETA,{}));
+  const[prefix,setPrefix]=useState(()=>new Set());
+  const[picked,setPicked]=useState(null);
+  const[toast,setToast]=useState(null);
+  const[dietaEditing,setDietaEditing]=useState(null);
+  useEffect(()=>cmdSaveLS(CMD_KEY_DESP,despachos),[despachos]);
+  useEffect(()=>cmdSaveLS(CMD_KEY_DIETA,dieta),[dieta]);
+  useEffect(()=>{
+    if(!cmdBc)return;
+    const h=(e)=>{
+      const m=e.data;if(!m||!m.type)return;
+      if(m.type==='despacho_add')setDespachos(prev=>prev.some(d=>d.id===m.payload.id)?prev:[...prev,m.payload]);
+      else if(m.type==='despacho_remove')setDespachos(prev=>prev.filter(d=>d.id!==m.payload.id));
+      else if(m.type==='dieta_change')setDieta(prev=>{const n={...prev};if(m.payload.value===null||m.payload.value===undefined)delete n[m.payload.dni];else n[m.payload.dni]=m.payload.value;return n;});
+    };
+    cmdBc.addEventListener('message',h);
+    return()=>cmdBc.removeEventListener('message',h);
+  },[]);
+  useEffect(()=>{
+    const h=(e)=>{
+      if(e.key===CMD_KEY_DESP&&e.newValue){try{setDespachos(JSON.parse(e.newValue));}catch(err){}}
+      if(e.key===CMD_KEY_DIETA&&e.newValue){try{setDieta(JSON.parse(e.newValue));}catch(err){}}
+    };
+    window.addEventListener('storage',h);
+    return()=>window.removeEventListener('storage',h);
+  },[]);
+  const showToast=(o)=>{setToast(o);setTimeout(()=>setToast(null),o.dur||2200);};
+  const addDespacho=(persona,comida)=>{
+    setDespachos(prev=>{
+      if(prev.some(d=>d.personaId===persona.id&&d.comida===comida&&d.fecha===fecha))return prev;
+      const d={id:cmdUuid(),personaId:persona.id,dni:persona.dni,comida,puesto:userPuesto||'ADMIN',operador:user.email||user.nombre||'op',ts:new Date().toISOString(),fecha};
+      cmdBcSend({type:'despacho_add',payload:d});
+      const c=CMD_COMIDAS.find(x=>x.key===comida);
+      showToast({msg:`${c.em} ${c.label} → ${persona.nombre} ${persona.apellido}`});
+      return[...prev,d];
+    });
+  };
+  const removeDespacho=(id)=>{setDespachos(prev=>prev.filter(x=>x.id!==id));cmdBcSend({type:'despacho_remove',payload:{id}});showToast({msg:'Despacho deshecho',dur:1500});};
+  const saveDieta=(dni,val)=>{setDieta(prev=>({...prev,[dni]:val}));cmdBcSend({type:'dieta_change',payload:{dni,value:val}});showToast({msg:'🥗 Dieta guardada'});setDietaEditing(null);};
+  const quitDieta=(dni)=>{if(!confirm('¿Quitar menú dieta para DNI '+dni+'?'))return;setDieta(prev=>{const n={...prev};delete n[dni];return n;});cmdBcSend({type:'dieta_change',payload:{dni,value:null}});showToast({msg:'Dieta quitada'});setDietaEditing(null);};
+  const togglePref=(k)=>setPrefix(prev=>{const n=new Set(prev);if(n.has(k))n.delete(k);else n.add(k);return n;});
+  const personasDia=useMemo(()=>cmdPersonasFecha(fecha),[fecha]);
+  const despachosDia=useMemo(()=>despachos.filter(d=>d.fecha===fecha),[despachos,fecha]);
+  const stats=useMemo(()=>{const t={},d={};CMD_COMIDAS.forEach(c=>{t[c.key]=personasDia.filter(p=>p.comidas.includes(c.key)).length;d[c.key]=despachosDia.filter(x=>x.comida===c.key).length;});return{t,d};},[personasDia,despachosDia]);
+  const isReadOnly=fecha<cmdIsoDate(new Date());
+  const onPickFromList=(p)=>{setPicked(p);setSubtab('scan');};
+  useEffect(()=>{if(isAdmin&&subtab==='scan')setSubtab('listado');},[isAdmin]);
+  return <div className="cmd-root">
+    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
+      <span className={'cmd-puestochip '+cmdPuestoClass(userPuesto||'ADMIN')}>{userPuesto?('🍽️ '+userPuesto):'🛡️ ADMIN VIANDAS'}</span>
+      <span style={{fontSize:10,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.3}}>Módulo Comedor · datos DEMO (localStorage) · Fase A</span>
+    </div>
+    <div className="cmd-stats">
+      {CMD_COMIDAS.map(c=>(
+        <div key={c.key} className="cmd-stat">
+          <span className="icon">{c.em}</span>
+          <span className="num">{stats.d[c.key]}<span className="den">/{stats.t[c.key]}</span></span>
+          <span className="lbl">{c.short}</span>
+        </div>
+      ))}
+      <div style={{marginLeft:'auto',fontSize:10,color:'var(--tx3)',whiteSpace:'nowrap'}}>Fecha: <strong style={{color:'var(--tx2)'}}>{cmdFmtDate(fecha)}</strong></div>
+    </div>
+    <div className="cmd-tabs">
+      {!isAdmin&&<button className={'cmd-tab '+(subtab==='scan'?'active':'')} onClick={()=>setSubtab('scan')}>📷 Escanear</button>}
+      <button className={'cmd-tab '+(subtab==='listado'?'active':'')} onClick={()=>setSubtab('listado')}>📋 Listado</button>
+      <button className={'cmd-tab '+(subtab==='reporte'?'active':'')} onClick={()=>setSubtab('reporte')}>📊 Reporte</button>
+    </div>
+    {subtab==='scan'&&!isAdmin&&<CmdEscanear personas={personasDia} despachos={despachosDia} dieta={dieta} prefix={prefix} togglePref={togglePref} onDispatch={addDespacho} onUndispatch={removeDespacho} preloadPersona={picked} clearPreload={()=>setPicked(null)} fecha={fecha} isReadOnly={isReadOnly}/>}
+    {subtab==='listado'&&<CmdListado personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} dieta={dieta} isAdmin={isAdmin} onOpenDieta={setDietaEditing} onPick={isAdmin?null:onPickFromList} onDispatch={addDespacho} onUndispatch={removeDespacho} canDispatch={!!userPuesto||isAdmin} isReadOnly={isReadOnly}/>}
+    {subtab==='reporte'&&<CmdReporte personas={personasDia} despachos={despachosDia} fecha={fecha}/>}
+    {toast&&<div className={'cmd-toast '+(toast.err?'err':'')}>{toast.msg}</div>}
+    {dietaEditing&&<CmdDietaModal persona={dietaEditing} currentValue={dieta[dietaEditing.dni]} onSave={(v)=>saveDieta(dietaEditing.dni,v)} onQuit={()=>quitDieta(dietaEditing.dni)} onClose={()=>setDietaEditing(null)}/>}
   </div>;
 }
 
@@ -3095,14 +3663,15 @@ function App(){
   };
   const logout=async()=>{await authApi.signOut();setUser(null);setTab(null);setProyectos([]);};
 
+  // "cvc" = Conteo Viandas Chalet (el conteo viejo, renombrado). "vi" = Viandas (módulo comedor nuevo).
   const TABS={
-    puesto:           [{k:"sc",l:"Escanear"},{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"}],
-    sh:               [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"}],
-    cp:               [{k:"per",l:"Personal"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"}],
-    logistica:        [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"}],
-    cocina_campamento:[{k:"vi",l:"Viandas"},{k:"reg",l:"Registros"}],
-    cocina_chalet:    [{k:"vi",l:"Viandas"},{k:"reg",l:"Registros"}],
-    admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"},{k:"adm",l:"Usuarios"}],
+    puesto:           [{k:"sc",l:"Escanear"},{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
+    sh:               [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
+    cp:               [{k:"per",l:"Personal"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
+    logistica:        [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
+    cocina_campamento:[{k:"vi",l:"Viandas"}],
+    cocina_chalet:    [{k:"vi",l:"Viandas"}],
+    admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"},{k:"cvc",l:"Chalet"},{k:"adm",l:"Usuarios"}],
   };
 
   if(checking)return <div className="lwrap"><Spin t="Iniciando..."/></div>;
@@ -3125,7 +3694,8 @@ function App(){
       {tab==="veh"&&<VehiculosPanel userRole={user.rol} currentUserId={user.id} proyectoId={pid}/>}
       {tab==="reg"&&<Registros defaultPuesto={user.rol==="puesto"?user.puesto_nombre:""}/>}
       {tab==="sc" &&<Puesto user={user} pid={pid}/>}
-      {tab==="vi" &&<Viandas user={user} proyectoId={pid}/>}
+      {tab==="cvc"&&<ConteoViandasChalet user={user} proyectoId={pid}/>}
+      {tab==="vi" &&<Comedor user={user} proyectoId={pid}/>}
       {tab==="adm"&&<Usuarios currentUser={user}/>}
     </div>
   </div>;
