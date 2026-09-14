@@ -2029,16 +2029,21 @@ function Registros({defaultPuesto}){
 // ─── SYNC SHEET (export fichadas a Google Sheet) ─────────────────────────────
 const SYNC_URL_KEY="controlobra_sync_url";
 const SYNC_SECRET_KEY="controlobra_sync_secret";
+const SYNC_SHEET_KEY="controlobra_sync_sheet_url";
 
 function SyncSheetPanel(){
   const[url,setUrl]=useState(()=>localStorage.getItem(SYNC_URL_KEY)||"");
   const[secret,setSecret]=useState(()=>localStorage.getItem(SYNC_SECRET_KEY)||"");
+  const[sheetUrl,setSheetUrl]=useState(()=>localStorage.getItem(SYNC_SHEET_KEY)||"");
   const[showConfig,setShowConfig]=useState(false);
   const[urlDraft,setUrlDraft]=useState(url);
   const[secretDraft,setSecretDraft]=useState(secret);
+  const[sheetDraft,setSheetDraft]=useState(sheetUrl);
   const[syncing,setSyncing]=useState(false);
+  const[toggling,setToggling]=useState(false);
   const[lastStatus,setLastStatus]=useState(null);
   const[lastError,setLastError]=useState(null);
+  const[paused,setPaused]=useState(false);
 
   const configured=!!(url&&secret);
 
@@ -2047,7 +2052,7 @@ function SyncSheetPanel(){
     try{
       const r=await fetch(url+"?action=coStatus&secret="+encodeURIComponent(secret));
       const d=await r.json();
-      if(d&&!d.error)setLastStatus(d);
+      if(d&&!d.error){setLastStatus(d);setPaused(!!d.paused);}
     }catch(e){}
   };
 
@@ -2056,7 +2061,8 @@ function SyncSheetPanel(){
   const saveConfig=()=>{
     localStorage.setItem(SYNC_URL_KEY,urlDraft.trim());
     localStorage.setItem(SYNC_SECRET_KEY,secretDraft.trim());
-    setUrl(urlDraft.trim());setSecret(secretDraft.trim());
+    localStorage.setItem(SYNC_SHEET_KEY,sheetDraft.trim());
+    setUrl(urlDraft.trim());setSecret(secretDraft.trim());setSheetUrl(sheetDraft.trim());
     setShowConfig(false);
   };
 
@@ -2072,6 +2078,25 @@ function SyncSheetPanel(){
     setSyncing(false);
   };
 
+  const togglePausa=async()=>{
+    if(!configured){alert("Falta configurar URL y secret del Apps Script.");return;}
+    const nuevoEstado=!paused;
+    const msg=nuevoEstado?"¿PAUSAR la escritura automática de fichadas al sheet?\n\nEl trigger cada 5 min sigue corriendo pero no vuelca nada mientras esté pausado.":"¿REACTIVAR la escritura automática?";
+    if(!confirm(msg))return;
+    setToggling(true);setLastError(null);
+    try{
+      const action=nuevoEstado?"coPause":"coResume";
+      const r=await fetch(url+"?action="+action+"&secret="+encodeURIComponent(secret));
+      const d=await r.json();
+      if(d.error){
+        if(d.error==="unknown action")setLastError("El Apps Script del sheet no tiene los endpoints coPause/coResume implementados. Actualizá el código del Apps Script.");
+        else setLastError("Error: "+d.error);
+      }
+      else{setPaused(nuevoEstado);}
+    }catch(e){setLastError("Error de red: "+e.message);}
+    setToggling(false);
+  };
+
   const fmtStatus=(s)=>{
     if(!s||!s.terminado)return null;
     const cuando=new Date(s.terminado).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
@@ -2082,20 +2107,29 @@ function SyncSheetPanel(){
   return <div style={{marginTop:28,padding:"20px 24px",background:"rgba(139,92,246,.06)",border:"1px solid rgba(139,92,246,.3)",borderRadius:8}}>
     <div style={{fontFamily:"var(--fh)",fontSize:15,fontWeight:800,color:"#A78BFA",textTransform:"uppercase",marginBottom:6}}>Sincronización con Google Sheet</div>
     <div style={{fontSize:13,color:"var(--tx2)",marginBottom:14}}>
-      El Apps Script en el sheet exporta las fichadas cada 5 min en automático. Acá podés forzar una sincronización ahora mismo y configurar la conexión.
+      El Apps Script en el sheet exporta las fichadas cada 5 min en automático. Acá podés forzar una sincronización, abrir la planilla, pausar/reactivar la escritura automática o configurar la conexión.
     </div>
     {!configured&&<div style={{padding:"9px 14px",marginBottom:12,background:"rgba(245,158,11,.1)",border:"1px solid rgba(245,158,11,.3)",borderRadius:4,fontSize:13,color:"var(--acc)"}}>
       ⚠️ Falta configurar URL y secret. Tocá "Configurar conexión" abajo.
+    </div>}
+    {paused&&<div style={{padding:"9px 14px",marginBottom:12,background:"rgba(251,191,36,.12)",border:"1px solid rgba(251,191,36,.4)",borderRadius:4,fontSize:13,color:"#FBBF24",fontWeight:700}}>
+      ⏸️ ESCRITURA PAUSADA — el trigger sigue corriendo pero no vuelca fichadas al sheet.
     </div>}
     {lastStatus&&<div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)",marginBottom:10}}>
       Última corrida: <strong style={{color:"var(--tx)"}}>{fmtStatus(lastStatus)}</strong>
     </div>}
     {lastError&&<div className="err" style={{marginBottom:10}}>{lastError}</div>}
     <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-      <button onClick={syncNow} disabled={!configured||syncing} style={{background:configured?"rgba(139,92,246,.2)":"var(--s2)",border:"2px solid "+(configured?"#A78BFA":"var(--bd)"),color:configured?"#A78BFA":"var(--tx2)",borderRadius:5,padding:"10px 22px",fontFamily:"var(--fh)",fontSize:15,fontWeight:700,textTransform:"uppercase",cursor:configured&&!syncing?"pointer":"not-allowed",opacity:configured&&!syncing?1:.5}}>
+      <button onClick={syncNow} disabled={!configured||syncing||paused} style={{background:configured&&!paused?"rgba(139,92,246,.2)":"var(--s2)",border:"2px solid "+(configured&&!paused?"#A78BFA":"var(--bd)"),color:configured&&!paused?"#A78BFA":"var(--tx2)",borderRadius:5,padding:"10px 22px",fontFamily:"var(--fh)",fontSize:15,fontWeight:700,textTransform:"uppercase",cursor:configured&&!syncing&&!paused?"pointer":"not-allowed",opacity:configured&&!syncing&&!paused?1:.5}}>
         {syncing?"Sincronizando...":"Volcar fichadas al sheet ahora"}
       </button>
-      <button onClick={()=>{setShowConfig(s=>!s);setUrlDraft(url);setSecretDraft(secret);}} className="bcanc">
+      {sheetUrl&&<a href={sheetUrl} target="_blank" rel="noopener" style={{background:"rgba(16,185,129,.12)",border:"2px solid #10B981",color:"#10B981",borderRadius:5,padding:"10px 18px",fontFamily:"var(--fh)",fontSize:14,fontWeight:700,textTransform:"uppercase",textDecoration:"none",display:"inline-flex",alignItems:"center",gap:6}}>
+        📄 Abrir planilla
+      </a>}
+      {configured&&<button onClick={togglePausa} disabled={toggling} style={{background:paused?"rgba(16,185,129,.14)":"rgba(251,191,36,.14)",border:"2px solid "+(paused?"#10B981":"#FBBF24"),color:paused?"#10B981":"#FBBF24",borderRadius:5,padding:"10px 18px",fontFamily:"var(--fh)",fontSize:14,fontWeight:700,textTransform:"uppercase",cursor:toggling?"wait":"pointer",opacity:toggling?.5:1}}>
+        {toggling?"...":(paused?"▶️ Reactivar":"⏸️ Pausar")}
+      </button>}
+      <button onClick={()=>{setShowConfig(s=>!s);setUrlDraft(url);setSecretDraft(secret);setSheetDraft(sheetUrl);}} className="bcanc">
         {showConfig?"Cerrar":"Configurar conexión"}
       </button>
     </div>
@@ -2107,6 +2141,10 @@ function SyncSheetPanel(){
       <div className="f">
         <label>Secret</label>
         <input type="password" value={secretDraft} onChange={e=>setSecretDraft(e.target.value)} placeholder="el valor de CO_API_SECRET"/>
+      </div>
+      <div className="f">
+        <label>URL de la planilla (para abrir el sheet directo)</label>
+        <input value={sheetDraft} onChange={e=>setSheetDraft(e.target.value)} placeholder="https://docs.google.com/spreadsheets/d/.../edit"/>
       </div>
       <div style={{display:"flex",gap:8}}>
         <button className="bp" onClick={saveConfig} style={{flex:1}}>Guardar</button>
@@ -2297,8 +2335,9 @@ function ConteoViandasChalet({user,proyectoId}){
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MÓDULO COMEDOR (tab "Viandas" nuevo) — portado del prototipo Rev05.
-// Datos DEMO en memoria/localStorage. Fase B: pasa a Supabase.
+// MÓDULO COMEDOR (tab "Viandas" nuevo) — Fase B: conectado a Supabase.
+// Tablas: obra.viandas_calendario, obra.viandas_despachos, obra.viandas_dieta.
+// Realtime en despachos + dieta para sync entre los 2 puestos.
 // ═══════════════════════════════════════════════════════════════════════════
 const CMD_COMIDAS=[
   {key:'desayuno',label:'Desayuno',short:'DES',em:'☕'},
@@ -2307,66 +2346,37 @@ const CMD_COMIDAS=[
   {key:'cena',    label:'Cena',    short:'CEN',em:'🌙'},
 ];
 const CMD_LETRAS={C:'Campamento',O:'Omega',R:'Río Villegas',H:'Hostel',N:'Sin información',I:'Viaje a obra',V:'Viaje desde obra',F:'Franco'};
-const CMD_NUM_COMIDAS={0:[],1:['desayuno'],2:['desayuno','almuerzo','merienda'],3:['almuerzo','merienda'],4:['almuerzo','merienda','cena'],5:['cena'],6:['desayuno','almuerzo','merienda','cena']};
-const CMD_PERSONAL_DEMO=[
-  {dni:'23607422',nombre:'JULIO CESAR',apellido:'INSFRAN',empresa:'OYS OP - CAPATAZ'},
-  {dni:'20724867',nombre:'GERONIMO',apellido:'ENCINAS',empresa:'OYS OP - CAPATAZ'},
-  {dni:'35077320',nombre:'RAUL ALEJANDRO',apellido:'INGNACIO',empresa:'OYS OP - MECANICO'},
-  {dni:'42402791',nombre:'LEONEL',apellido:'SAULO LUQUET',empresa:'OYS OP - MECANICO'},
-  {dni:'43684287',nombre:'JOAQUIN EMANUEL',apellido:'LINARES',empresa:'OYS OP - MECANICO'},
-  {dni:'95424496',nombre:'GUILLERMO',apellido:'MONTAÑO GUZMAN',empresa:'OYS OP - ELÉCTRICO'},
-  {dni:'94229246',nombre:'JUAN BAUTISTA',apellido:'RUIZ DIAZ RAMIREZ',empresa:'OYS OP - ELÉCTRICO'},
-  {dni:'25070454',nombre:'CARLOS DANIEL',apellido:'BUKVIC',empresa:'OYS OP - ELÉCTRICO'},
-  {dni:'28412304',nombre:'ALBERTO EPIFANIO',apellido:'ROMERO',empresa:'OYS OP - ELÉCTRICO'},
-  {dni:'28970001',nombre:'MATIAS NICOLAS',apellido:'OZUNA',empresa:'OYS OP - ELÉCTRICO'},
-  {dni:'24572561',nombre:'CESAR ANTONIO',apellido:'GIMENEZ',empresa:'OYS OP - CHOFER'},
-  {dni:'93759823',nombre:'SANTIAGO',apellido:'SAAVEDRA SOLA',empresa:'OYS OP - CHOFER'},
-  {dni:'28378077',nombre:'ADAN',apellido:'VALENZUELA',empresa:'OYS OP - CHOFER'},
-  {dni:'29885911',nombre:'FERNANDO',apellido:'PEREZ',empresa:'OYS INTENDENCIA'},
-  {dni:'32032333',nombre:'JONATHAN ERNESTO',apellido:'BRIZUELA',empresa:'OYS OP - SANITARISTA'},
-  {dni:'44588980',nombre:'URIEL',apellido:'DIAZ',empresa:'OYS OP'},
-  {dni:'30034509',nombre:'JUAN GABRIEL',apellido:'BEJARANO',empresa:'OYS OP'},
-  {dni:'35288428',nombre:'LUIS ANTONIO',apellido:'BENITEZ',empresa:'OYS OP'},
-  {dni:'94161703',nombre:'JUAN CARLOS',apellido:'MONTAÑO FERNANDEZ',empresa:'OYS OP'},
-  {dni:'23577171',nombre:'NESTOR GERMAN',apellido:'IBAÑEZ',empresa:'OYS OP'},
-  {dni:'93986219',nombre:'ERLAND ADALID',apellido:'ANTEZANA BARRIOS',empresa:'OYS OP'},
-  {dni:'94275341',nombre:'RAUL',apellido:'AGUILERA',empresa:'OYS OP'},
-  {dni:'21061048',nombre:'JUAN CARLOS',apellido:'ROBLES',empresa:'OYS OP'},
-  {dni:'32130439',nombre:'FERNANDO EMIR',apellido:'PUJADAS',empresa:'OYS JER'},
-  {dni:'39416760',nombre:'VICTORIA',apellido:'CAMARERO',empresa:'OYS JER'},
-  {dni:'14923617',nombre:'FERNANDO',apellido:'MARTINEZ TANOIRA',empresa:'OYS JER'},
-  {dni:'31552172',nombre:'EMILIANO',apellido:'SIERRA',empresa:'OYS JER'},
-  {dni:'35155874',nombre:'JUAN MANUEL',apellido:'ZABALA',empresa:'OYS JER'},
-  {dni:'32691599',nombre:'VANINA LORENA',apellido:'PEREZ',empresa:'OYS JER'},
-  {dni:'34666989',nombre:'MARILYN',apellido:'PACE',empresa:'OYS JER'},
-  {dni:'43446165',nombre:'IGNACIO LEÓN',apellido:'LOPEZ',empresa:'OYS JER'},
-  {dni:'39757363',nombre:'MARIA',apellido:'OYARZUN',empresa:'OYS JER'},
-];
-const CMD_CODES=['O-6','O-6','O-6','O-6','O-6','O-6','O-2','O-2','O-2','C-6','C-6','H-6','H-3','R-6','F-0','F-0','V-2','I-0','N-2'];
-const cmdHash=(s)=>{let h=0;for(let i=0;i<s.length;i++)h=((h<<5)-h+s.charCodeAt(i))|0;return h;};
-const CMD_SHEET=(()=>{
-  const out={};const t=new Date();t.setHours(0,0,0,0);
-  for(let d=-7;d<=5;d++){
-    const dt=new Date(t);dt.setDate(t.getDate()+d);
-    const k=dt.toISOString().slice(0,10);out[k]={};
-    CMD_PERSONAL_DEMO.forEach(p=>{out[k][p.dni]=CMD_CODES[Math.abs(cmdHash(p.dni+'|'+k))%CMD_CODES.length];});
-  }
-  return out;
-})();
-const cmdParseCode=(c)=>{
-  if(!c||typeof c!=='string')return{letra:null,numero:0,comidas:[]};
-  const [l,n]=c.split('-');const num=parseInt(n,10);
-  if(l==='F')return{letra:l,numero:num,comidas:[]};
-  return{letra:l,numero:num,comidas:CMD_NUM_COMIDAS[num]||[]};
+
+// Cargar personas del día: cruza viandas_calendario × personas por DNI.
+// Retorna [{dni,nombre,apellido,empresa,id,code,letra,letraNom,numero,comidas:[]}]
+// Solo devuelve personas que tienen al menos una comida marcada.
+const cmdFetchPersonasFecha=async(fecha)=>{
+  const{data:cal}=await db.sel("viandas_calendario",{f:[["fecha","eq",fecha]],lim:5000});
+  const rows=(cal||[]).filter(r=>r.desayuno||r.almuerzo||r.merienda||r.cena);
+  if(rows.length===0)return[];
+  const dnis=rows.map(r=>r.dni);
+  const{data:pers}=await db.sel("personas",{cols:"dni,nombre,apellido,empresa",inFilter:["dni",dnis]});
+  const persMap={};(pers||[]).forEach(p=>{persMap[p.dni]=p;});
+  return rows.map(r=>{
+    const p=persMap[r.dni]||{nombre:'(no registrado)',apellido:'',empresa:''};
+    const comidas=[];
+    if(r.desayuno)comidas.push('desayuno');
+    if(r.almuerzo)comidas.push('almuerzo');
+    if(r.merienda)comidas.push('merienda');
+    if(r.cena)comidas.push('cena');
+    return{dni:r.dni,id:r.dni,nombre:p.nombre,apellido:p.apellido,empresa:p.empresa,code:r.codigo,letra:r.letra,letraNom:CMD_LETRAS[r.letra]||'',numero:r.numero,comidas};
+  });
 };
-const cmdPersonasFecha=(fecha)=>{
-  const day=CMD_SHEET[fecha]||{};
-  return CMD_PERSONAL_DEMO.map(p=>{
-    const code=day[p.dni];const parsed=cmdParseCode(code);
-    return{...p,id:p.dni,code,letra:parsed.letra,letraNom:CMD_LETRAS[parsed.letra]||'',numero:parsed.numero,comidas:parsed.comidas};
-  }).filter(p=>p.comidas.length>0);
+const cmdFetchDespachos=async(fecha)=>{
+  const{data}=await db.sel("viandas_despachos",{f:[["fecha","eq",fecha]],ord:"ts.asc",lim:5000});
+  return(data||[]).map(d=>({id:d.id,personaId:d.dni,dni:d.dni,comida:d.comida,puesto:d.puesto,operador:d.operador_email,ts:d.ts,fecha:d.fecha}));
 };
-// Dieta helpers (Rev05+): valor puede ser undefined/true/string/{nota,hasta}
+const cmdFetchDieta=async()=>{
+  const{data}=await db.sel("viandas_dieta",{lim:5000});
+  const m={};(data||[]).forEach(d=>{m[d.dni]={nota:d.nota||'',hasta:d.hasta||null};});
+  return m;
+};
+// Dieta helpers: cmdIsDietaActive/ForDate/Note/Hasta acepta {nota,hasta}|null
 const cmdGetDietaObj=(v)=>{
   if(v===undefined||v===null||v===false)return null;
   if(v===true)return{nota:'',hasta:null};
@@ -2378,15 +2388,7 @@ const cmdIsDietaActive=(v)=>cmdGetDietaObj(v)!==null;
 const cmdIsDietaActiveForDate=(v,fecha)=>{const o=cmdGetDietaObj(v);if(!o)return false;if(!o.hasta)return true;return fecha<=o.hasta;};
 const cmdGetDietaNote=(v)=>{const o=cmdGetDietaObj(v);return o?o.nota:'';};
 const cmdGetDietaHasta=(v)=>{const o=cmdGetDietaObj(v);return o?(o.hasta||''):'';};
-// Storage + BroadcastChannel
-const CMD_KEY_DESP='mc_comedor_v2_despachos';
-const CMD_KEY_DIETA='mc_comedor_v2_menu_dieta';
-const CMD_BC_NAME='mc_comedor_v2_sync';
-const cmdLoadLS=(k,def)=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):def;}catch(e){return def;}};
-const cmdSaveLS=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
 const cmdUuid=()=>(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'_'+Math.random().toString(36).slice(2));
-const cmdBc=(typeof BroadcastChannel!=='undefined')?new BroadcastChannel(CMD_BC_NAME):null;
-const cmdBcSend=(m)=>{try{cmdBc&&cmdBc.postMessage(m);}catch(e){}};
 const cmdIsoDate=(d)=>d.toISOString().slice(0,10);
 const cmdFmtDate=(iso)=>{const[y,m,d]=iso.split('-');return `${d}/${m}/${y}`;};
 const cmdPuestoClass=(p)=>p==='DESPACHO CAMPAMENTO'?'camp':(p==='DESPACHO CHALET'?'chal':'admin');
@@ -2654,7 +2656,7 @@ function CmdReporte({personas,despachos,fecha}){
         <table>
           <thead><tr><th>Hora</th><th>Persona</th><th>Comida</th><th>Puesto</th></tr></thead>
           <tbody>{[...despachos].reverse().slice(0,30).map(d=>{
-            const p=CMD_PERSONAL_DEMO.find(x=>x.dni===d.dni);
+            const p=personas.find(x=>x.dni===d.dni);
             const c=CMD_COMIDAS.find(x=>x.key===d.comida);
             return <tr key={d.id}>
               <td style={{fontFamily:'var(--fm)',fontSize:11}}>{new Date(d.ts).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</td>
@@ -2669,64 +2671,78 @@ function CmdReporte({personas,despachos,fecha}){
   </div>;
 }
 
-// ─── Componente Comedor (wrapper del módulo entero) ─────────────────────────
+// ─── Componente Comedor (wrapper del módulo entero) — Fase B: Supabase ─────
 function Comedor({user,proyectoId}){
   const isAdmin=user.rol==='admin';
   const userPuesto=isAdmin?null:cmdPuestoFromRol(user.rol);  // null para admin; DESPACHO CAMPAMENTO / CHALET para cocineros
   const[subtab,setSubtab]=useState(isAdmin?'listado':'scan');
   const[fecha,setFecha]=useState(()=>cmdIsoDate(new Date()));
-  const[despachos,setDespachos]=useState(()=>cmdLoadLS(CMD_KEY_DESP,[]));
-  const[dieta,setDieta]=useState(()=>cmdLoadLS(CMD_KEY_DIETA,{}));
+  const[personasDia,setPersonasDia]=useState([]);
+  const[despachosDia,setDespachosDia]=useState([]);
+  const[dieta,setDieta]=useState({});
+  const[loading,setLoading]=useState(true);
   const[prefix,setPrefix]=useState(()=>new Set());
   const[picked,setPicked]=useState(null);
   const[toast,setToast]=useState(null);
   const[dietaEditing,setDietaEditing]=useState(null);
-  useEffect(()=>cmdSaveLS(CMD_KEY_DESP,despachos),[despachos]);
-  useEffect(()=>cmdSaveLS(CMD_KEY_DIETA,dieta),[dieta]);
-  useEffect(()=>{
-    if(!cmdBc)return;
-    const h=(e)=>{
-      const m=e.data;if(!m||!m.type)return;
-      if(m.type==='despacho_add')setDespachos(prev=>prev.some(d=>d.id===m.payload.id)?prev:[...prev,m.payload]);
-      else if(m.type==='despacho_remove')setDespachos(prev=>prev.filter(d=>d.id!==m.payload.id));
-      else if(m.type==='dieta_change')setDieta(prev=>{const n={...prev};if(m.payload.value===null||m.payload.value===undefined)delete n[m.payload.dni];else n[m.payload.dni]=m.payload.value;return n;});
-    };
-    cmdBc.addEventListener('message',h);
-    return()=>cmdBc.removeEventListener('message',h);
-  },[]);
-  useEffect(()=>{
-    const h=(e)=>{
-      if(e.key===CMD_KEY_DESP&&e.newValue){try{setDespachos(JSON.parse(e.newValue));}catch(err){}}
-      if(e.key===CMD_KEY_DIETA&&e.newValue){try{setDieta(JSON.parse(e.newValue));}catch(err){}}
-    };
-    window.addEventListener('storage',h);
-    return()=>window.removeEventListener('storage',h);
-  },[]);
   const showToast=(o)=>{setToast(o);setTimeout(()=>setToast(null),o.dur||2200);};
-  const addDespacho=(persona,comida)=>{
-    setDespachos(prev=>{
-      if(prev.some(d=>d.personaId===persona.id&&d.comida===comida&&d.fecha===fecha))return prev;
-      const d={id:cmdUuid(),personaId:persona.id,dni:persona.dni,comida,puesto:userPuesto||'ADMIN',operador:user.email||user.nombre||'op',ts:new Date().toISOString(),fecha};
-      cmdBcSend({type:'despacho_add',payload:d});
-      const c=CMD_COMIDAS.find(x=>x.key===comida);
-      showToast({msg:`${c.em} ${c.label} → ${persona.nombre} ${persona.apellido}`});
-      return[...prev,d];
-    });
+
+  // Cargar personas del día + despachos del día + dieta (todo desde Supabase)
+  const loadAll=async()=>{
+    const[p,d,di]=await Promise.all([
+      cmdFetchPersonasFecha(fecha),
+      cmdFetchDespachos(fecha),
+      cmdFetchDieta(),
+    ]);
+    setPersonasDia(p);setDespachosDia(d);setDieta(di);setLoading(false);
   };
-  const removeDespacho=(id)=>{setDespachos(prev=>prev.filter(x=>x.id!==id));cmdBcSend({type:'despacho_remove',payload:{id}});showToast({msg:'Despacho deshecho',dur:1500});};
-  const saveDieta=(dni,val)=>{setDieta(prev=>({...prev,[dni]:val}));cmdBcSend({type:'dieta_change',payload:{dni,value:val}});showToast({msg:'🥗 Dieta guardada'});setDietaEditing(null);};
-  const quitDieta=(dni)=>{if(!confirm('¿Quitar menú dieta para DNI '+dni+'?'))return;setDieta(prev=>{const n={...prev};delete n[dni];return n;});cmdBcSend({type:'dieta_change',payload:{dni,value:null}});showToast({msg:'Dieta quitada'});setDietaEditing(null);};
+  // Solo despachos + dieta (para el poll cada 3s — el calendario no cambia intra-día)
+  const loadSync=async()=>{
+    const[d,di]=await Promise.all([cmdFetchDespachos(fecha),cmdFetchDieta()]);
+    setDespachosDia(d);setDieta(di);
+  };
+  useEffect(()=>{setLoading(true);loadAll();},[fecha]);
+  useEffect(()=>{const i=setInterval(loadSync,3000);return()=>clearInterval(i);},[fecha]);
+
+  const addDespacho=async(persona,comida)=>{
+    // Idempotencia: chequeo local + unique constraint en DB (fecha,dni,comida)
+    if(despachosDia.some(d=>d.dni===persona.dni&&d.comida===comida))return;
+    const record={fecha,dni:persona.dni,comida,puesto:userPuesto||'ADMIN',operador_id:user.id,operador_email:user.email||null};
+    const{data,ok}=await db.ins("viandas_despachos",record);
+    if(!ok){showToast({msg:'No se pudo despachar (¿ya despachado por el otro puesto?)',err:true});await loadSync();return;}
+    const c=CMD_COMIDAS.find(x=>x.key===comida);
+    showToast({msg:`${c.em} ${c.label} → ${persona.nombre} ${persona.apellido}`});
+    // Optimista: agrega local ya, próximo poll confirma
+    if(data&&data[0])setDespachosDia(prev=>[...prev,{id:data[0].id,personaId:data[0].dni,dni:data[0].dni,comida:data[0].comida,puesto:data[0].puesto,operador:data[0].operador_email,ts:data[0].ts,fecha:data[0].fecha}]);
+  };
+  const removeDespacho=async(id)=>{
+    await db.del("viandas_despachos",[["id","eq",id]]);
+    setDespachosDia(prev=>prev.filter(x=>x.id!==id));
+    showToast({msg:'Despacho deshecho',dur:1500});
+  };
+  const saveDieta=async(dni,val)=>{
+    // val = {nota,hasta}; upsert por dni (PK)
+    const{ok}=await db.ins("viandas_dieta",{dni,nota:val.nota||'',hasta:val.hasta||null,actualizado_por:user.id,actualizado_at:new Date().toISOString()},true,"dni");
+    if(!ok){showToast({msg:'No se pudo guardar la dieta',err:true});return;}
+    setDieta(prev=>({...prev,[dni]:{nota:val.nota||'',hasta:val.hasta||null}}));
+    showToast({msg:'🥗 Dieta guardada'});setDietaEditing(null);
+  };
+  const quitDieta=async(dni)=>{
+    if(!confirm('¿Quitar menú dieta para DNI '+dni+'?'))return;
+    await db.del("viandas_dieta",[["dni","eq",dni]]);
+    setDieta(prev=>{const n={...prev};delete n[dni];return n;});
+    showToast({msg:'Dieta quitada'});setDietaEditing(null);
+  };
   const togglePref=(k)=>setPrefix(prev=>{const n=new Set(prev);if(n.has(k))n.delete(k);else n.add(k);return n;});
-  const personasDia=useMemo(()=>cmdPersonasFecha(fecha),[fecha]);
-  const despachosDia=useMemo(()=>despachos.filter(d=>d.fecha===fecha),[despachos,fecha]);
   const stats=useMemo(()=>{const t={},d={};CMD_COMIDAS.forEach(c=>{t[c.key]=personasDia.filter(p=>p.comidas.includes(c.key)).length;d[c.key]=despachosDia.filter(x=>x.comida===c.key).length;});return{t,d};},[personasDia,despachosDia]);
   const isReadOnly=fecha<cmdIsoDate(new Date());
   const onPickFromList=(p)=>{setPicked(p);setSubtab('scan');};
   useEffect(()=>{if(isAdmin&&subtab==='scan')setSubtab('listado');},[isAdmin]);
+
   return <div className="cmd-root">
     <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
       <span className={'cmd-puestochip '+cmdPuestoClass(userPuesto||'ADMIN')}>{userPuesto?('🍽️ '+userPuesto):'🛡️ ADMIN VIANDAS'}</span>
-      <span style={{fontSize:10,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.3}}>Módulo Comedor · datos DEMO (localStorage) · Fase A</span>
+      <span style={{fontSize:10,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.3}}>{loading?'⏳ cargando…':'☁️ conectado a Supabase · sync cada 3s'}</span>
     </div>
     <div className="cmd-stats">
       {CMD_COMIDAS.map(c=>(
@@ -2743,9 +2759,11 @@ function Comedor({user,proyectoId}){
       <button className={'cmd-tab '+(subtab==='listado'?'active':'')} onClick={()=>setSubtab('listado')}>📋 Listado</button>
       <button className={'cmd-tab '+(subtab==='reporte'?'active':'')} onClick={()=>setSubtab('reporte')}>📊 Reporte</button>
     </div>
-    {subtab==='scan'&&!isAdmin&&<CmdEscanear personas={personasDia} despachos={despachosDia} dieta={dieta} prefix={prefix} togglePref={togglePref} onDispatch={addDespacho} onUndispatch={removeDespacho} preloadPersona={picked} clearPreload={()=>setPicked(null)} fecha={fecha} isReadOnly={isReadOnly}/>}
-    {subtab==='listado'&&<CmdListado personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} dieta={dieta} isAdmin={isAdmin} onOpenDieta={setDietaEditing} onPick={isAdmin?null:onPickFromList} onDispatch={addDespacho} onUndispatch={removeDespacho} canDispatch={!!userPuesto||isAdmin} isReadOnly={isReadOnly}/>}
-    {subtab==='reporte'&&<CmdReporte personas={personasDia} despachos={despachosDia} fecha={fecha}/>}
+    {loading?<div className="cmd-empty">Cargando datos del día…</div>:<>
+      {subtab==='scan'&&!isAdmin&&<CmdEscanear personas={personasDia} despachos={despachosDia} dieta={dieta} prefix={prefix} togglePref={togglePref} onDispatch={addDespacho} onUndispatch={removeDespacho} preloadPersona={picked} clearPreload={()=>setPicked(null)} fecha={fecha} isReadOnly={isReadOnly}/>}
+      {subtab==='listado'&&<CmdListado personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} dieta={dieta} isAdmin={isAdmin} onOpenDieta={setDietaEditing} onPick={isAdmin?null:onPickFromList} onDispatch={addDespacho} onUndispatch={removeDespacho} canDispatch={!!userPuesto||isAdmin} isReadOnly={isReadOnly}/>}
+      {subtab==='reporte'&&<CmdReporte personas={personasDia} despachos={despachosDia} fecha={fecha}/>}
+    </>}
     {toast&&<div className={'cmd-toast '+(toast.err?'err':'')}>{toast.msg}</div>}
     {dietaEditing&&<CmdDietaModal persona={dietaEditing} currentValue={dieta[dietaEditing.dni]} onSave={(v)=>saveDieta(dietaEditing.dni,v)} onQuit={()=>quitDieta(dietaEditing.dni)} onClose={()=>setDietaEditing(null)}/>}
   </div>;
