@@ -2327,8 +2327,8 @@ function Usuarios({currentUser}){
     }catch(e){alert("Error: "+e.message);}
     setResetting(false);
   };
-  const RC={admin:"t-e",sh:"t-v",cp:"t-a",puesto:"t-p",logistica:"t-p",cocina_campamento:"t-a",cocina_chalet:"t-a"};
-  const RL={admin:"Admin",sh:"S&H",cp:"Control Personal",puesto:"Puesto",logistica:"Logistica",cocina_campamento:"Cocina Campamento",cocina_chalet:"Cocina Chalet"};
+  const RC={admin:"t-e",sh:"t-v",cp:"t-a",puesto:"t-p",logistica:"t-p",cocina_campamento:"t-a",cocina_chalet:"t-a",admin_viandas:"t-e"};
+  const RL={admin:"Admin",sh:"S&H",cp:"Control Personal",puesto:"Puesto",logistica:"Logistica",cocina_campamento:"Cocina Campamento",cocina_chalet:"Cocina Chalet",admin_viandas:"Admin Viandas"};
   return <div>
     <div className="ph2"><div className="ptit">Usuarios del <span>Sistema</span></div></div>
     <div style={{marginBottom:14,padding:"12px 16px",background:"rgba(245,158,11,.07)",border:"1px solid rgba(245,158,11,.25)",borderRadius:6,fontSize:13,color:"var(--tx2)"}}>Para crear o modificar usuarios, ingresa al <strong style={{color:"var(--tx)"}}>dashboard de Supabase → Authentication → Users</strong>.</div>
@@ -2846,8 +2846,15 @@ function CmdReporte({personas,despachos,fecha}){
 
 // ─── Componente Comedor (wrapper del módulo entero) — Fase B: Supabase ─────
 function Comedor({user,proyectoId}){
-  const isAdmin=user.rol==='admin';
-  const userPuesto=isAdmin?null:cmdPuestoFromRol(user.rol);  // null para admin; DESPACHO CAMPAMENTO / CHALET para cocineros
+  const isAdmin=user.rol==='admin';              // admin general de ControlObra
+  const isAdminViandas=user.rol==='admin_viandas'; // admin del módulo Viandas (puede editar dieta + simular puesto en Escanear)
+  const canEditDieta=isAdmin||isAdminViandas;
+  // Puesto simulado para admin_viandas — arranca en null hasta que elija
+  const[simuladoPuesto,setSimuladoPuesto]=useState(null);
+  const userPuestoBase=cmdPuestoFromRol(user.rol);
+  // userPuesto: para cocineros el que viene del rol; para admin general null (no escanea); para admin_viandas el que eligió simular
+  const userPuesto=isAdmin?null:(isAdminViandas?simuladoPuesto:userPuestoBase);
+  const puedeEscanear=(!isAdmin);  // cocineros y admin_viandas pueden ver Escanear
   const[subtab,setSubtab]=useState(isAdmin?'listado':'scan');
   const[fecha,setFecha]=useState(()=>cmdIsoDate(new Date()));
   const[personasDia,setPersonasDia]=useState([]);
@@ -2914,9 +2921,15 @@ function Comedor({user,proyectoId}){
   const onPickFromList=(p)=>{setPicked(p);setSubtab('scan');};
   useEffect(()=>{if(isAdmin&&subtab==='scan')setSubtab('listado');},[isAdmin]);
 
+  // Chip del topbar: para admin_viandas sin puesto elegido decimos "🛡️ ADMIN COCINA"
+  const chipLabel=userPuesto
+    ?('🍽️ '+userPuesto+(isAdminViandas?' (simulado)':''))
+    :(isAdminViandas?'🛡️ ADMIN COCINA':'🛡️ ADMIN VIANDAS');
+
   return <div className="cmd-root">
     <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
-      <span className={'cmd-puestochip '+cmdPuestoClass(userPuesto||'ADMIN')}>{userPuesto?('🍽️ '+userPuesto):'🛡️ ADMIN VIANDAS'}</span>
+      <span className={'cmd-puestochip '+cmdPuestoClass(userPuesto||'ADMIN')}>{chipLabel}</span>
+      {isAdminViandas&&userPuesto&&<button onClick={()=>{setSimuladoPuesto(null);setSubtab('scan');}} style={{background:'none',border:'1px solid var(--bd)',color:'var(--tx2)',padding:'3px 8px',borderRadius:4,fontSize:11,cursor:'pointer'}} title="Cambiar el puesto que estás simulando">↻ Cambiar puesto</button>}
       <span style={{fontSize:10,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.3}}>{loading?'⏳ cargando…':'☁️ conectado a Supabase · sync cada 3s'}</span>
     </div>
     <div className="cmd-stats">
@@ -2930,17 +2943,40 @@ function Comedor({user,proyectoId}){
       <div style={{marginLeft:'auto',fontSize:10,color:'var(--tx3)',whiteSpace:'nowrap'}}>Fecha: <strong style={{color:'var(--tx2)'}}>{cmdFmtDate(fecha)}</strong></div>
     </div>
     <div className="cmd-tabs">
-      {!isAdmin&&<button className={'cmd-tab '+(subtab==='scan'?'active':'')} onClick={()=>setSubtab('scan')}>📷 Escanear</button>}
+      {puedeEscanear&&<button className={'cmd-tab '+(subtab==='scan'?'active':'')} onClick={()=>setSubtab('scan')}>📷 Escanear</button>}
       <button className={'cmd-tab '+(subtab==='listado'?'active':'')} onClick={()=>setSubtab('listado')}>📋 Listado</button>
       <button className={'cmd-tab '+(subtab==='reporte'?'active':'')} onClick={()=>setSubtab('reporte')}>📊 Reporte</button>
     </div>
     {loading?<div className="cmd-empty">Cargando datos del día…</div>:<>
-      {subtab==='scan'&&!isAdmin&&<CmdEscanear personas={personasDia} despachos={despachosDia} dieta={dieta} prefix={prefix} togglePref={togglePref} onDispatch={addDespacho} onUndispatch={removeDespacho} preloadPersona={picked} clearPreload={()=>setPicked(null)} fecha={fecha} isReadOnly={isReadOnly}/>}
-      {subtab==='listado'&&<CmdListado personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} dieta={dieta} chaletSet={chaletSet} isAdmin={isAdmin} onOpenDieta={setDietaEditing} onPick={isAdmin?null:onPickFromList} onDispatch={addDespacho} onUndispatch={removeDespacho} canDispatch={!!userPuesto||isAdmin} isReadOnly={isReadOnly}/>}
+      {subtab==='scan'&&puedeEscanear&&(
+        // Admin viandas sin puesto elegido → pantalla de selección; luego pasa al escaneo real
+        isAdminViandas&&!simuladoPuesto
+          ?<CmdSeleccionPuesto onElegir={setSimuladoPuesto}/>
+          :<CmdEscanear personas={personasDia} despachos={despachosDia} dieta={dieta} prefix={prefix} togglePref={togglePref} onDispatch={addDespacho} onUndispatch={removeDespacho} preloadPersona={picked} clearPreload={()=>setPicked(null)} fecha={fecha} isReadOnly={isReadOnly}/>
+      )}
+      {subtab==='listado'&&<CmdListado personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} dieta={dieta} chaletSet={chaletSet} isAdmin={canEditDieta} onOpenDieta={setDietaEditing} onPick={puedeEscanear?onPickFromList:null} onDispatch={addDespacho} onUndispatch={removeDespacho} canDispatch={!!userPuesto||isAdmin} isReadOnly={isReadOnly}/>}
       {subtab==='reporte'&&<CmdReporte personas={personasDia} despachos={despachosDia} fecha={fecha}/>}
     </>}
     {toast&&<div className={'cmd-toast '+(toast.err?'err':'')}>{toast.msg}</div>}
     {dietaEditing&&<CmdDietaModal persona={dietaEditing} currentValue={dieta[dietaEditing.dni]} onSave={(v)=>saveDieta(dietaEditing.dni,v)} onQuit={()=>quitDieta(dietaEditing.dni)} onClose={()=>setDietaEditing(null)}/>}
+  </div>;
+}
+
+// Pantalla de selección de puesto simulado (admin viandas antes de escanear)
+function CmdSeleccionPuesto({onElegir}){
+  return <div className="cmd-empty" style={{padding:'30px 20px'}}>
+    <div style={{fontSize:16,color:'var(--tx)',fontWeight:800,textTransform:'uppercase',letterSpacing:.5,marginBottom:8}}>¿Qué puesto de despacho querés simular?</div>
+    <div style={{fontSize:12,color:'var(--tx2)',marginBottom:24}}>Los despachos que registres quedarán registrados desde ese puesto.</div>
+    <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+      <button onClick={()=>onElegir('DESPACHO CAMPAMENTO')} style={{padding:'20px 26px',background:'rgba(96,165,250,.12)',border:'2px solid rgba(96,165,250,.6)',color:'var(--cmd-info)',borderRadius:8,fontFamily:'var(--fh)',fontSize:14,fontWeight:800,textTransform:'uppercase',letterSpacing:.5,cursor:'pointer',minWidth:220}}>
+        <div style={{fontSize:28,marginBottom:6}}>🏕️</div>
+        Despacho Campamento
+      </button>
+      <button onClick={()=>onElegir('DESPACHO CHALET')} style={{padding:'20px 26px',background:'rgba(167,139,250,.12)',border:'2px solid rgba(167,139,250,.6)',color:'var(--cmd-purple)',borderRadius:8,fontFamily:'var(--fh)',fontSize:14,fontWeight:800,textTransform:'uppercase',letterSpacing:.5,cursor:'pointer',minWidth:220}}>
+        <div style={{fontSize:28,marginBottom:6}}>🏔️</div>
+        Despacho Chalet
+      </button>
+    </div>
   </div>;
 }
 
@@ -3879,7 +3915,7 @@ function App(){
 
   const login=async p=>{
     setUser(p);
-    setTab({puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi"}[p.rol]||"per");
+    setTab({puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi",admin_viandas:"vi"}[p.rol]||"per");
     const{data}=await db.sel("proyectos",{f:[["activo","eq",true]]});
     if(data)setProyectos(data);
     setChecking(false);
@@ -3894,6 +3930,7 @@ function App(){
     logistica:        [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
     cocina_campamento:[{k:"vi",l:"Viandas"}],
     cocina_chalet:    [{k:"vi",l:"Viandas"}],
+    admin_viandas:    [{k:"vi",l:"Viandas"}],
     admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"},{k:"cvc",l:"Chalet"},{k:"adm",l:"Usuarios"}],
   };
 
