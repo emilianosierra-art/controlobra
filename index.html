@@ -2930,6 +2930,7 @@ function Comedor({user,proyectoId}){
     <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
       <span className={'cmd-puestochip '+cmdPuestoClass(userPuesto||'ADMIN')}>{chipLabel}</span>
       {isAdminViandas&&userPuesto&&<button onClick={()=>{setSimuladoPuesto(null);setSubtab('scan');}} style={{background:'none',border:'1px solid var(--bd)',color:'var(--tx2)',padding:'3px 8px',borderRadius:4,fontSize:11,cursor:'pointer'}} title="Cambiar el puesto que estás simulando">↻ Cambiar puesto</button>}
+      <RadarSyncBtn user={user} onDone={loadAll}/>
       <span style={{fontSize:10,color:'var(--tx3)',textTransform:'uppercase',letterSpacing:.3}}>{loading?'⏳ cargando…':'☁️ conectado a Supabase · sync cada 3s'}</span>
     </div>
     <div className="cmd-stats">
@@ -2959,6 +2960,61 @@ function Comedor({user,proyectoId}){
     </>}
     {toast&&<div className={'cmd-toast '+(toast.err?'err':'')}>{toast.msg}</div>}
     {dietaEditing&&<CmdDietaModal persona={dietaEditing} currentValue={dieta[dietaEditing.dni]} onSave={(v)=>saveDieta(dietaEditing.dni,v)} onQuit={()=>quitDieta(dietaEditing.dni)} onClose={()=>setDietaEditing(null)}/>}
+  </div>;
+}
+
+// Botón "🔄 Actualizar calendario del Radar" — solo admins (general o viandas).
+// Llama al web app del Apps Script del sheet Radar de Obra (endpoint doGet action=coSync).
+// La URL + secret se guardan en localStorage; la primera vez pregunta.
+const RADAR_URL_KEY='controlobra_radar_sync_url';
+const RADAR_SECRET_KEY='controlobra_radar_sync_secret';
+function RadarSyncBtn({user,onDone}){
+  const isAdminGral=user.rol==='admin';
+  const isAdminVian=user.rol==='admin_viandas';
+  const puede=isAdminGral||isAdminVian;
+  const[syncing,setSyncing]=useState(false);
+  const[msg,setMsg]=useState(null);
+  if(!puede)return null;
+  const cfgURL=()=>{
+    const cur=localStorage.getItem(RADAR_URL_KEY)||'';
+    const nueva=prompt('URL del web app del Apps Script del Radar de Obra:\n(la que termina en /exec)',cur);
+    if(nueva===null)return false;
+    const secCur=localStorage.getItem(RADAR_SECRET_KEY)||'';
+    const nuevaSec=prompt('Secret (CO_API_SECRET) del Radar de Obra:',secCur);
+    if(nuevaSec===null)return false;
+    localStorage.setItem(RADAR_URL_KEY,nueva.trim());
+    localStorage.setItem(RADAR_SECRET_KEY,nuevaSec.trim());
+    return true;
+  };
+  const doSync=async()=>{
+    let url=localStorage.getItem(RADAR_URL_KEY);
+    let secret=localStorage.getItem(RADAR_SECRET_KEY);
+    if(!url||!secret){
+      if(!confirm('El botón todavía no está configurado. ¿Configurar ahora la URL y el secret del web app del Radar de Obra?'))return;
+      if(!cfgURL())return;
+      url=localStorage.getItem(RADAR_URL_KEY);secret=localStorage.getItem(RADAR_SECRET_KEY);
+    }
+    if(!confirm('¿Ejecutar sincronización del Radar de Obra ahora?\n\nLee del sheet las fechas de hoy + 5 días adelante y las pisa en viandas_calendario. Puede tardar 30-60 segundos.'))return;
+    setSyncing(true);setMsg(null);
+    try{
+      const r=await fetch(url+'?action=coSync&secret='+encodeURIComponent(secret));
+      const d=await r.json();
+      if(d.error){setMsg({t:'err',txt:'Error: '+d.error+(d.error==='unknown action'?' — asegurate de haber actualizado el doGet del Apps Script y hecho un New version en el Deploy.':'')});}
+      else{
+        const filas=d.filas_upsertadas||0;const fechas=(d.fechas||[]).length;
+        setMsg({t:'ok',txt:'✅ Sync OK · '+filas+' filas en '+fechas+' fechas'});
+        onDone&&onDone();  // Recarga los datos de la vista
+      }
+    }catch(e){setMsg({t:'err',txt:'Error de red: '+e.message});}
+    setSyncing(false);
+    setTimeout(()=>setMsg(null),5000);
+  };
+  return <div style={{display:'flex',alignItems:'center',gap:6,marginLeft:8}}>
+    <button onClick={doSync} disabled={syncing} style={{background:'rgba(96,165,250,.12)',border:'1px solid var(--cmd-info)',color:'var(--cmd-info)',borderRadius:4,padding:'5px 10px',fontFamily:'var(--fh)',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:.3,cursor:syncing?'wait':'pointer',opacity:syncing?.5:1}} title="Ejecutar el sync del Radar de Obra ahora (hoy + 5 días)">
+      {syncing?'⏳ sincronizando…':'🔄 Actualizar calendario'}
+    </button>
+    <button onClick={cfgURL} style={{background:'none',border:'1px solid var(--bd)',color:'var(--tx3)',borderRadius:4,padding:'5px 7px',fontSize:11,cursor:'pointer'}} title="Configurar URL y secret del web app del Radar de Obra">⚙️</button>
+    {msg&&<span style={{fontSize:11,color:msg.t==='err'?'var(--cmd-err)':'var(--cmd-ok)',fontWeight:600}}>{msg.txt}</span>}
   </div>;
 }
 
