@@ -164,6 +164,8 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
   .sn{width:18px;height:18px;font-size:10px}
 }
 
+@keyframes pulseWarn{0%,100%{box-shadow:0 0 0 0 rgba(251,191,36,.6)}50%{box-shadow:0 0 0 8px rgba(251,191,36,0)}}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    MÓDULO COMEDOR (nuevo tab "Viandas")
    Prefijos .cmd- para no chocar con las clases existentes.
@@ -363,24 +365,59 @@ const db={
 };
 const VI={Camioneta:"🛻",Combi:"🚐",Colectivo:"🚌","Camión":"🚛",Auto:"🚗",Maquinaria:"🚜",Otro:"🚗"};
 const today=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+
+// fetchRadarDia(fecha): retorna mapa {dni: {letra, numero, cpIngresoOk, comidas:[...]}} desde
+// viandas_calendario. Se usa para (i) derivar cp_ingreso automáticamente en Puesto/Personal
+// (letra != 'F' y != null → OK) y (ii) mostrar info del Radar en la UI.
+const fetchRadarDia=async(fecha)=>{
+  const{data}=await db.sel("viandas_calendario",{f:[["fecha","eq",fecha||today()]],lim:5000});
+  const map={};
+  (data||[]).forEach(r=>{
+    map[r.dni]={
+      letra:r.letra,
+      numero:r.numero,
+      codigo:r.codigo,
+      cpIngresoOk:!!(r.letra&&r.letra!=="F"),
+      comidas:{desayuno:!!r.desayuno,almuerzo:!!r.almuerzo,merienda:!!r.merienda,cena:!!r.cena},
+    };
+  });
+  return map;
+};
 const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
 const fmtD=d=>d?d.split("-").reverse().join("/"):"";
 const fmtTs=ts=>new Date(ts).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
 const habSt=h=>{if(!h)return"none";if(h.suspendida)return"sus";const _d=new Date();const _t=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;if(h.fecha_hasta&&h.fecha_hasta<_t)return"exp";return"ok";};
 const getHab=(et,eid,tipo,habs)=>habs.find(h=>h.entity_type===et&&(et==="persona"?h.persona_id:h.vehiculo_id)===eid&&h.tipo===tipo)||null;
-const personaEstado=(id,habs)=>{
+// personaEstado(id, habs, radarMap?, dni?)
+// Rev86+: si se pasa radarMap y dni, cp_ingreso se DERIVA del Radar de Obra:
+//   letra != 'F' y letra != null → cp OK, sino → cp bloqueado.
+// Si no se pasa radarMap, cae al viejo comportamiento leyendo de habs.
+const personaEstado=(id,habs,radarMap,dni)=>{
   // Bloqueada: falta (vencida, sin fecha o suspendida) el INGRESO de S&H y/o el INGRESO de Control de Personal
   const shIng=habSt(getHab("persona",id,"sh_ingreso",habs));
-  const cpIng=habSt(getHab("persona",id,"cp_ingreso",habs));
+  let cpIng;
+  if(radarMap&&dni){
+    const r=radarMap[dni];
+    cpIng=(r&&r.letra&&r.letra!=="F")?"ok":"exp";
+  }else{
+    cpIng=habSt(getHab("persona",id,"cp_ingreso",habs));
+  }
   if(shIng!=="ok"||cpIng!=="ok")return"no";
   // Parcial: los dos ingresos OK pero falta alguna otra habilitación S&H (Subir a Chalet / Manejo en Montaña).
-  // Almuerzo y Cena NO afectan el estado, son solo informativas.
   const shChalet=habSt(getHab("persona",id,"sh_chalet",habs));
   const shManejo=habSt(getHab("persona",id,"sh_manejo",habs));
   if(shChalet!=="ok"||shManejo!=="ok")return"par";
   return"ok";
 };
-const vehiculoEstado=(id,habs)=>habSt(getHab("vehiculo",id,"sh_ingreso",habs))==="ok"?"ok":"no";
+// vehiculoEstado(id, habs) — Rev86: retorna "no" (sin sh_ingreso), "par" (sh_ingreso OK pero
+// sh_manejo no — bloquea en P2/P3 pero pasa por P1), "ok" (todo OK).
+const vehiculoEstado=(id,habs)=>{
+  const shIng=habSt(getHab("vehiculo",id,"sh_ingreso",habs));
+  if(shIng!=="ok")return"no";
+  const shMan=habSt(getHab("vehiculo",id,"sh_manejo",habs));
+  if(shMan!=="ok")return"par";
+  return"ok";
+};
 const chkAuth=(type,id,habs)=>{
   const all=habs.filter(a=>a.entity_type===type&&(type==="persona"?a.persona_id:a.vehiculo_id)===id);
   const active=all.filter(a=>!a.suspendida&&(!a.fecha_hasta||(a.fecha_hasta+'').slice(0,10)>=today()));
@@ -395,7 +432,19 @@ const chkAuth=(type,id,habs)=>{
 //  Persona — P1 bloquea si falta sh_ingreso o cp_ingreso. P2/P3 bloquea además si falta sh_chalet.
 //            sh_manejo solo advierte (naranja), nunca bloquea.
 //  Vehiculo — P1 bloquea solo si falta sh_ingreso. P2/P3 bloquea también si falta sh_manejo (subir chalet).
-const getHabPills=(entityType,entityId,habs,puesto)=>{
+//
+// Rev86+: cp_ingreso se DERIVA de viandas_calendario del día vía `radarMap` (Radar de Obra).
+//   - radarMap[dni].cpIngresoOk === true  → CP Ingreso OK
+//   - radarMap[dni] undefined o letra='F' → CP Ingreso bloqueado
+//   Si radarMap no se pasa (contextos donde no está disponible), cae al viejo comportamiento
+//   leyendo de habs para no romper.
+const getCpIngresoStatusFromRadar=(dni,radarMap)=>{
+  if(!radarMap)return null;
+  const r=radarMap[dni];
+  if(!r||!r.letra||r.letra==="F")return"expired";
+  return"ok";
+};
+const getHabPills=(entityType,entityId,habs,puesto,radarMap,personaDni)=>{
   const t_=today();
   const getStatus=(tipo)=>{
     const h=habs.find(a=>a.entity_type===entityType&&(entityType==="persona"?a.persona_id:a.vehiculo_id)===entityId&&a.tipo===tipo);
@@ -406,7 +455,10 @@ const getHabPills=(entityType,entityId,habs,puesto)=>{
   };
   const isP1=puesto==="Puesto 1";
   if(entityType==="persona"){
-    const shIng=getStatus("sh_ingreso"),shCha=getStatus("sh_chalet"),shMan=getStatus("sh_manejo"),cpIng=getStatus("cp_ingreso");
+    const shIng=getStatus("sh_ingreso"),shCha=getStatus("sh_chalet"),shMan=getStatus("sh_manejo");
+    // cp_ingreso: derivar del Radar si está disponible; sino leer de habs (backward-compat)
+    const cpFromRadar=personaDni?getCpIngresoStatusFromRadar(personaDni,radarMap):null;
+    const cpIng=cpFromRadar||getStatus("cp_ingreso");
     const blocks=isP1?(shIng!=="ok"||cpIng!=="ok"):(shIng!=="ok"||shCha!=="ok"||cpIng!=="ok");
     const reasons=[];
     if(shIng!=="ok")reasons.push("S&H Ingreso");
@@ -417,7 +469,7 @@ const getHabPills=(entityType,entityId,habs,puesto)=>{
         {label:"S&H Ingreso",short:"ING",color:shIng==="ok"?"green":"red"},
         {label:"Subir a Chalet",short:"CHA",color:shCha==="ok"?"green":"red"},
         {label:"Manejo Montaña",short:"MAN",color:shMan==="ok"?"green":"orange"},
-        {label:"CP Ingreso",short:"CP",color:cpIng==="ok"?"green":"red"},
+        {label:"CP Ingreso",short:"CP",color:cpIng==="ok"?"green":"red",tooltip:cpFromRadar?"Derivado del Radar de Obra":undefined},
       ],
       blocks,
       reason:blocks?("Falta: "+reasons.join(" + ")):null,
@@ -931,6 +983,15 @@ function HabModal({hab,tipo,onClose,onSave,onDelete,saving=false}){
   const[fecha,setFecha]=useState(hab&&hab.fecha_hasta?hab.fecha_hasta.slice(0,10):defaultFecha());
   const[susp,setSusp]=useState(hab?hab.suspendida:false);
   const[motivo,setMotivo]=useState(hab?hab.motivo_suspension||"":"");
+  const[otorgadoPor,setOtorgadoPor]=useState(null); // {nombre, email} del usuario que otorgó
+  // Rev86 (e): mostrar quién habilitó — se busca el nombre del usuario en la tabla usuarios
+  useEffect(()=>{
+    if(!hab||!hab.otorgado_por){setOtorgadoPor(null);return;}
+    db.sel("usuarios",{f:[["id","eq",hab.otorgado_por]],cols:"nombre,email",lim:1}).then(({data})=>{
+      if(data&&data[0])setOtorgadoPor(data[0]);
+      else setOtorgadoPor({nombre:"(usuario no encontrado)",email:""});
+    });
+  },[hab]);
   const labels={"sh_ingreso":"S&H Ingreso","sh_chalet":"S&H Subir a Chalet","sh_manejo":"S&H Manejo en Montana","cp_ingreso":"CP Ingreso","cp_almuerzo":"CP Almuerzo","cp_cena":"CP Cena"};
   return <div className="mo"><div className="md">
     <div className="mh"><div className="mt">{hab?"Editar":"Nueva"} — {labels[tipo]||tipo}</div><button className="mc" onClick={onClose}>x</button></div>
@@ -941,6 +1002,11 @@ function HabModal({hab,tipo,onClose,onSave,onDelete,saving=false}){
         <label htmlFor="susp" style={{cursor:"pointer",fontSize:14}}>Suspender habilitacion</label>
       </div>
       {susp&&<div className="f"><label>Motivo</label><textarea value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="Describe el motivo..."/></div>}
+      {hab&&<div style={{padding:"10px 12px",background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:5,fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)",marginTop:6}}>
+        <div><strong style={{color:"var(--tx)"}}>Habilitado por:</strong> {otorgadoPor?(otorgadoPor.nombre||otorgadoPor.email||"—"):"cargando..."}</div>
+        {hab.creada_at&&<div style={{marginTop:3}}><strong style={{color:"var(--tx)"}}>Fecha carga:</strong> {fmtTs(hab.creada_at)}</div>}
+        {hab.fecha_desde&&<div style={{marginTop:3,opacity:.7}}>Vigencia desde: {fmtD(hab.fecha_desde)}</div>}
+      </div>}
     </div>
     <div className="mf">
       {onDelete&&<button className="bcanc" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.3)",flex:"0 0 auto"}} onClick={onDelete}>Eliminar</button>}
@@ -1005,6 +1071,24 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
   </td>;
 }
 
+// HabCellRadar — pill de solo lectura para CP Ingreso derivado del Radar de Obra.
+// Rev86+: cp_ingreso ya no es manual; se calcula de viandas_calendario del día.
+// Si letra != 'F' y no es null → OK (verde). Si es F o vacía → bloqueado (rojo).
+function HabCellRadar({dni,radarMap,tdClass}){
+  const r=radarMap?radarMap[dni]:null;
+  const ok=r&&r.letra&&r.letra!=="F";
+  const codigo=r&&r.codigo?r.codigo:"—";
+  const tip=r
+    ?(ok?`CP Ingreso derivado del Radar de Obra (${codigo})`:`Bloqueado — hoy figura ${r.letra==="F"?"como Franco":"sin agendamiento"} en el Radar`)
+    :"Sin registro en el Radar de Obra del día";
+  return <td className={tdClass||""} style={{minWidth:88}} title={tip}>
+    <span className={`hc hc-${ok?"ok":"exp"}`} style={{cursor:"help",display:"inline-flex",alignItems:"center",gap:4}}>
+      {ok?"ok":r?(r.letra==="F"?"FRANCO":"sin CP"):"sin dato"}
+      <span style={{fontSize:9,opacity:.7,fontFamily:"var(--fm)"}}>{codigo}</span>
+    </span>
+  </td>;
+}
+
 
 // ─── HABILITACION MASIVA POR EMPRESA ──────────────────────────────────────────
 function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
@@ -1058,8 +1142,9 @@ function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
     setSaving(false);onSaved();onClose();
   };
 
-  const TODOS_TIPOS=["sh_ingreso","sh_chalet","sh_manejo","cp_ingreso","cp_almuerzo","cp_cena"];
-  const tiposLabel={"todas":"⭐ TODAS las habilitaciones","sh_ingreso":"S&H Ingreso","sh_chalet":"S&H Subir a Chalet","sh_manejo":"S&H Manejo en Montana","cp_ingreso":"CP Ingreso","cp_almuerzo":"CP Almuerzo","cp_cena":"CP Cena"};
+  // Rev86: cp_ingreso deriva del Radar, cp_almuerzo/cp_cena eliminados (viven en módulo Viandas)
+  const TODOS_TIPOS=["sh_ingreso","sh_chalet","sh_manejo"];
+  const tiposLabel={"todas":"⭐ TODAS las S&H","sh_ingreso":"S&H Ingreso","sh_chalet":"S&H Subir a Chalet","sh_manejo":"S&H Manejo en Montana"};
   const selectedCount=Object.values(selected).filter(Boolean).length;
 
   return <div className="mo"><div className="md md-lg">
@@ -1127,7 +1212,8 @@ function HabTodoModal({proyectoId,currentUserId,tipo,onClose,onSaved}){
   const[fecha,setFecha]=useState("2027-01-01");
   const[saving,setSaving]=useState(false);
   const[prog,setProg]=useState(null); // {done, total}
-  const TODOS_TIPOS_P=["sh_ingreso","sh_chalet","sh_manejo","cp_ingreso","cp_almuerzo","cp_cena"];
+  // Rev86: cp_ingreso deriva del Radar de Obra automáticamente; cp_almuerzo/cp_cena eliminados
+  const TODOS_TIPOS_P=["sh_ingreso","sh_chalet","sh_manejo"];
   const TODOS_TIPOS_V=["sh_ingreso","sh_manejo"];
 
   const save=async()=>{
@@ -1527,6 +1613,9 @@ function HabMasivaVehModal({proyectoId,currentUserId,habs,onClose,onSaved}){
 function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const[personas,setPersonas]=useState([]);
   const[habs,setHabs]=useState([]);
+  const[radarMap,setRadarMap]=useState({});
+  const[radarLoaded,setRadarLoaded]=useState(null); // timestamp
+  const[refreshingRadar,setRefreshingRadar]=useState(false);
   const[loading,setLoading]=useState(true);
   const[filter,setFilter]=useState("");
   const[filterEst,setFilterEst]=useState("");
@@ -1556,16 +1645,26 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   };
   const load=async()=>{
     setLoading(true);
-    const[r1,r2]=await Promise.all([
+    const[r1,r2,rMap]=await Promise.all([
       db.sel("personas",{f:[["deleted_at","is","null"]],ord:"apellido.asc",lim:5000}),
       db.sel("habilitaciones",{f:[["entity_type","eq","persona"]],lim:5000}),
+      fetchRadarDia(),
     ]);
     if(r1.data)setPersonas(r1.data);
     if(r2.data)setHabs(r2.data);
+    setRadarMap(rMap||{});setRadarLoaded(Date.now());
     setHabKey(k=>k+1);
     setLoading(false);
   };
+  const refreshRadar=async()=>{
+    setRefreshingRadar(true);
+    const rMap=await fetchRadarDia();
+    setRadarMap(rMap||{});setRadarLoaded(Date.now());
+    setRefreshingRadar(false);
+  };
   useEffect(()=>{load();},[]);
+  // Auto-refresh del Radar cada 1 hora (los demás datos también, para mantenerlo simple)
+  useEffect(()=>{const i=setInterval(()=>{refreshRadar();},60*60*1000);return()=>clearInterval(i);},[]);
   const saveP=async f=>{
     if(editP){await db.upd("personas",f,[["id","eq",editP.id]]);}
     else{
@@ -1582,7 +1681,26 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   };
   const delP=async id=>{if(!confirm("Eliminar?"))return;await db.upd("personas",{deleted_at:new Date().toISOString()},[["id","eq",id]]);load();};
   let filtered=personas.filter(p=>!filter||`${p.nombre} ${p.apellido} ${p.dni} ${p.empresa||""}`.toLowerCase().includes(filter.toLowerCase()));
-  if(filterEst)filtered=filtered.filter(p=>personaEstado(p.id,habs)===filterEst);
+  if(filterEst==="venc"){
+    // Filtro "próximas a vencer": personas con alguna hab S&H bloqueante (ing/chalet) o
+    // informativa (manejo) que vence en los próximos 3 días.
+    const hoyISO=today();const hoyT=new Date(hoyISO).getTime();const limT=hoyT+3*24*60*60*1000;
+    filtered=filtered.filter(p=>habs.some(h=>h.persona_id===p.id&&["sh_ingreso","sh_chalet","sh_manejo"].includes(h.tipo)&&!h.suspendida&&h.fecha_hasta&&(()=>{const t=new Date(String(h.fecha_hasta).slice(0,10)).getTime();return t>=hoyT&&t<=limT;})()));
+  } else if(filterEst){
+    filtered=filtered.filter(p=>personaEstado(p.id,habs,radarMap,p.dni)===filterEst);
+  }
+  // Contar habs S&H próximas a vencer (< 3 días) — para el badge del botón
+  const proxVenc=(()=>{
+    const hoyISO=today();const hoyT=new Date(hoyISO).getTime();const limT=hoyT+3*24*60*60*1000;
+    const ids=new Set();
+    habs.forEach(h=>{
+      if(!["sh_ingreso","sh_chalet","sh_manejo"].includes(h.tipo))return;
+      if(h.suspendida||!h.fecha_hasta)return;
+      const t=new Date(String(h.fecha_hasta).slice(0,10)).getTime();
+      if(t>=hoyT&&t<=limT)ids.add(h.persona_id);
+    });
+    return ids.size;
+  })();
   const btns=[];
   if(!readOnly&&(canSH||canCP))btns.push(<button key="add" className="badd" onClick={()=>{setEditP(null);setShowModal(true);}}>+ Nuevo</button>);
   if(canSH)btns.push(<button key="mas" className="badd" style={{background:"var(--acc2)",marginLeft:6}} onClick={()=>setShowMasivo(true)}>Hab. masiva por empresa</button>);
@@ -1591,9 +1709,20 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
     <div className="ph2"><div className="ptit"><span>Personal</span>{readOnly&&<span style={{fontSize:14,fontWeight:400,color:"var(--tx2)",marginLeft:10}}>solo lectura</span>}</div><div style={{display:"flex",gap:6}}>{btns}</div></div>
     <div className="sg">
       <div className="sc"><div className="sv">{personas.length}</div><div className="slb">Total</div></div>
-      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="ok"?"":"ok")} style={filterEst==="ok"?{borderColor:"var(--gr)"}:{}}><div className="sv" style={{color:"var(--gr)"}}>{personas.filter(p=>personaEstado(p.id,habs)==="ok").length}</div><div className="slb">Habilitados</div></div>
-      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="par"?"":"par")} style={filterEst==="par"?{borderColor:"var(--acc)"}:{}}><div className="sv" style={{color:"var(--acc)"}}>{personas.filter(p=>personaEstado(p.id,habs)==="par").length}</div><div className="slb">Parciales</div></div>
-      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="no"?"":"no")} style={filterEst==="no"?{borderColor:"var(--rd)"}:{}}><div className="sv" style={{color:"var(--rd)"}}>{personas.filter(p=>personaEstado(p.id,habs)==="no").length}</div><div className="slb">Bloqueados</div></div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="ok"?"":"ok")} style={filterEst==="ok"?{borderColor:"var(--gr)"}:{}}><div className="sv" style={{color:"var(--gr)"}}>{personas.filter(p=>personaEstado(p.id,habs,radarMap,p.dni)==="ok").length}</div><div className="slb">Habilitados</div></div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="par"?"":"par")} style={filterEst==="par"?{borderColor:"var(--acc)"}:{}}><div className="sv" style={{color:"var(--acc)"}}>{personas.filter(p=>personaEstado(p.id,habs,radarMap,p.dni)==="par").length}</div><div className="slb">Parciales</div></div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="no"?"":"no")} style={filterEst==="no"?{borderColor:"var(--rd)"}:{}}><div className="sv" style={{color:"var(--rd)"}}>{personas.filter(p=>personaEstado(p.id,habs,radarMap,p.dni)==="no").length}</div><div className="slb">Bloqueados</div></div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="venc"?"":"venc")} title="Habilitaciones S&H que vencen en los próximos 3 días" style={{borderColor:filterEst==="venc"?"#FBBF24":(proxVenc>0?"rgba(251,191,36,.5)":undefined),animation:proxVenc>0&&filterEst!=="venc"?"pulseWarn 2s infinite":undefined}}>
+        <div className="sv" style={{color:proxVenc>0?"#FBBF24":"var(--tx2)"}}>{proxVenc}</div>
+        <div className="slb">⚠️ Prox. vencer</div>
+      </div>
+    </div>
+    <div style={{display:"flex",justifyContent:"flex-end",gap:8,alignItems:"center",marginBottom:8,fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)"}}>
+      <span title="Info del Radar de Obra (viandas_calendario del día) — se usa para derivar CP Ingreso">
+        📅 Radar {radarLoaded?"actualizado "+new Date(radarLoaded).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"}):"..."}
+        {" · "}{Object.keys(radarMap).length} registros del día
+      </span>
+      <button className="bsm" onClick={refreshRadar} disabled={refreshingRadar} style={{fontSize:11}}>{refreshingRadar?"...":"🔄 Actualizar"}</button>
     </div>
     <div className="fb">
       <input className="fi" placeholder="Buscar nombre, DNI o empresa..." value={filter} onChange={e=>setFilter(e.target.value)} style={{width:300}}/>
@@ -1606,19 +1735,19 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
           <th rowSpan={2} style={{verticalAlign:"bottom",top:0}}>DNI</th>
           <th rowSpan={2} style={{verticalAlign:"bottom",borderRight:"1px solid var(--bd)",top:0}}>Empresa</th>
           <th colSpan={3} className="sh-h" style={{textAlign:"center",paddingBottom:4,top:0}}>S&H</th>
-          <th colSpan={3} className="cp-h" style={{textAlign:"center",paddingBottom:4,top:0}}>Control de Personal</th>
+          <th colSpan={1} className="cp-h" style={{textAlign:"center",paddingBottom:4,top:0}}>CP</th>
           <th rowSpan={2} style={{verticalAlign:"bottom",top:0}}>Estado</th>
           {!readOnly&&<th rowSpan={2} style={{top:0}}></th>}
         </tr>
         <tr>
           <th className="sh-h" style={{top:28}}>Ingreso</th><th style={{top:28}}>Subir a Chalet</th><th style={{top:28}}>Manejo en Monta&ntilde;a</th>
-          <th className="cp-h" style={{top:28}}>Ingreso</th><th style={{top:28}}>Almuerzo</th><th style={{top:28}}>Cena</th>
+          <th className="cp-h" style={{top:28}}>Ingreso <span style={{fontSize:9,opacity:.6,fontWeight:400}}>(del Radar)</span></th>
         </tr>
       </thead>
       <tbody key={habKey}>
-        {filtered.length===0&&<tr><td colSpan={readOnly?10:11} style={{textAlign:"center",color:"var(--tx2)",padding:28}}>Sin registros</td></tr>}
+        {filtered.length===0&&<tr><td colSpan={readOnly?8:9} style={{textAlign:"center",color:"var(--tx2)",padding:28}}>Sin registros</td></tr>}
         {filtered.map(p=>{
-          const est=personaEstado(p.id,habs);
+          const est=personaEstado(p.id,habs,radarMap,p.dni);
           return <tr key={p.id}>
             <td style={{borderRight:"1px solid var(--bd)",cursor:"pointer"}} onClick={()=>setDetalleP(p)}><div style={{display:"flex",alignItems:"center",gap:8}}><div className="av">{ini(`${p.nombre} ${p.apellido}`)}</div><div><div style={{fontWeight:500}}>{p.nombre} {p.apellido}</div>{p.cargo&&<div style={{fontSize:11,color:"var(--tx2)"}}>{p.cargo}</div>}</div></div></td>
             <td className="mn">{p.dni}</td>
@@ -1626,9 +1755,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
             <HabCell hab={getHab("persona",p.id,"sh_ingreso",habs)} tipo="sh_ingreso" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load} onHabSaved={onHabSaved} tdClass="sh-c"/>
             <HabCell hab={getHab("persona",p.id,"sh_chalet",habs)} tipo="sh_chalet" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
             <HabCell hab={getHab("persona",p.id,"sh_manejo",habs)} tipo="sh_manejo" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
-            <HabCell hab={getHab("persona",p.id,"cp_ingreso",habs)} tipo="cp_ingreso" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canCP&&!readOnly} currentUserId={currentUserId} onRefresh={load} onHabSaved={onHabSaved} tdClass="cp-c"/>
-            <HabCell hab={getHab("persona",p.id,"cp_almuerzo",habs)} tipo="cp_almuerzo" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canCP&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
-            <HabCell hab={getHab("persona",p.id,"cp_cena",habs)} tipo="cp_cena" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canCP&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
+            <HabCellRadar dni={p.dni} radarMap={radarMap} tdClass="cp-c"/>
             <td>{est==="ok"?<span className="est-ok">ok</span>:est==="par"?<span className="est-par">parcial</span>:<span className="est-no">bloq.</span>}</td>
             {!readOnly&&<td><div style={{display:"flex",gap:5}}>
               {(canSH||canCP)&&<button className="bsm" onClick={()=>{setEditP(p);setShowModal(true);}}>Editar</button>}
@@ -1696,6 +1823,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
   const[showMasivoTodoVeh,setShowMasivoTodoVeh]=useState(false);
   const[detalleV,setDetalleV]=useState(null);
   const[filter,setFilter]=useState("");
+  const[filterEst,setFilterEst]=useState("");
   const canSH=userRole==="sh"||userRole==="admin";
   const canEditVeh=canSH||userRole==="logistica";
   const readOnly=userRole==="puesto";
@@ -1738,7 +1866,24 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
     load();
   };
   const delV=async id=>{if(!confirm("Eliminar?"))return;await db.upd("vehiculos",{activo:false},[["id","eq",id]]);load();};
-  const filtered=vehiculos.filter(v=>!filter||`${v.patente} ${v.descripcion||""} ${v.empresa||""}`.toLowerCase().includes(filter.toLowerCase()));
+  let filtered=vehiculos.filter(v=>!filter||`${v.patente} ${v.descripcion||""} ${v.empresa||""}`.toLowerCase().includes(filter.toLowerCase()));
+  if(filterEst==="venc"){
+    const hoyISO=today();const hoyT=new Date(hoyISO).getTime();const limT=hoyT+3*24*60*60*1000;
+    filtered=filtered.filter(v=>habs.some(h=>h.vehiculo_id===v.id&&["sh_ingreso","sh_manejo"].includes(h.tipo)&&!h.suspendida&&h.fecha_hasta&&(()=>{const t=new Date(String(h.fecha_hasta).slice(0,10)).getTime();return t>=hoyT&&t<=limT;})()));
+  } else if(filterEst){
+    filtered=filtered.filter(v=>vehiculoEstado(v.id,habs)===filterEst);
+  }
+  const vProxVenc=(()=>{
+    const hoyISO=today();const hoyT=new Date(hoyISO).getTime();const limT=hoyT+3*24*60*60*1000;
+    const ids=new Set();
+    habs.forEach(h=>{
+      if(!["sh_ingreso","sh_manejo"].includes(h.tipo))return;
+      if(h.suspendida||!h.fecha_hasta)return;
+      const t=new Date(String(h.fecha_hasta).slice(0,10)).getTime();
+      if(t>=hoyT&&t<=limT)ids.add(h.vehiculo_id);
+    });
+    return ids.size;
+  })();
   return <div>
     <div className="ph2">
       <div className="ptit"><span>Vehiculos</span>{readOnly&&<span style={{fontSize:14,fontWeight:400,color:"var(--tx2)",marginLeft:10}}>solo lectura</span>}</div>
@@ -1749,11 +1894,16 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
       </div>
     </div>
     <div className="sg">
-      <div className="sc"><div className="sv">{filtered.length}</div><div className="slb">Total</div></div>
-      <div className="sc"><div className="sv" style={{color:"var(--gr)"}}>{filtered.filter(v=>vehiculoEstado(v.id,habs)==="ok").length}</div><div className="slb">Habilitados</div></div>
-      <div className="sc"><div className="sv" style={{color:"var(--rd)"}}>{filtered.filter(v=>vehiculoEstado(v.id,habs)==="no").length}</div><div className="slb">Bloqueados</div></div>
+      <div className="sc"><div className="sv">{vehiculos.length}</div><div className="slb">Total</div></div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="ok"?"":"ok")} style={filterEst==="ok"?{borderColor:"var(--gr)"}:{}}><div className="sv" style={{color:"var(--gr)"}}>{vehiculos.filter(v=>vehiculoEstado(v.id,habs)==="ok").length}</div><div className="slb">Habilitados</div></div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="par"?"":"par")} style={filterEst==="par"?{borderColor:"var(--acc)"}:{}}><div className="sv" style={{color:"var(--acc)"}}>{vehiculos.filter(v=>vehiculoEstado(v.id,habs)==="par").length}</div><div className="slb">Parciales</div></div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="no"?"":"no")} style={filterEst==="no"?{borderColor:"var(--rd)"}:{}}><div className="sv" style={{color:"var(--rd)"}}>{vehiculos.filter(v=>vehiculoEstado(v.id,habs)==="no").length}</div><div className="slb">Bloqueados</div></div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="venc"?"":"venc")} title="Habilitaciones S&H que vencen en los próximos 3 días" style={{borderColor:filterEst==="venc"?"#FBBF24":(vProxVenc>0?"rgba(251,191,36,.5)":undefined),animation:vProxVenc>0&&filterEst!=="venc"?"pulseWarn 2s infinite":undefined}}>
+        <div className="sv" style={{color:vProxVenc>0?"#FBBF24":"var(--tx2)"}}>{vProxVenc}</div>
+        <div className="slb">⚠️ Prox. vencer</div>
+      </div>
     </div>
-    <div className="fb"><input className="fi" placeholder="Buscar patente o descripcion..." value={filter} onChange={e=>setFilter(e.target.value)} style={{width:280}}/></div>
+    <div className="fb"><input className="fi" placeholder="Buscar patente o descripcion..." value={filter} onChange={e=>setFilter(e.target.value)} style={{width:280}}/>{filterEst&&<button className="bsm" onClick={()=>setFilterEst("")}>x Filtro activo</button>}</div>
     {loading?<Spin/>:<div className="tw"><table>
       <thead><tr><th>Patente</th><th>Tipo</th><th>Descripcion</th><th>Empresa</th><th>Cap.</th><th className="sh-h">S&H Ingreso</th><th className="sh-h" style={{borderLeft:"none"}}>Sub.Chalet</th><th>Estado</th>{!readOnly&&<th></th>}</tr></thead>
       <tbody>
@@ -1768,7 +1918,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
             <td style={{color:"var(--tx2)"}}>{v.capacidad?`${v.capacidad}p`:"—"}</td>
             <HabCell hab={getHab("vehiculo",v.id,"sh_ingreso",habs)} tipo="sh_ingreso" entityType="vehiculo" entityId={v.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load} onHabSaved={onHabSaved} tdClass="sh-c"/>
             <HabCell hab={getHab("vehiculo",v.id,"sh_manejo",habs)} tipo="sh_manejo" entityType="vehiculo" entityId={v.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
-            <td>{est==="ok"?<span className="est-ok">ok</span>:<span className="est-no">bloq.</span>}</td>
+            <td>{est==="ok"?<span className="est-ok">ok</span>:est==="par"?<span className="est-par">parcial</span>:<span className="est-no">bloq.</span>}</td>
             {!readOnly&&<td><div style={{display:"flex",gap:5}}>
               {canEditVeh&&<button className="bsm" onClick={()=>{setEditV(v);setShowModal(true);}}>Editar</button>}
               {userRole==="admin"&&<button className="bsm bsm-r" onClick={()=>delV(v.id)}>x</button>}
@@ -2844,6 +2994,9 @@ function Puesto({user,pid}){
   const[flash,setFlash]=useState(null);
   const[saving,setSaving]=useState(false);
   const[habs,setHabs]=useState([]);
+  const[radarMap,setRadarMap]=useState({});
+  const[radarLoaded,setRadarLoaded]=useState(null); // timestamp última carga
+  const[refreshingRadar,setRefreshingRadar]=useState(false);
   const[showManual,setShowManual]=useState(false);
   const[detalleSes,setDetalleSes]=useState(null);
   const[refreshKey,setRefreshKey]=useState(0);
@@ -2856,6 +3009,15 @@ function Puesto({user,pid}){
   const[warnSalidaComida,setWarnSalidaComida]=useState(null); // {paxNombres, dirFinal}
 
   const[offline,setOffline]=useState(!isOnline()); // sin conexión → banner + no permite fichar
+
+  // Rev86: Radar del día en memoria — se usa para derivar cp_ingreso automáticamente
+  // desde viandas_calendario del día. Refresh 1h automático + botón "🔄 Actualizar".
+  const loadRadar=async()=>{
+    if(!isOnline())return;
+    try{const m=await fetchRadarDia();setRadarMap(m||{});setRadarLoaded(Date.now());}catch(e){console.warn("loadRadar:",e);}
+  };
+  const refreshRadarManual=async()=>{setRefreshingRadar(true);await loadRadar();setRefreshingRadar(false);};
+  useEffect(()=>{loadRadar();const i=setInterval(loadRadar,60*60*1000);return()=>clearInterval(i);},[pid]);
 
   useEffect(()=>{
     const loadHabs=async()=>{
@@ -2870,7 +3032,7 @@ function Puesto({user,pid}){
     // Refresco cada 5 min para que el garitero (que no refresca la página) tenga las habilitaciones al día.
     const i=setInterval(loadHabs,5*60*1000);
     // Actualizar el banner de conexión apenas cambia el estado de red del navegador.
-    const upd=()=>{const off=!isOnline();setOffline(off);if(!off)loadHabs();};
+    const upd=()=>{const off=!isOnline();setOffline(off);if(!off){loadHabs();loadRadar();}};
     window.addEventListener('online',upd);window.addEventListener('offline',upd);
     return()=>{clearInterval(i);window.removeEventListener('online',upd);window.removeEventListener('offline',upd);};
   },[pid]);
@@ -2946,7 +3108,7 @@ function Puesto({user,pid}){
             suggestedPax=candidatos.map(rr=>{
               const p=personasMap[rr.persona_id];
               if(!p)return null;
-              const auth=getHabPills("persona",p.id,freshHabs,effPuesto);
+              const auth=getHabPills("persona",p.id,freshHabs,effPuesto,radarMap,p.dni);
               return {raw:p.dni,person:p,ok:!auth.blocks,reason:auth.reason,pills:auth.pills,activeAuths:[],_sugerido:true};
             }).filter(Boolean);
             suggestedFrom={puesto:sugerirDesde.puesto,timestamp:sugerirDesde.cerrada_at,direccion:sugerirDesde.direccion};
@@ -2980,7 +3142,7 @@ function Puesto({user,pid}){
       sf({ok:false,label:"SIN REGISTRO",sub:v,reason:"DNI no encontrado"});
       setVal("");return;
     }
-    const r=getHabPills("persona",found.id,habs,effPuesto);
+    const r=getHabPills("persona",found.id,habs,effPuesto,radarMap,found.dni);
     const ok=!r.blocks;
     // Comida de hoy + default checkbox "almorzará arriba"
     const comidaInfo=comidasHoy[found.id];
@@ -3078,7 +3240,14 @@ function Puesto({user,pid}){
         <div style={{fontFamily:"var(--fh)",fontSize:26,fontWeight:800,letterSpacing:".05em",color:"var(--acc)",textTransform:"uppercase"}}>{effPuesto}{isAdmin&&<span style={{fontSize:11,fontWeight:600,color:"var(--tx2)",marginLeft:10,fontFamily:"var(--fm)",letterSpacing:".05em"}}>(simulando)</span>}</div>
         <div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)",marginTop:2}}>Control de Acceso{isAdmin&&<button onClick={()=>{nueva();setAdminPuesto(null);}} style={{background:"none",border:"none",color:"var(--acc2)",cursor:"pointer",fontSize:11,fontFamily:"var(--fm)",marginLeft:8,textDecoration:"underline",padding:0}}>cambiar puesto</button>}</div>
       </div>
-      <Clock/>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textAlign:"right"}} title="El estado de CP Ingreso se deriva del Radar de Obra del día. Se auto-refresca cada 1 hora.">
+          📅 Radar {radarLoaded?new Date(radarLoaded).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"}):"..."}
+          <br/><span style={{opacity:.7}}>{Object.keys(radarMap).length} personas hoy</span>
+        </div>
+        <button className="bsm" onClick={refreshRadarManual} disabled={refreshingRadar} style={{fontSize:11}} title="Volver a leer viandas_calendario ahora">{refreshingRadar?"...":"🔄 Actualizar"}</button>
+        <Clock/>
+      </div>
     </div>
     {offline&&<div style={{background:"rgba(239,68,68,.15)",border:"2px solid var(--rd)",borderRadius:8,padding:"14px 18px",marginBottom:14,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
       <span style={{fontSize:28}}>📵</span>
@@ -3351,6 +3520,7 @@ function PublicDashboard({onBack}){
   const[searchResult,setSearchResult]=useState(null);
   const[searching,setSearching]=useState(false);
   const[habs,setHabs]=useState([]);
+  const[radarMap,setRadarMap]=useState({});
   const[movHoy,setMovHoy]=useState([]);
   const[movVehs,setMovVehs]=useState({});
   const[movPersonas,setMovPersonas]=useState({});
@@ -3391,6 +3561,7 @@ function PublicDashboard({onBack}){
 
   useEffect(()=>{
     db.sel("habilitaciones",{f:[["suspendida","eq",false]],lim:5000}).then(({data})=>{if(data)setHabs(data);});
+    fetchRadarDia().then(m=>setRadarMap(m||{}));
     loadMovimientos();
     loadChalet();
     const i=setInterval(()=>{loadMovimientos();loadChalet();},15000);
@@ -3428,8 +3599,8 @@ function PublicDashboard({onBack}){
     const habOk=(pid,tipo)=>habs.some(h=>h.entity_type==="persona"&&h.persona_id===pid&&h.tipo===tipo&&!h.suspendida&&(!h.fecha_hasta||(h.fecha_hasta+"").slice(0,10)>=today()));
     if(p&&p[0]){
       const shOk=habOk(p[0].id,"sh_ingreso");
-      const cpOk=habOk(p[0].id,"cp_ingreso");
-      setSearchResult({type:"persona",data:p[0],shOk,cpOk,estado:personaEstado(p[0].id,habs)});
+      const cpOk=!!(radarMap[p[0].dni]&&radarMap[p[0].dni].cpIngresoOk);
+      setSearchResult({type:"persona",data:p[0],shOk,cpOk,estado:personaEstado(p[0].id,habs,radarMap,p[0].dni)});
       setSearching(false);return;
     }
     // Intentar como nombre
@@ -3437,8 +3608,8 @@ function PublicDashboard({onBack}){
     const found=(p2||[]).filter(x=>`${x.nombre} ${x.apellido}`.toLowerCase().includes(q.toLowerCase()));
     if(found.length===1){
       const shOk=habOk(found[0].id,"sh_ingreso");
-      const cpOk=habOk(found[0].id,"cp_ingreso");
-      setSearchResult({type:"persona",data:found[0],shOk,cpOk,estado:personaEstado(found[0].id,habs)});
+      const cpOk=!!(radarMap[found[0].dni]&&radarMap[found[0].dni].cpIngresoOk);
+      setSearchResult({type:"persona",data:found[0],shOk,cpOk,estado:personaEstado(found[0].id,habs,radarMap,found[0].dni)});
     } else if(found.length>1){
       setSearchResult({type:"multiple",items:found});
     } else {
@@ -3584,9 +3755,12 @@ function PublicDashboard({onBack}){
           </table></div>}
           {searchResult.type==="persona"&&(()=>{
             const pid=searchResult.data.id;
+            const dni=searchResult.data.dni;
             const habCheck=(tipo)=>{const h=habs.find(x=>x.entity_type==="persona"&&x.persona_id===pid&&x.tipo===tipo&&!x.suspendida&&(!x.fecha_hasta||(x.fecha_hasta+"").slice(0,10)>=today()));return h?{ok:true,fecha:h.fecha_hasta}:{ok:false};};
             const shIng=habCheck("sh_ingreso");const shCha=habCheck("sh_chalet");const shMan=habCheck("sh_manejo");
-            const cpIng=habCheck("cp_ingreso");const cpAlm=habCheck("cp_almuerzo");const cpCen=habCheck("cp_cena");
+            const rr=radarMap[dni];
+            const cpOk=!!(rr&&rr.cpIngresoOk);
+            const cpCod=rr?rr.codigo:"—";
             return <div style={{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:8,padding:"20px 24px"}}>
               <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
                 <div className="av" style={{width:44,height:44,fontSize:16}}>{ini(`${searchResult.data.nombre} ${searchResult.data.apellido}`)}</div>
@@ -3597,9 +3771,13 @@ function PublicDashboard({onBack}){
               <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
                 {[{l:"Ingreso",h:shIng},{l:"Subir a Chalet",h:shCha},{l:"Manejo en Montaña",h:shMan}].map(({l,h})=><div key={l} style={{padding:"7px 12px",background:"var(--s2)",borderRadius:4,fontSize:13,border:"1px solid "+(h.ok?"rgba(16,185,129,.3)":"rgba(239,68,68,.2)")}}><span style={{color:"var(--tx2)"}}>{l}: </span><span style={{color:h.ok?"var(--gr)":"var(--rd)",fontWeight:600}}>{h.ok?"ok "+fmtD(h.fecha):"No"}</span></div>)}
               </div>
-              <div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Control de Personal</div>
+              <div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>CP Ingreso <span style={{opacity:.7}}>(del Radar de Obra)</span></div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                {[{l:"Ingreso",h:cpIng},{l:"Almuerzo",h:cpAlm},{l:"Cena",h:cpCen}].map(({l,h})=><div key={l} style={{padding:"7px 12px",background:"var(--s2)",borderRadius:4,fontSize:13,border:"1px solid "+(h.ok?"rgba(16,185,129,.3)":"rgba(239,68,68,.2)")}}><span style={{color:"var(--tx2)"}}>{l}: </span><span style={{color:h.ok?"var(--gr)":"var(--rd)",fontWeight:600}}>{h.ok?"ok "+fmtD(h.fecha):"No"}</span></div>)}
+                <div style={{padding:"7px 12px",background:"var(--s2)",borderRadius:4,fontSize:13,border:"1px solid "+(cpOk?"rgba(16,185,129,.3)":"rgba(239,68,68,.2)")}}>
+                  <span style={{color:"var(--tx2)"}}>Estado hoy: </span>
+                  <span style={{color:cpOk?"var(--gr)":"var(--rd)",fontWeight:600}}>{cpOk?"ok":(rr?(rr.letra==="F"?"FRANCO":"sin CP"):"sin dato en Radar")}</span>
+                  <span style={{fontFamily:"var(--fm)",fontSize:11,marginLeft:8,opacity:.7}}>{cpCod}</span>
+                </div>
               </div>
             </div>;
           })()}
