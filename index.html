@@ -1668,15 +1668,24 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   // Auto-refresh del Radar cada 1 hora (los demás datos también, para mantenerlo simple)
   useEffect(()=>{const i=setInterval(()=>{refreshRadar();},60*60*1000);return()=>clearInterval(i);},[]);
   const saveP=async f=>{
-    if(editP){await db.upd("personas",f,[["id","eq",editP.id]]);}
-    else{
-      // Check if exists but deleted
+    if(editP){
+      const{ok,data}=await db.upd("personas",f,[["id","eq",editP.id]]);
+      if(!ok){alert("No se pudo actualizar la persona.\n\nDetalle: "+JSON.stringify(data));return;}
+    } else {
+      // Blindaje contra duplicados por DNI
       const{data:exist}=await db.sel("personas",{f:[["dni","eq",f.dni]],lim:1});
-      if(exist&&exist[0]&&exist[0].deleted_at){
-        // Restore
-        await db.upd("personas",{...f,deleted_at:null},[["id","eq",exist[0].id]]);
+      if(exist&&exist[0]){
+        if(exist[0].deleted_at){
+          // Restaurar el que estaba borrado con los datos nuevos
+          const{ok,data}=await db.upd("personas",{...f,deleted_at:null},[["id","eq",exist[0].id]]);
+          if(!ok){alert("No se pudo restaurar la persona borrada.\n\nDetalle: "+JSON.stringify(data));return;}
+        } else {
+          alert("Ya existe una persona ACTIVA con el DNI "+f.dni+" ("+(exist[0].nombre||"")+" "+(exist[0].apellido||"")+"). No se guarda para evitar duplicado.");
+          return;
+        }
       } else {
-        await db.ins("personas",f);
+        const{ok,data}=await db.ins("personas",f);
+        if(!ok){alert("No se pudo guardar la persona.\n\nRevisá que estén completos:\n· DNI\n· Nombre\n· Apellido\n\nDetalle del servidor: "+JSON.stringify(data));return;}
       }
     }
     load();
@@ -1762,7 +1771,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
             {!readOnly&&<td><div style={{display:"flex",gap:5}}>
               {(canSH||canCP)&&<button className="bsm" onClick={()=>{setEditP(p);setShowModal(true);}}>Editar</button>}
               {(userRole==="puesto"||userRole==="admin")&&<button className="bsm" style={{color:"var(--acc2)",borderColor:"rgba(59,130,246,.3)"}} onClick={()=>setRegistroP(p)}>Acceso</button>}
-              {userRole==="admin"&&<button className="bsm bsm-r" onClick={()=>delP(p.id)}>x</button>}
+              {(userRole==="admin"||userRole==="sh")&&<button className="bsm bsm-r" onClick={()=>delP(p.id)}>x</button>}
             </div></td>}
           </tr>;
         })}
@@ -1855,14 +1864,24 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
   };
   useEffect(()=>{load();},[]);
   const saveV=async f=>{
-    if(editV){await db.upd("vehiculos",f,[["id","eq",editV.id]]);}
-    else{
-      // Check if exists but inactive
+    if(editV){
+      const{ok,data}=await db.upd("vehiculos",f,[["id","eq",editV.id]]);
+      if(!ok){alert("No se pudo actualizar el vehiculo.\n\nDetalle: "+JSON.stringify(data));return;}
+    } else {
+      // Blindaje contra duplicados por patente
       const{data:exist}=await db.sel("vehiculos",{f:[["patente","eq",f.patente]],lim:1});
-      if(exist&&exist[0]&&!exist[0].activo){
-        await db.upd("vehiculos",{...f,activo:true},[["id","eq",exist[0].id]]);
+      if(exist&&exist[0]){
+        if(!exist[0].activo){
+          // Restaurar el que estaba inactivo con los datos nuevos
+          const{ok,data}=await db.upd("vehiculos",{...f,activo:true},[["id","eq",exist[0].id]]);
+          if(!ok){alert("No se pudo restaurar el vehiculo inactivo.\n\nDetalle: "+JSON.stringify(data));return;}
+        } else {
+          alert("Ya existe un vehiculo ACTIVO con la patente "+f.patente+". No se guarda para evitar duplicado.\n\nUsá el que ya existe o desactivalo antes de crear otro.");
+          return;
+        }
       } else {
-        await db.ins("vehiculos",f);
+        const{ok,data}=await db.ins("vehiculos",f);
+        if(!ok){alert("No se pudo guardar el vehiculo.\n\nRevisá que estén completos:\n· Patente\n· Tipo\n· Capacidad (pasajeros)\n\nDetalle del servidor: "+JSON.stringify(data));return;}
       }
     }
     load();
@@ -1923,7 +1942,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
             <td>{est==="ok"?<span className="est-ok">ok</span>:est==="par"?<span className="est-par">parcial</span>:<span className="est-no">bloq.</span>}</td>
             {!readOnly&&<td><div style={{display:"flex",gap:5}}>
               {canEditVeh&&<button className="bsm" onClick={()=>{setEditV(v);setShowModal(true);}}>Editar</button>}
-              {userRole==="admin"&&<button className="bsm bsm-r" onClick={()=>delV(v.id)}>x</button>}
+              {(userRole==="admin"||userRole==="sh")&&<button className="bsm bsm-r" onClick={()=>delV(v.id)}>x</button>}
             </div></td>}
           </tr>;
         })}
@@ -1938,14 +1957,38 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
 
 function VehModal({v,onClose,onSave}){
   const[f,setF]=useState({patente:v?v.patente:"",tipo:v?v.tipo:"Camioneta",descripcion:v?v.descripcion:"",capacidad:v?v.capacidad:"",empresa:v?v.empresa:""});
+  const[patenteWarn,setPatenteWarn]=useState(null); // {id, patente, descripcion, empresa}
+  const isNew=!v;
+  const checkPatente=async(patente)=>{
+    if(!isNew||!patente||patente.length<3)return;
+    const{data}=await db.sel("vehiculos",{f:[["patente","eq",patente.toUpperCase()],["activo","eq",true]],lim:1});
+    if(data&&data[0])setPatenteWarn(data[0]);
+    else setPatenteWarn(null);
+  };
+  // Campos requeridos: patente, tipo, capacidad. Sin capacidad el server rechaza (NOT NULL).
+  const missing=[];
+  if(!f.patente)missing.push("patente");
+  if(!f.tipo)missing.push("tipo");
+  if(!f.capacidad&&f.capacidad!==0)missing.push("capacidad");
+  const canSave=missing.length===0&&!patenteWarn;
   return <div className="mo"><div className="md">
     <div className="mh"><div className="mt">{v?"Editar":"Nuevo"} Vehiculo</div><button className="mc" onClick={onClose}>x</button></div>
     <div className="mb">
-      <div className="row2"><div className="f"><label>Patente</label><input placeholder="AB123CD" value={f.patente} onChange={e=>setF(x=>({...x,patente:e.target.value.toUpperCase()}))}/></div><div className="f"><label>Tipo</label><select value={f.tipo} onChange={e=>setF(x=>({...x,tipo:e.target.value}))}><option>Camioneta</option><option>Combi</option><option>Colectivo</option><option>Camion</option><option>Auto</option><option>Maquinaria</option><option>Otro</option></select></div></div>
+      <div className="row2">
+        <div className="f"><label>Patente *</label><input placeholder="AB123CD" value={f.patente} onChange={e=>setF(x=>({...x,patente:e.target.value.toUpperCase()}))} onBlur={e=>checkPatente(e.target.value)}/></div>
+        <div className="f"><label>Tipo *</label><select value={f.tipo} onChange={e=>setF(x=>({...x,tipo:e.target.value}))}><option>Camioneta</option><option>Combi</option><option>Colectivo</option><option>Camion</option><option>Auto</option><option>Maquinaria</option><option>Otro</option></select></div>
+      </div>
+      {patenteWarn&&<div className="warn">
+        Ya existe un vehiculo activo con la patente <strong>{patenteWarn.patente}</strong>{patenteWarn.descripcion?" ("+patenteWarn.descripcion+")":""}{patenteWarn.empresa?" — "+patenteWarn.empresa:""}
+      </div>}
       <div className="f"><label>Descripcion</label><input placeholder="Ford Ranger Blanca" value={f.descripcion} onChange={e=>setF(x=>({...x,descripcion:e.target.value}))}/></div>
-      <div className="row2"><div className="f"><label>Capacidad (pax)</label><input type="number" placeholder="5" value={f.capacidad} onChange={e=>setF(x=>({...x,capacidad:Number(e.target.value)}))}/></div><div className="f"><label>Empresa</label><input placeholder="Transporte SA" value={f.empresa} onChange={e=>setF(x=>({...x,empresa:e.target.value}))}/></div></div>
+      <div className="row2">
+        <div className="f"><label>Capacidad (pax) *</label><input type="number" placeholder="5" value={f.capacidad} onChange={e=>setF(x=>({...x,capacidad:e.target.value===""?"":Number(e.target.value)}))}/></div>
+        <div className="f"><label>Empresa</label><input placeholder="Transporte SA" value={f.empresa} onChange={e=>setF(x=>({...x,empresa:e.target.value}))}/></div>
+      </div>
+      {missing.length>0&&<div style={{fontSize:12,color:"var(--tx2)",marginTop:6}}>Falta completar: <strong style={{color:"var(--acc)"}}>{missing.join(", ")}</strong></div>}
     </div>
-    <div className="mf"><button className="bcanc" onClick={onClose}>Cancelar</button><button className="bp" disabled={!f.patente} onClick={()=>{onSave(f);onClose();}}>Guardar</button></div>
+    <div className="mf"><button className="bcanc" onClick={onClose}>Cancelar</button><button className="bp" disabled={!canSave} onClick={()=>{onSave(f);onClose();}}>Guardar</button></div>
   </div></div>;
 }
 
