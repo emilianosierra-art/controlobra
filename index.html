@@ -936,6 +936,11 @@ function MovimientoManual({user,proyectoId,onClose,onSaved}){
   const[search,setSearch]=useState("");
   const[personas,setPersonas]=useState([]);
   const[saving,setSaving]=useState(false);
+  // Rev91: fecha + hora custom (para retro-carga cuando el garitero anotó en papel por corte de luz/internet)
+  const[usarCustom,setUsarCustom]=useState(false);
+  const nowInit=(()=>{const d=new Date();return{f:d.toISOString().slice(0,10),h:d.toTimeString().slice(0,5)};})();
+  const[customFecha,setCustomFecha]=useState(nowInit.f);
+  const[customHora,setCustomHora]=useState(nowInit.h);
   const isP1=user.puesto_nombre==="Puesto 1";
   const labels=isP1?{entrada:"Entro",salida:"Salio"}:{entrada:"Subio",salida:"Bajo"};
   useEffect(()=>{db.sel("personas",{f:[["deleted_at","is","null"]],ord:"apellido.asc"}).then(({data})=>{if(data)setPersonas(data);});},[]);
@@ -945,7 +950,13 @@ function MovimientoManual({user,proyectoId,onClose,onSaved}){
     // Si la persona NO está en la base, conservamos el DNI tipeado como dni_raw
     // para que el movimiento pueda emparejarse con la fichada (subida) no registrada.
     const rawTyped=search.trim().toUpperCase();
-    await db.ins("movimientos_manuales",{proyecto_id:proyectoId,puesto:user.puesto_nombre,operador_id:user.id,persona_id:persona?persona.id:null,dni_raw:persona?persona.dni:(rawTyped||null),nombre_raw:persona?`${persona.nombre} ${persona.apellido}`:(rawTyped?("No registrado: "+rawTyped):null),direccion:dir});
+    const payload={proyecto_id:proyectoId,puesto:user.puesto_nombre,operador_id:user.id,persona_id:persona?persona.id:null,dni_raw:persona?persona.dni:(rawTyped||null),nombre_raw:persona?`${persona.nombre} ${persona.apellido}`:(rawTyped?("No registrado: "+rawTyped):null),direccion:dir};
+    // Rev91: si el garitero eligió "usar fecha/hora custom", pisamos el created_at con el timestamp real
+    if(usarCustom&&customFecha&&customHora){
+      payload.created_at=new Date(customFecha+"T"+customHora+":00").toISOString();
+    }
+    const{ok,data}=await db.ins("movimientos_manuales",payload);
+    if(!ok){alert("No se pudo guardar el movimiento.\n\nDetalle: "+JSON.stringify(data));setSaving(false);return;}
     setSaving(false);onSaved&&onSaved();onClose();
   };
   return <div className="mo"><div className="md">
@@ -962,6 +973,16 @@ function MovimientoManual({user,proyectoId,onClose,onSaved}){
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
           <span className={`ld ld-${dir==="entrada"?"in":"out"}`}>{labels[dir]}</span>
           <button onClick={()=>setStep("dir")} style={{background:"none",border:"none",color:"var(--tx2)",cursor:"pointer",fontSize:12}}>cambiar</button>
+        </div>
+        <div style={{marginBottom:12,padding:"9px 12px",background:"rgba(96,165,250,.06)",border:"1px solid rgba(96,165,250,.2)",borderRadius:5}}>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:12,color:"var(--tx)"}}>
+            <input type="checkbox" checked={usarCustom} onChange={e=>setUsarCustom(e.target.checked)} style={{width:"auto",cursor:"pointer"}}/>
+            <span>📅 Retro-cargar (usar fecha/hora del papel — cuando hubo corte de luz o internet)</span>
+          </label>
+          {usarCustom&&<div style={{marginTop:8,display:"flex",gap:8}}>
+            <div style={{flex:1}}><label style={{fontSize:11,color:"var(--tx2)",display:"block",marginBottom:3}}>Fecha</label><input type="date" value={customFecha} onChange={e=>setCustomFecha(e.target.value)} style={{width:"100%"}}/></div>
+            <div style={{flex:1}}><label style={{fontSize:11,color:"var(--tx2)",display:"block",marginBottom:3}}>Hora</label><input type="time" value={customHora} onChange={e=>setCustomHora(e.target.value)} style={{width:"100%"}}/></div>
+          </div>}
         </div>
         <div className="f"><label>Buscar persona</label><input placeholder="Nombre, apellido o DNI..." value={search} onChange={e=>setSearch(e.target.value)} autoFocus/></div>
         <div style={{maxHeight:280,overflowY:"auto",marginTop:4}}>
@@ -1658,14 +1679,38 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
     setHabKey(k=>k+1);
     setLoading(false);
   };
+  // refreshRadar: llamado por el interval de 1 hora → solo re-lee la tabla local (rápido, sin chupar del sheet)
   const refreshRadar=async()=>{
     setRefreshingRadar(true);
     const rMap=await fetchRadarDia();
     setRadarMap(rMap||{});setRadarLoaded(Date.now());
     setRefreshingRadar(false);
   };
+  // refreshRadarManual: llamado por el botón "🔄 Actualizar" → PRIMERO dispara el sync remoto del sheet
+  // (si hay URL/secret configurados), DESPUÉS re-lee. Lento (~30-60s) pero trae lo cargado en el sheet ahora.
+  const refreshRadarManual=async()=>{
+    setRefreshingRadar(true);
+    const url=localStorage.getItem('controlobra_radar_sync_url');
+    const secret=localStorage.getItem('controlobra_radar_sync_secret');
+    let syncMsg=null;
+    if(url&&secret){
+      try{
+        const r=await fetch(url+'?action=coSync&secret='+encodeURIComponent(secret));
+        const d=await r.json();
+        if(d.error){syncMsg="Sync remoto falló: "+d.error+(d.error==='unknown action'?'\n\nAsegurate de haber actualizado el doGet del Apps Script del Radar y hecho un New version en el Deploy.':'');}
+        // Si el sync remoto anduvo bien, seguimos abajo con el re-lee
+      }catch(e){syncMsg="Error de red al llamar al sync: "+e.message;}
+    } else {
+      syncMsg="Radar sync no configurado. En la solapa Viandas, tocá el botón ⚙️ al lado de \"🔄 Actualizar calendario\" para setear URL y secret.";
+    }
+    // Siempre re-leer (aunque el sync remoto haya fallado, quizás refresque algo de la última corrida)
+    const rMap=await fetchRadarDia();
+    setRadarMap(rMap||{});setRadarLoaded(Date.now());
+    setRefreshingRadar(false);
+    if(syncMsg)alert(syncMsg);
+  };
   useEffect(()=>{load();},[]);
-  // Auto-refresh del Radar cada 1 hora (los demás datos también, para mantenerlo simple)
+  // Auto-refresh del Radar cada 1 hora — usa refreshRadar (rápido, sin sync remoto)
   useEffect(()=>{const i=setInterval(()=>{refreshRadar();},60*60*1000);return()=>clearInterval(i);},[]);
   const saveP=async f=>{
     if(editP){
@@ -1733,7 +1778,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
         📅 Radar {radarLoaded?"actualizado "+new Date(radarLoaded).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"}):"..."}
         {" · "}{Object.keys(radarMap).length} registros del día
       </span>
-      <button className="bsm" onClick={refreshRadar} disabled={refreshingRadar} style={{fontSize:11}}>{refreshingRadar?"...":"🔄 Actualizar"}</button>
+      <button className="bsm" onClick={refreshRadarManual} disabled={refreshingRadar} style={{fontSize:11}} title="Dispara el sync completo del sheet Radar → Supabase y refresca la vista (~30-60 seg)">{refreshingRadar?"⏳ sincronizando…":"🔄 Actualizar desde el sheet"}</button>
     </div>
     <div className="fb">
       <input className="fi" placeholder="Buscar nombre, DNI o empresa..." value={filter} onChange={e=>setFilter(e.target.value)} style={{width:300}}/>
@@ -2073,7 +2118,46 @@ function SesionDetalle({ses,onClose,onInverted}){
   </div></div>;
 }
 
-function Registros({defaultPuesto}){
+// EditarFichadaModal (Rev91): permite corregir día + hora de una fichada (sesión o movimiento manual).
+// Escenario típico: corte de luz/internet → el garitero anotó en papel → después carga
+// las fichadas con la fecha/hora reales del papel. También sirve para corregir tipeos.
+function EditarFichadaModal({tipo,id,currentTs,contexto,onClose,onSaved}){
+  const d=currentTs?new Date(currentTs):new Date();
+  const[fecha,setFecha]=useState(d.toISOString().slice(0,10));
+  const[hora,setHora]=useState(d.toTimeString().slice(0,5));
+  const[saving,setSaving]=useState(false);
+  const save=async()=>{
+    if(!fecha||!hora)return;
+    setSaving(true);
+    const newTs=new Date(fecha+"T"+hora+":00").toISOString();
+    const table=tipo==="sesion"?"sesiones_acceso":"movimientos_manuales";
+    const col=tipo==="sesion"?"cerrada_at":"created_at";
+    const{ok,data}=await db.upd(table,{[col]:newTs},[["id","eq",id]]);
+    if(!ok){alert("No se pudo guardar el cambio.\n\nDetalle: "+JSON.stringify(data));setSaving(false);return;}
+    if(!data||data.length===0){
+      alert("Supabase respondió OK pero no se actualizó ninguna fila.\n\nLa política RLS de la tabla "+table+" no permite UPDATE por este rol. Contactar admin.");
+      setSaving(false);return;
+    }
+    setSaving(false);onSaved&&onSaved();onClose();
+  };
+  return <div className="mo"><div className="md">
+    <div className="mh"><div className="mt">Editar fecha/hora de fichada</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      {contexto&&<div style={{padding:"9px 12px",background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:5,fontSize:12,color:"var(--tx2)",marginBottom:14,fontFamily:"var(--fm)"}}>{contexto}</div>}
+      <div style={{display:"flex",gap:10}}>
+        <div className="f" style={{flex:1}}><label>Fecha real</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/></div>
+        <div className="f" style={{flex:1}}><label>Hora real</label><input type="time" value={hora} onChange={e=>setHora(e.target.value)}/></div>
+      </div>
+      <div style={{fontSize:11,color:"var(--tx3)",marginTop:6}}>La fecha/hora actual guardada era <strong style={{color:"var(--tx2)"}}>{fmtTs(currentTs)}</strong>.</div>
+    </div>
+    <div className="mf">
+      <button className="bcanc" onClick={onClose}>Cancelar</button>
+      <button className="bp" disabled={!fecha||!hora||saving} onClick={save}>{saving?"Guardando...":"Guardar cambio"}</button>
+    </div>
+  </div></div>;
+}
+
+function Registros({defaultPuesto,user}){
   const[list,setList]=useState([]);
   const[manual,setManual]=useState([]);
   const[personas,setPersonas]=useState({}); // id -> persona
@@ -2086,6 +2170,9 @@ function Registros({defaultPuesto}){
   const[fTipo,setFTipo]=useState("");
   const[search,setSearch]=useState("");
   const[detalle,setDetalle]=useState(null);
+  const[edit,setEdit]=useState(null); // {tipo, id, currentTs, contexto}
+  // Rev91: solo admin + puesto (P1/P2/P3) pueden editar fecha/hora
+  const canEdit=!!user&&(user.rol==="admin"||user.rol==="puesto");
 
   const onHabSaved=(newHab)=>{
     setHabs(prev=>{
@@ -2170,7 +2257,7 @@ function Registros({defaultPuesto}){
       {showSes&&sesFiltered.length>0&&<>
         <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Ingresos con vehiculo — {sesFiltered.length}</div>
         <div className="tw" style={{marginBottom:16}}><table>
-          <thead><tr><th>Hora</th><th>Dir.</th><th>Puesto</th><th>Patente</th><th>Quienes</th><th>Pers.</th><th>Deneg.</th></tr></thead>
+          <thead><tr><th>Hora</th><th>Dir.</th><th>Puesto</th><th>Patente</th><th>Quienes</th><th>Pers.</th><th>Deneg.</th>{canEdit&&<th></th>}</tr></thead>
           <tbody>{sesFiltered.map(s=>{
             const veh=vehiculos[s.vehiculo_id];
             return <tr key={s.id} style={{cursor:"pointer"}} onClick={()=>setDetalle(s)}>
@@ -2181,6 +2268,9 @@ function Registros({defaultPuesto}){
               <td style={{color:"var(--tx2)",fontSize:12,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getPaxLabel(s.id)}</td>
               <td style={{fontFamily:"var(--fh)",fontSize:18,fontWeight:700}}>{s.total_personas}</td>
               <td>{(s.total_rechazados||0)>0?<span style={{color:"var(--rd)",fontWeight:600}}>{s.total_rechazados}</span>:<span style={{color:"var(--tx2)"}}>—</span>}</td>
+              {canEdit&&<td onClick={e=>e.stopPropagation()}>
+                <button className="bsm" style={{fontSize:11,padding:"3px 8px",color:"var(--acc2)",borderColor:"rgba(59,130,246,.3)"}} onClick={()=>setEdit({tipo:"sesion",id:s.id,currentTs:s.cerrada_at,contexto:(veh?veh.patente:"Sin patente")+" · "+s.puesto+" · "+s.direccion})}>🕐 editar</button>
+              </td>}
             </tr>;
           })}</tbody>
         </table></div>
@@ -2211,6 +2301,7 @@ function Registros({defaultPuesto}){
                 }
                 load();
               }} className="bsm" style={{fontSize:11,padding:"3px 8px",color:"var(--acc)",borderColor:"rgba(245,158,11,.3)"}}>↔ invertir</button>
+              {canEdit&&<button className="bsm" style={{fontSize:11,padding:"3px 8px",color:"var(--acc2)",borderColor:"rgba(59,130,246,.3)",marginLeft:5}} onClick={()=>setEdit({tipo:"manual",id:m.id,currentTs:m.created_at,contexto:(m.nombre_raw||"Sin identificar")+" · "+m.puesto+" · "+m.direccion})}>🕐 editar</button>}
             </td>
           </tr>)}</tbody>
         </table></div>
@@ -2218,6 +2309,7 @@ function Registros({defaultPuesto}){
       {sesFiltered.length===0&&manFiltered.length===0&&<div style={{textAlign:"center",color:"var(--tx2)",padding:40}}>Sin registros para los filtros seleccionados</div>}
     </>}
     {detalle&&<SesionDetalle ses={detalle} onClose={()=>setDetalle(null)} onInverted={()=>{setDetalle(null);load();}}/>}
+    {edit&&<EditarFichadaModal {...edit} onClose={()=>setEdit(null)} onSaved={load}/>}
   </div>;
 }
 
@@ -4051,7 +4143,7 @@ function App(){
     <div className="main">
       {tab==="per"&&<PersonalPanel userRole={user.rol} currentUserId={user.id} proyectoId={pid} user={user}/>}
       {tab==="veh"&&<VehiculosPanel userRole={user.rol} currentUserId={user.id} proyectoId={pid}/>}
-      {tab==="reg"&&<Registros defaultPuesto={user.rol==="puesto"?user.puesto_nombre:""}/>}
+      {tab==="reg"&&<Registros defaultPuesto={user.rol==="puesto"?user.puesto_nombre:""} user={user}/>}
       {tab==="sc" &&<Puesto user={user} pid={pid}/>}
       {tab==="cvc"&&<ConteoViandasChalet user={user} proyectoId={pid}/>}
       {tab==="vi" &&<Comedor user={user} proyectoId={pid}/>}
