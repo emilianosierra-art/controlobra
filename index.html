@@ -936,11 +936,6 @@ function MovimientoManual({user,proyectoId,onClose,onSaved}){
   const[search,setSearch]=useState("");
   const[personas,setPersonas]=useState([]);
   const[saving,setSaving]=useState(false);
-  // Rev91: fecha + hora custom (para retro-carga cuando el garitero anotó en papel por corte de luz/internet)
-  const[usarCustom,setUsarCustom]=useState(false);
-  const nowInit=(()=>{const d=new Date();return{f:d.toISOString().slice(0,10),h:d.toTimeString().slice(0,5)};})();
-  const[customFecha,setCustomFecha]=useState(nowInit.f);
-  const[customHora,setCustomHora]=useState(nowInit.h);
   const isP1=user.puesto_nombre==="Puesto 1";
   const labels=isP1?{entrada:"Entro",salida:"Salio"}:{entrada:"Subio",salida:"Bajo"};
   useEffect(()=>{db.sel("personas",{f:[["deleted_at","is","null"]],ord:"apellido.asc"}).then(({data})=>{if(data)setPersonas(data);});},[]);
@@ -950,12 +945,7 @@ function MovimientoManual({user,proyectoId,onClose,onSaved}){
     // Si la persona NO está en la base, conservamos el DNI tipeado como dni_raw
     // para que el movimiento pueda emparejarse con la fichada (subida) no registrada.
     const rawTyped=search.trim().toUpperCase();
-    const payload={proyecto_id:proyectoId,puesto:user.puesto_nombre,operador_id:user.id,persona_id:persona?persona.id:null,dni_raw:persona?persona.dni:(rawTyped||null),nombre_raw:persona?`${persona.nombre} ${persona.apellido}`:(rawTyped?("No registrado: "+rawTyped):null),direccion:dir};
-    // Rev91: si el garitero eligió "usar fecha/hora custom", pisamos el created_at con el timestamp real
-    if(usarCustom&&customFecha&&customHora){
-      payload.created_at=new Date(customFecha+"T"+customHora+":00").toISOString();
-    }
-    const{ok,data}=await db.ins("movimientos_manuales",payload);
+    const{ok,data}=await db.ins("movimientos_manuales",{proyecto_id:proyectoId,puesto:user.puesto_nombre,operador_id:user.id,persona_id:persona?persona.id:null,dni_raw:persona?persona.dni:(rawTyped||null),nombre_raw:persona?`${persona.nombre} ${persona.apellido}`:(rawTyped?("No registrado: "+rawTyped):null),direccion:dir});
     if(!ok){alert("No se pudo guardar el movimiento.\n\nDetalle: "+JSON.stringify(data));setSaving(false);return;}
     setSaving(false);onSaved&&onSaved();onClose();
   };
@@ -973,16 +963,6 @@ function MovimientoManual({user,proyectoId,onClose,onSaved}){
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
           <span className={`ld ld-${dir==="entrada"?"in":"out"}`}>{labels[dir]}</span>
           <button onClick={()=>setStep("dir")} style={{background:"none",border:"none",color:"var(--tx2)",cursor:"pointer",fontSize:12}}>cambiar</button>
-        </div>
-        <div style={{marginBottom:12,padding:"9px 12px",background:"rgba(96,165,250,.06)",border:"1px solid rgba(96,165,250,.2)",borderRadius:5}}>
-          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:12,color:"var(--tx)"}}>
-            <input type="checkbox" checked={usarCustom} onChange={e=>setUsarCustom(e.target.checked)} style={{width:"auto",cursor:"pointer"}}/>
-            <span>📅 Retro-cargar (usar fecha/hora del papel — cuando hubo corte de luz o internet)</span>
-          </label>
-          {usarCustom&&<div style={{marginTop:8,display:"flex",gap:8}}>
-            <div style={{flex:1}}><label style={{fontSize:11,color:"var(--tx2)",display:"block",marginBottom:3}}>Fecha</label><input type="date" value={customFecha} onChange={e=>setCustomFecha(e.target.value)} style={{width:"100%"}}/></div>
-            <div style={{flex:1}}><label style={{fontSize:11,color:"var(--tx2)",display:"block",marginBottom:3}}>Hora</label><input type="time" value={customHora} onChange={e=>setCustomHora(e.target.value)} style={{width:"100%"}}/></div>
-          </div>}
         </div>
         <div className="f"><label>Buscar persona</label><input placeholder="Nombre, apellido o DNI..." value={search} onChange={e=>setSearch(e.target.value)} autoFocus/></div>
         <div style={{maxHeight:280,overflowY:"auto",marginTop:4}}>
