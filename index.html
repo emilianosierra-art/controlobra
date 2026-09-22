@@ -791,15 +791,15 @@ const calcPosicionesMontana=async()=>{
 };
 
 // calcPersonasEnPredio: personas dentro del predio.
-// Rev91 (2026-09-22): usa la vista SQL `obra.v_ultima_fichada` que retorna 1 fila por persona
-// con su fichada más reciente SIN límite temporal — así no importa cuánto tiempo lleve alguien
-// adentro (semanas, meses, años) mientras no haya fichado salida por P1.
-//   - Si la última fichada es "Puesto 1 salida" → fuera del predio.
+// Rev91 (2026-09-22): usa la vista SQL `obra.v_ultima_fichada` (DISTINCT ON por persona, orden por ts DESC)
+// filtrada desde la fecha de inicio operativo. Esto descarta fichadas de prueba previas al arranque real
+// que ensuciaban el conteo (531 falsos positivos).
+//   - Si la última fichada operativa es "Puesto 1 salida" → fuera del predio.
 //   - Cualquier otra cosa (P1 entrada, o P2/P3 entrada/salida) → dentro del predio.
-// Fallback P1-offline sigue funcionando: si P1 no registró la entrada, la última fichada de la
-// persona es P2/P3 → no es P1 salida → cuenta como dentro.
+// Fallback P1-offline sigue funcionando. Cuando arranque una nueva temporada, cambiar OPERATIVA_DESDE.
+const OPERATIVA_DESDE="2026-09-21T00:00:00";
 const calcPersonasEnPredio=async()=>{
-  const{data}=await db.sel("v_ultima_fichada",{lim:20000});
+  const{data}=await db.sel("v_ultima_fichada",{f:[["ts","gte",OPERATIVA_DESDE]],lim:20000});
   const inSet=new Set();
   const lastMap={};
   (data||[]).forEach(r=>{
