@@ -286,6 +286,9 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 <div id="root"></div>
 <script type="text/babel">
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
+// Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
+// Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
+const APP_REV="Rev92";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -1247,11 +1250,15 @@ function PersonaDetalleModal({persona,proyectoId,onClose}){
     const load=async()=>{
       // Verificar ubicación actual: chalet/camino desde calcPosicionesMontana (mismo día),
       // predio desde calcPersonasEnPredio (última fichada global). Jerarquía: chalet > camino > predio > fuera.
+      // Ojo: la vista v_ultima_fichada usa COALESCE(persona_id::text, dni_raw) como clave — si el garitero
+      // tipeó el DNI en vez de escanear el QR, la fichada quedó con persona_id=NULL y clave=dni_raw.
+      // Chequeamos por id (UUID) O por dni para cubrir los 2 casos.
       const[pos,pred]=await Promise.all([calcPosicionesMontana(),calcPersonasEnPredio()]);
-      const p=pos.persona[persona.id];
+      const p=pos.persona[persona.id]||pos.persona[persona.dni];
+      const enPredio=pred.inSet.has(persona.id)||pred.inSet.has(persona.dni);
       if(p==="chalet")setUbicacion("chalet");
       else if(p==="camino")setUbicacion("camino");
-      else if(pred.inSet.has(persona.id))setUbicacion("predio");
+      else if(enPredio)setUbicacion("predio");
       else setUbicacion("fuera");
 
       // Historial de accesos (últimos 20)
@@ -3849,7 +3856,7 @@ function PublicDashboard({onBack}){
 
   return <div className="pub-wrap">
     <div className="pub-bar">
-      <div className="brand">CONTROL<span>OBRA</span> <span style={{fontSize:13,fontWeight:400,color:"var(--tx2)",marginLeft:6,fontFamily:"var(--fb)"}}>vista publica</span></div>
+      <div className="brand">CONTROL<span>OBRA</span> <span style={{fontSize:13,fontWeight:400,color:"var(--tx2)",marginLeft:6,fontFamily:"var(--fb)"}}>vista publica</span> <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3}}>{APP_REV}</span></div>
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         <div className="pub-badge"><div className="pub-dot"/>EN VIVO</div>
         <button className="btn-out" onClick={onBack}>Iniciar sesion</button>
@@ -4024,7 +4031,7 @@ function Login({onLogin,onPublic}){
     onLogin(data[0]);setLoading(false);
   };
   return <div className="lwrap"><div className="lcard">
-    <div className="llogo">CONTROL<span>OBRA</span></div>
+    <div className="llogo">CONTROL<span>OBRA</span> <span style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3,verticalAlign:"middle"}}>{APP_REV}</span></div>
     <div className="lsub">Sistema de control de puestos</div>
     {err&&<div className="err">{err}</div>}
     <div className="f"><label>Email</label><input type="email" placeholder="usuario@obrasysistemas.com.ar" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} autoFocus/></div>
@@ -4084,7 +4091,7 @@ function App(){
   const tabs=TABS[user.rol]||[];
   return <div className="app">
     <div className="topbar">
-      <div className="brand">CONTROL<span>OBRA</span></div>
+      <div className="brand">CONTROL<span>OBRA</span> <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3}}>{APP_REV}</span></div>
       <div className="tr" style={{gap:8,flexWrap:"nowrap"}}>
         <span style={{fontSize:12,color:"var(--tx2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:80}}>{user.nombre}</span>
         <span className="rol" style={{flexShrink:0}}>{user.rol==="puesto"?user.puesto_nombre||"Puesto":user.rol.toUpperCase()}</span>
