@@ -790,52 +790,21 @@ const calcPosicionesMontana=async()=>{
   return{persona,vehiculo,personaLast,vehiculoLast};
 };
 
-// calcPersonasEnPredio: personas dentro del predio hoy.
-// Regla: mira la ULTIMA fichada del día en TODOS los puestos (P1 + P2 + P3, sesiones + manuales).
-//   - Si la última es "Puesto 1 salida" → fuera del predio.
+// calcPersonasEnPredio: personas dentro del predio.
+// Rev91 (2026-09-22): usa la vista SQL `obra.v_ultima_fichada` que retorna 1 fila por persona
+// con su fichada más reciente SIN límite temporal — así no importa cuánto tiempo lleve alguien
+// adentro (semanas, meses, años) mientras no haya fichado salida por P1.
+//   - Si la última fichada es "Puesto 1 salida" → fuera del predio.
 //   - Cualquier otra cosa (P1 entrada, o P2/P3 entrada/salida) → dentro del predio.
-// Fallback P1-offline: si P1 no registró la entrada (falla, corte de luz, etc.) pero la persona
-// aparece en P2/P3, su última fichada no es P1 salida → automáticamente cuenta como dentro.
+// Fallback P1-offline sigue funcionando: si P1 no registró la entrada, la última fichada de la
+// persona es P2/P3 → no es P1 salida → cuenta como dentro.
 const calcPersonasEnPredio=async()=>{
-  const todayStr=today();
-  const[r1s,r1m,r2s,r3s,r2m,r3m]=await Promise.all([
-    db.sel("sesiones_acceso",{f:[["puesto","eq","Puesto 1"],["cerrada_at","gte",todayStr+"T00:00:00"]],ord:"cerrada_at.asc",lim:5000}),
-    db.sel("movimientos_manuales",{f:[["puesto","eq","Puesto 1"],["created_at","gte",todayStr+"T00:00:00"]],ord:"created_at.asc",lim:5000}),
-    db.sel("sesiones_acceso",{f:[["puesto","eq","Puesto 2"],["cerrada_at","gte",todayStr+"T00:00:00"]],ord:"cerrada_at.asc",lim:5000}),
-    db.sel("sesiones_acceso",{f:[["puesto","eq","Puesto 3"],["cerrada_at","gte",todayStr+"T00:00:00"]],ord:"cerrada_at.asc",lim:5000}),
-    db.sel("movimientos_manuales",{f:[["puesto","eq","Puesto 2"],["created_at","gte",todayStr+"T00:00:00"]],ord:"created_at.asc",lim:5000}),
-    db.sel("movimientos_manuales",{f:[["puesto","eq","Puesto 3"],["created_at","gte",todayStr+"T00:00:00"]],ord:"created_at.asc",lim:5000}),
-  ]);
-  const ses=[...(r1s.data||[]),...(r2s.data||[]),...(r3s.data||[])];
-  const man=[...(r1m.data||[]),...(r2m.data||[]),...(r3m.data||[])];
-  const sesIds=ses.map(s=>s.id);
-  let regs=[];
-  if(sesIds.length>0){
-    const{data}=await db.sel("registros_acceso",{cols:"persona_id,dni_raw,sesion_id",inFilter:["sesion_id",sesIds]});
-    regs=data||[];
-  }
-  const sesById={};ses.forEach(s=>{sesById[s.id]=s;});
-  const dniToId={};regs.forEach(r=>{if(r.persona_id&&r.dni_raw)dniToId[r.dni_raw]=r.persona_id;});
-  const normKey=(pid,dni)=>pid||(dniToId[dni]||dni);
-  const events={};
-  regs.forEach(r=>{
-    const s=sesById[r.sesion_id];if(!s)return;
-    const key=normKey(r.persona_id,r.dni_raw);
-    if(!events[key])events[key]=[];
-    events[key].push({t:new Date(s.cerrada_at).getTime(),puesto:s.puesto,dir:s.direccion});
-  });
-  man.forEach(m=>{
-    const key=normKey(m.persona_id,m.dni_raw)||("m_"+m.id);
-    if(!events[key])events[key]=[];
-    events[key].push({t:new Date(m.created_at).getTime(),puesto:m.puesto,dir:m.direccion});
-  });
+  const{data}=await db.sel("v_ultima_fichada",{lim:20000});
   const inSet=new Set();
   const lastMap={};
-  Object.entries(events).forEach(([k,e])=>{
-    e.sort((a,b)=>a.t-b.t);
-    const last=e[e.length-1];
-    lastMap[k]=last;
-    if(!(last.puesto==="Puesto 1"&&last.dir==="salida"))inSet.add(k);
+  (data||[]).forEach(r=>{
+    lastMap[r.clave]={t:new Date(r.ts).getTime(),puesto:r.puesto,dir:r.direccion};
+    if(!(r.puesto==="Puesto 1"&&r.direccion==="salida"))inSet.add(r.clave);
   });
   return{inSet,lastMap};
 };
