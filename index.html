@@ -1239,16 +1239,20 @@ function HabTodoModal({proyectoId,currentUserId,tipo,onClose,onSaved}){
 
 // ─── PERSONA DETALLE MODAL ───────────────────────────────────────────────────
 function PersonaDetalleModal({persona,proyectoId,onClose}){
-  const[ubicacion,setUbicacion]=useState(null); // null | "chalet" | "camino" | "fuera"
+  const[ubicacion,setUbicacion]=useState(null); // null | "chalet" | "camino" | "predio" | "fuera"
   const[historial,setHistorial]=useState([]);
   const[loading,setLoading]=useState(true);
 
   useEffect(()=>{
     const load=async()=>{
-      // Verificar ubicación actual
-      const pos=await calcPosicionesMontana();
+      // Verificar ubicación actual: chalet/camino desde calcPosicionesMontana (mismo día),
+      // predio desde calcPersonasEnPredio (última fichada global). Jerarquía: chalet > camino > predio > fuera.
+      const[pos,pred]=await Promise.all([calcPosicionesMontana(),calcPersonasEnPredio()]);
       const p=pos.persona[persona.id];
-      setUbicacion(p==="chalet"?"chalet":p==="camino"?"camino":"fuera");
+      if(p==="chalet")setUbicacion("chalet");
+      else if(p==="camino")setUbicacion("camino");
+      else if(pred.inSet.has(persona.id))setUbicacion("predio");
+      else setUbicacion("fuera");
 
       // Historial de accesos (últimos 20)
       const todayStr=today();
@@ -1274,9 +1278,9 @@ function PersonaDetalleModal({persona,proyectoId,onClose}){
     load();
   },[persona.id]);
 
-  const ubColor=ubicacion==="chalet"?"#A78BFA":ubicacion==="camino"?"#60A5FA":"var(--tx2)";
-  const ubLabel=ubicacion==="chalet"?"En Chalet":ubicacion==="camino"?"En Camino (P2→P3)":"Fuera de la obra";
-  const ubIcon=ubicacion==="chalet"?"🏔️":ubicacion==="camino"?"🚗":"—";
+  const ubColor=ubicacion==="chalet"?"#A78BFA":ubicacion==="camino"?"#60A5FA":ubicacion==="predio"?"#F59E0B":"var(--tx2)";
+  const ubLabel=ubicacion==="chalet"?"En Chalet":ubicacion==="camino"?"En Camino (P2→P3)":ubicacion==="predio"?"En Predio":"Fuera de la obra";
+  const ubIcon=ubicacion==="chalet"?"🏔️":ubicacion==="camino"?"🚗":ubicacion==="predio"?"🏕️":"—";
 
   return <div className="mo"><div className="md">
     <div className="mh">
