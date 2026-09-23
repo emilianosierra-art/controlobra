@@ -293,7 +293,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev93";
+const APP_REV="Rev94";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -3723,17 +3723,21 @@ function PublicDashboard({onBack}){
   const[movPersonas,setMovPersonas]=useState({});
   const[movRegs,setMovRegs]=useState({});
   const[movLoading,setMovLoading]=useState(true);
-  const[pubChalet,setPubChalet]=useState({persChalet:null,persCamino:0,vehChalet:0,vehCamino:0,persListChalet:[],persListCamino:[],vehListChalet:[],vehListCamino:[]});
+  const[pubChalet,setPubChalet]=useState({persChalet:null,persCamino:0,persPredio:0,vehChalet:0,vehCamino:0,persListChalet:[],persListCamino:[],persListPredio:[],vehListChalet:[],vehListCamino:[]});
   const[pubShowList,setPubShowList]=useState(null);
 
   const loadChalet=async()=>{
-    const pos=await calcPosicionesMontana();
+    const[pos,pred]=await Promise.all([calcPosicionesMontana(),calcPersonasEnPredio()]);
     const persIdsChalet=Object.entries(pos.persona).filter(([_,p])=>p==="chalet").map(([k])=>k);
     const persIdsCamino=Object.entries(pos.persona).filter(([_,p])=>p==="camino").map(([k])=>k);
     const vehIdsChalet=Object.entries(pos.vehiculo).filter(([_,p])=>p==="chalet").map(([k])=>k);
     const vehIdsCamino=Object.entries(pos.vehiculo).filter(([_,p])=>p==="camino").map(([k])=>k);
+    // En predio: mismo criterio que ChaletMini (quien está en camino/chalet también cuenta como dentro)
+    const persIdsPredio=Array.from(pred.inSet);
+    persIdsChalet.forEach(k=>{if(!pred.inSet.has(k))persIdsPredio.push(k);});
+    persIdsCamino.forEach(k=>{if(!pred.inSet.has(k))persIdsPredio.push(k);});
     const isUUID=(k)=>typeof k==="string"&&k.length===36&&k.indexOf("-")>=0;
-    const allPersIds=[...persIdsChalet,...persIdsCamino].filter(isUUID);
+    const allPersIds=Array.from(new Set([...persIdsChalet,...persIdsCamino,...persIdsPredio])).filter(isUUID);
     const allVehIds=[...vehIdsChalet,...vehIdsCamino].filter(isUUID);
     const[{data:pers},{data:vehs}]=await Promise.all([
       allPersIds.length?db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"}):{data:[]},
@@ -3746,10 +3750,12 @@ function PublicDashboard({onBack}){
     setPubChalet({
       persChalet:persIdsChalet.length,
       persCamino:persIdsCamino.length,
+      persPredio:persIdsPredio.length,
       vehChalet:vehIdsChalet.length,
       vehCamino:vehIdsCamino.length,
       persListChalet:persIdsChalet.map(k=>persMap[k]||synthPer(k)),
       persListCamino:persIdsCamino.map(k=>persMap[k]||synthPer(k)),
+      persListPredio:persIdsPredio.map(k=>persMap[k]||synthPer(k)),
       vehListChalet:vehIdsChalet.map(k=>vehMap[k]||synthVeh(k)),
       vehListCamino:vehIdsCamino.map(k=>vehMap[k]||synthVeh(k)),
     });
@@ -3850,6 +3856,18 @@ function PublicDashboard({onBack}){
     </div>
     <div className="pub-main">
       {tab==="chalet"&&<>
+        {/* EN PREDIO — total de personas dentro (ingresaron por P1 y no salieron) */}
+        <div style={{background:"linear-gradient(135deg,rgba(245,158,11,.14),rgba(245,158,11,.04))",border:"1px solid rgba(245,158,11,.4)",borderRadius:8,overflow:"hidden",marginBottom:12}}>
+          <div style={{padding:"10px 18px",borderBottom:"1px solid rgba(245,158,11,.2)",fontFamily:"var(--fh)",fontSize:13,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:"#F59E0B"}}>En Predio — total dentro</div>
+          <div style={{padding:"16px 20px",display:"flex",alignItems:"center",gap:14}}>
+            <div style={{fontFamily:"var(--fh)",fontSize:52,fontWeight:900,color:"#F59E0B",lineHeight:1}}>{pubChalet.persChalet===null?"-":pubChalet.persPredio}</div>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"var(--fh)",fontSize:14,fontWeight:700,color:"#F59E0B",textTransform:"uppercase"}}>Personas</div>
+              <div style={{fontSize:12,color:"var(--tx2)",marginTop:2}}>Incluye a los que están en camino y en chalet</div>
+            </div>
+            <button style={{background:"rgba(245,158,11,.15)",border:"1px solid rgba(245,158,11,.4)",color:"#F59E0B",borderRadius:4,padding:"5px 12px",fontFamily:"var(--fh)",fontSize:12,fontWeight:700,cursor:"pointer"}} onClick={()=>setPubShowList("persPredio")}>Ver</button>
+          </div>
+        </div>
         {/* CHALET */}
         <div style={{background:"linear-gradient(135deg,rgba(139,92,246,.15),rgba(59,130,246,.1))",border:"1px solid rgba(139,92,246,.35)",borderRadius:8,overflow:"hidden",marginBottom:12}}>
           <div style={{padding:"10px 18px",borderBottom:"1px solid rgba(139,92,246,.2)",fontFamily:"var(--fh)",fontSize:13,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:"#A78BFA"}}>En Chalet — Puesto 3</div>
@@ -3892,9 +3910,9 @@ function PublicDashboard({onBack}){
         </div>
         <div style={{fontSize:12,color:"var(--tx2)",marginBottom:14}}>Se actualiza cada 5 segundos</div>
         {pubShowList&&<ListaFiltrada
-          items={pubShowList==="persChalet"?pubChalet.persListChalet:pubShowList==="persCamino"?pubChalet.persListCamino:pubShowList==="vehChalet"?pubChalet.vehListChalet:pubChalet.vehListCamino}
+          items={{persPredio:pubChalet.persListPredio,persChalet:pubChalet.persListChalet,persCamino:pubChalet.persListCamino,vehChalet:pubChalet.vehListChalet,vehCamino:pubChalet.vehListCamino}[pubShowList]}
           tipo={pubShowList.startsWith("pers")?"persona":"vehiculo"}
-          titulo={{persChalet:"Personas en Chalet",persCamino:"Personas en Camino",vehChalet:"Vehiculos en Chalet",vehCamino:"Vehiculos en Camino"}[pubShowList]}
+          titulo={{persPredio:"Personas en el Predio",persChalet:"Personas en Chalet",persCamino:"Personas en Camino",vehChalet:"Vehiculos en Chalet",vehCamino:"Vehiculos en Camino"}[pubShowList]}
           onClose={()=>setPubShowList(null)}
         />}
       </>}
