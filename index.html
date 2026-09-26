@@ -302,7 +302,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev95";
+const APP_REV="Rev96";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -388,6 +388,36 @@ const today=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMont
 // fetchRadarDia(fecha): retorna mapa {dni: {letra, numero, cpIngresoOk, comidas:[...]}} desde
 // viandas_calendario. Se usa para (i) derivar cp_ingreso automáticamente en Puesto/Personal
 // (letra != 'F' y != null → OK) y (ii) mostrar info del Radar en la UI.
+// Configuración del sync del Radar (URL del web app + secret). Se guarda en la tabla obra.app_config
+// para que todos los dispositivos logueados (garitas, tablets) la tomen sin configurar nada.
+// Si en Supabase todavía no está, cae al localStorage del navegador (config vieja por dispositivo).
+const getRadarCfg=async()=>{
+  const{data}=await db.sel("app_config",{inFilter:["clave",["radar_sync_url","radar_sync_secret"]]});
+  const m={};(data||[]).forEach(r=>{m[r.clave]=r.valor;});
+  if(m.radar_sync_url&&m.radar_sync_secret)return{url:m.radar_sync_url,secret:m.radar_sync_secret};
+  let url=null,secret=null;
+  try{url=localStorage.getItem('controlobra_radar_sync_url');secret=localStorage.getItem('controlobra_radar_sync_secret');}catch(e){}
+  return(url&&secret)?{url,secret}:null;
+};
+const saveRadarCfg=async(url,secret,userId)=>{
+  try{localStorage.setItem('controlobra_radar_sync_url',url);localStorage.setItem('controlobra_radar_sync_secret',secret);}catch(e){}
+  const now=new Date().toISOString();
+  return db.ins("app_config",[
+    {clave:'radar_sync_url',valor:url,actualizado_por:userId,actualizado_at:now},
+    {clave:'radar_sync_secret',valor:secret,actualizado_por:userId,actualizado_at:now},
+  ],true,"clave");
+};
+// Dispara el sync remoto del Radar (sheet → viandas_calendario). Devuelve {ok, msg, stats}.
+const runRadarSync=async()=>{
+  const cfg=await getRadarCfg();
+  if(!cfg)return{ok:false,msg:"La sincronización con el Radar no está configurada.\n\nUn admin tiene que entrar a la solapa Viandas y tocar el ⚙️ al lado de \"🔄 Actualizar calendario\" (se configura una sola vez para todos los dispositivos)."};
+  try{
+    const r=await fetch(cfg.url+'?action=coSync&secret='+encodeURIComponent(cfg.secret));
+    const d=await r.json();
+    if(d.error)return{ok:false,msg:"El sync del Radar falló: "+d.error+(d.error==='unknown action'?"\n\nRevisar que el Apps Script del Radar tenga el doGet actualizado y un New version en el deploy.":(d.error==='unauthorized'?"\n\nEl secret guardado no coincide con el del Apps Script. Un admin tiene que corregirlo en Viandas → ⚙️.":""))};
+    return{ok:true,stats:d};
+  }catch(e){return{ok:false,msg:"Error de red al llamar al sync del Radar: "+e.message};}
+};
 const fetchRadarDia=async(fecha)=>{
   const{data}=await db.sel("viandas_calendario",{f:[["fecha","eq",fecha||today()]],lim:5000});
   const map={};
@@ -1664,24 +1694,12 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   // (si hay URL/secret configurados), DESPUÉS re-lee. Lento (~30-60s) pero trae lo cargado en el sheet ahora.
   const refreshRadarManual=async()=>{
     setRefreshingRadar(true);
-    const url=localStorage.getItem('controlobra_radar_sync_url');
-    const secret=localStorage.getItem('controlobra_radar_sync_secret');
-    let syncMsg=null;
-    if(url&&secret){
-      try{
-        const r=await fetch(url+'?action=coSync&secret='+encodeURIComponent(secret));
-        const d=await r.json();
-        if(d.error){syncMsg="Sync remoto falló: "+d.error+(d.error==='unknown action'?'\n\nAsegurate de haber actualizado el doGet del Apps Script del Radar y hecho un New version en el Deploy.':'');}
-        // Si el sync remoto anduvo bien, seguimos abajo con el re-lee
-      }catch(e){syncMsg="Error de red al llamar al sync: "+e.message;}
-    } else {
-      syncMsg="Radar sync no configurado. En la solapa Viandas, tocá el botón ⚙️ al lado de \"🔄 Actualizar calendario\" para setear URL y secret.";
-    }
+    const res=await runRadarSync();
     // Siempre re-leer (aunque el sync remoto haya fallado, quizás refresque algo de la última corrida)
     const rMap=await fetchRadarDia();
     setRadarMap(rMap||{});setRadarLoaded(Date.now());
     setRefreshingRadar(false);
-    if(syncMsg)alert(syncMsg);
+    if(!res.ok)alert(res.msg);
   };
   useEffect(()=>{load();},[]);
   // Auto-refresh del Radar cada 1 hora — usa refreshRadar (rápido, sin sync remoto)
@@ -3199,9 +3217,7 @@ function Comedor({user,proyectoId}){
 
 // Botón "🔄 Actualizar calendario del Radar" — solo admins (general o viandas).
 // Llama al web app del Apps Script del sheet Radar de Obra (endpoint doGet action=coSync).
-// La URL + secret se guardan en localStorage; la primera vez pregunta.
-const RADAR_URL_KEY='controlobra_radar_sync_url';
-const RADAR_SECRET_KEY='controlobra_radar_sync_secret';
+// La URL + secret viven en obra.app_config (compartido por todos los dispositivos); el ⚙️ los edita.
 function RadarSyncBtn({user,onDone}){
   const isAdminGral=user.rol==='admin';
   const isAdminVian=user.rol==='admin_viandas';
@@ -3209,42 +3225,39 @@ function RadarSyncBtn({user,onDone}){
   const[syncing,setSyncing]=useState(false);
   const[msg,setMsg]=useState(null);
   if(!puede)return null;
-  const cfgURL=()=>{
-    const cur=localStorage.getItem(RADAR_URL_KEY)||'';
-    const nueva=prompt('URL del web app del Apps Script del Radar de Obra:\n(la que termina en /exec)',cur);
+  // Configura URL + secret y los guarda en Supabase (obra.app_config) → quedan disponibles
+  // para todos los dispositivos logueados, no solo este navegador.
+  const cfgURL=async()=>{
+    const cur=await getRadarCfg()||{url:'',secret:''};
+    const nueva=prompt('URL del web app del Apps Script del Radar de Obra:\n(la que termina en /exec)',cur.url);
     if(nueva===null)return false;
-    const secCur=localStorage.getItem(RADAR_SECRET_KEY)||'';
-    const nuevaSec=prompt('Secret (CO_API_SECRET) del Radar de Obra:',secCur);
+    const nuevaSec=prompt('Secret (CO_API_SECRET) del Radar de Obra:',cur.secret);
     if(nuevaSec===null)return false;
-    localStorage.setItem(RADAR_URL_KEY,nueva.trim());
-    localStorage.setItem(RADAR_SECRET_KEY,nuevaSec.trim());
+    if(!nueva.trim()||!nuevaSec.trim()){alert('La URL y el secret no pueden quedar vacíos.');return false;}
+    const{ok}=await saveRadarCfg(nueva.trim(),nuevaSec.trim(),user.id);
+    if(!ok){alert('Se guardó en este navegador, pero no se pudo guardar en Supabase (¿falta la tabla app_config?). Los demás dispositivos no la van a ver.');return true;}
+    alert('✅ Configuración guardada para todos los dispositivos.');
     return true;
   };
   const doSync=async()=>{
-    let url=localStorage.getItem(RADAR_URL_KEY);
-    let secret=localStorage.getItem(RADAR_SECRET_KEY);
-    if(!url||!secret){
-      if(!confirm('El botón todavía no está configurado. ¿Configurar ahora la URL y el secret del web app del Radar de Obra?'))return;
-      if(!cfgURL())return;
-      url=localStorage.getItem(RADAR_URL_KEY);secret=localStorage.getItem(RADAR_SECRET_KEY);
+    if(!await getRadarCfg()){
+      if(!confirm('El sync del Radar todavía no está configurado. ¿Configurar ahora la URL y el secret del web app?'))return;
+      if(!await cfgURL())return;
     }
-    if(!confirm('¿Ejecutar sincronización del Radar de Obra ahora?\n\nLee del sheet las fechas de hoy + 5 días adelante y las pisa en viandas_calendario. Puede tardar 30-60 segundos.'))return;
+    if(!confirm('¿Ejecutar sincronización del Radar de Obra ahora?\n\nLee del sheet las fechas de hoy + 7 días adelante y las pisa en viandas_calendario. Puede tardar 30-60 segundos.'))return;
     setSyncing(true);setMsg(null);
-    try{
-      const r=await fetch(url+'?action=coSync&secret='+encodeURIComponent(secret));
-      const d=await r.json();
-      if(d.error){setMsg({t:'err',txt:'Error: '+d.error+(d.error==='unknown action'?' — asegurate de haber actualizado el doGet del Apps Script y hecho un New version en el Deploy.':'')});}
-      else{
-        const filas=d.filas_upsertadas||0;const fechas=(d.fechas||[]).length;
-        setMsg({t:'ok',txt:'✅ Sync OK · '+filas+' filas en '+fechas+' fechas'});
-        onDone&&onDone();  // Recarga los datos de la vista
-      }
-    }catch(e){setMsg({t:'err',txt:'Error de red: '+e.message});}
+    const res=await runRadarSync();
+    if(!res.ok)setMsg({t:'err',txt:res.msg.split('\n')[0]});
+    else{
+      const filas=res.stats.filas_upsertadas||0;const fechas=(res.stats.fechas||[]).length;
+      setMsg({t:'ok',txt:'✅ Sync OK · '+filas+' filas en '+fechas+' fechas'});
+      onDone&&onDone();  // Recarga los datos de la vista
+    }
     setSyncing(false);
     setTimeout(()=>setMsg(null),5000);
   };
   return <div style={{display:'flex',alignItems:'center',gap:6,marginLeft:8}}>
-    <button onClick={doSync} disabled={syncing} style={{background:'rgba(96,165,250,.12)',border:'1px solid var(--cmd-info)',color:'var(--cmd-info)',borderRadius:4,padding:'5px 10px',fontFamily:'var(--fh)',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:.3,cursor:syncing?'wait':'pointer',opacity:syncing?.5:1}} title="Ejecutar el sync del Radar de Obra ahora (hoy + 5 días)">
+    <button onClick={doSync} disabled={syncing} style={{background:'rgba(96,165,250,.12)',border:'1px solid var(--cmd-info)',color:'var(--cmd-info)',borderRadius:4,padding:'5px 10px',fontFamily:'var(--fh)',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:.3,cursor:syncing?'wait':'pointer',opacity:syncing?.5:1}} title="Ejecutar el sync del Radar de Obra ahora (hoy + 7 días)">
       {syncing?'⏳ sincronizando…':'🔄 Actualizar calendario'}
     </button>
     <button onClick={cfgURL} style={{background:'none',border:'1px solid var(--bd)',color:'var(--tx3)',borderRadius:4,padding:'5px 7px',fontSize:11,cursor:'pointer'}} title="Configurar URL y secret del web app del Radar de Obra">⚙️</button>
