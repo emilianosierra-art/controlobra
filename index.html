@@ -302,7 +302,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev96";
+const APP_REV="Rev97";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -2975,34 +2975,48 @@ function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,prefix,toggl
     </div>:(!msg&&<div className="cmd-empty">Escaneá un DNI (o tipealo y Enter)<br/>para ver las comidas de la persona.</div>)}
   </div>;
 }
-// Resumen de 7 días atrás (programadas vs despachadas) y 7 días adelante (programadas).
-// Click en un día → abre el Listado de esa fecha con el detalle por persona.
-function CmdResumenSemanal({onVerDia}){
+// Resumen de 7 días desde una fecha elegible (programadas vs despachadas; por defecto los últimos 7 hasta hoy)
+// y 7 días adelante de hoy (programadas). Click en un día → abre el Listado de esa fecha con el detalle por persona.
+// La fecha elegida vive en Comedor (inicio/setInicio) para no perderla al ir y volver del Listado.
+function CmdResumenSemanal({onVerDia,inicio,setInicio}){
   const hoy=cmdIsoDate(new Date());
-  const desde=cmdAddDays(hoy,-7),hasta=cmdAddDays(hoy,7);
+  const defInicio=cmdAddDays(hoy,-6);
+  const ini=inicio||defInicio,fin=cmdAddDays(ini,6);
+  const esDefault=ini===defInicio;
   const[data,setData]=useState(null);
   const[loading,setLoading]=useState(true);
-  const load=async()=>{setLoading(true);setData(await cmdFetchResumen(desde,hasta));setLoading(false);};
-  useEffect(()=>{load();},[]);
-  const pasados=[];for(let i=-7;i<=0;i++)pasados.push(cmdAddDays(hoy,i));
+  const reqRef=useRef(0);
+  const load=async()=>{
+    const req=++reqRef.current;setLoading(true);
+    // Dos rangos separados: si la fecha elegida es vieja, no traemos todos los días intermedios.
+    const[a,b]=await Promise.all([cmdFetchResumen(ini,fin),cmdFetchResumen(cmdAddDays(hoy,1),cmdAddDays(hoy,7))]);
+    if(req!==reqRef.current)return; // cambiaron la fecha mientras cargaba
+    setData({...b,...a});setLoading(false);
+  };
+  useEffect(()=>{load();},[ini]);
+  const pasados=[];for(let i=0;i<7;i++)pasados.push(cmdAddDays(ini,i));
   const proximos=[];for(let i=1;i<=7;i++)proximos.push(cmdAddDays(hoy,i));
   const diaLbl=(iso)=>{const[y,m,d]=iso.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString('es-AR',{weekday:'short',day:'2-digit',month:'2-digit'});};
   const row=(iso)=>(data&&data[iso])||{prog:{desayuno:0,almuerzo:0,merienda:0,cena:0},desp:{desayuno:0,almuerzo:0,merienda:0,cena:0},hayProg:false};
   const sum=(dias,campo,k)=>dias.reduce((a,iso)=>a+row(iso)[campo][k],0);
   const trStyle={cursor:'pointer'};
   return <div className="cmd-rep">
-    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
-      <h3 style={{margin:0}}>Últimos 7 días · despachadas / programadas</h3>
+    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,flexWrap:'wrap'}}>
+      <h3 style={{margin:0}}>{esDefault?'Últimos 7 días':('Del '+cmdFmtDate(ini).slice(0,5)+' al '+cmdFmtDate(fin).slice(0,5))} · despachadas / programadas</h3>
+      <label style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--tx2)',textTransform:'uppercase',fontWeight:700,letterSpacing:.5}}>Desde
+        <input type="date" value={ini} max={hoy} onChange={e=>setInicio(e.target.value||null)} style={{background:'var(--s2)',border:'1px solid var(--bd)',color:'var(--tx)',borderRadius:4,padding:'4px 8px',fontFamily:'var(--fm)',fontSize:12}}/>
+      </label>
+      {!esDefault&&<button onClick={()=>setInicio(null)} style={{background:'none',border:'1px solid var(--cmd-pri)',color:'var(--cmd-pri)',borderRadius:4,padding:'4px 10px',fontSize:11,cursor:'pointer'}} title="Volver a los últimos 7 días hasta hoy">↺ últimos 7 días</button>}
       <button onClick={load} style={{marginLeft:'auto',background:'var(--s2)',border:'1px solid var(--bd)',color:'var(--tx2)',borderRadius:4,padding:'4px 10px',fontSize:11,cursor:'pointer'}}>{loading?'…':'↻ actualizar'}</button>
     </div>
     {loading?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Cargando…</div>:<>
       <table>
         <thead><tr><th>Día</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
         <tbody>
-          {pasados.map(iso=>{const r=row(iso);return <tr key={iso} style={trStyle} onClick={()=>onVerDia(iso)} title="Ver el detalle de ese día">
-            <td>{diaLbl(iso)}{iso===hoy&&<span style={{fontSize:10,color:'var(--cmd-pri)',marginLeft:6}}>hoy · en curso</span>}</td>
+          {pasados.map(iso=>{const r=row(iso);const fut=iso>hoy;return <tr key={iso} style={trStyle} onClick={()=>onVerDia(iso)} title="Ver el detalle de ese día">
+            <td>{diaLbl(iso)}{iso===hoy&&<span style={{fontSize:10,color:'var(--cmd-pri)',marginLeft:6}}>hoy · en curso</span>}{fut&&<span style={{fontSize:10,color:'var(--tx3)',marginLeft:6}}>próximo</span>}</td>
             {CMD_COMIDAS.map(c=>{const d=r.desp[c.key],p=r.prog[c.key];
-              const col=!r.hayProg?'var(--tx3)':d<p?'var(--cmd-dieta)':'var(--cmd-ok)';
+              const col=(!r.hayProg||fut)?'var(--tx3)':d<p?'var(--cmd-dieta)':'var(--cmd-ok)';
               return <td key={c.key} className="n" style={{color:col}}>{r.hayProg?<>{d}<span style={{color:'var(--tx3)',fontWeight:500}}> / {p}</span></>:'—'}</td>;})}
           </tr>;})}
           <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Total</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{sum(pasados,'desp',c.key)}<span style={{color:'var(--tx3)',fontWeight:500}}> / {sum(pasados,'prog',c.key)}</span></td>)}</tr>
@@ -3026,7 +3040,7 @@ function CmdResumenSemanal({onVerDia}){
     </>}
   </div>;
 }
-function CmdReporte({personas,despachos,fecha,onVerDia}){
+function CmdReporte({personas,despachos,fecha,onVerDia,resInicio,setResInicio}){
   const porComida=useMemo(()=>CMD_COMIDAS.map(c=>({
     ...c,
     total:personas.filter(p=>p.comidas.includes(c.key)).length,
@@ -3037,7 +3051,7 @@ function CmdReporte({personas,despachos,fecha,onVerDia}){
     pendientes:personas.filter(p=>p.comidas.includes(c.key)&&!despachos.some(d=>d.dni===p.dni&&d.comida===c.key)).length,
   })),[personas,despachos]);
   return <div>
-    <CmdResumenSemanal onVerDia={onVerDia}/>
+    <CmdResumenSemanal onVerDia={onVerDia} inicio={resInicio} setInicio={setResInicio}/>
     <div className="cmd-rep">
       <h3>{cmdFmtDate(fecha)} · por tipo de comida</h3>
       <table>
@@ -3086,6 +3100,7 @@ function Comedor({user,proyectoId}){
   const userPuesto=isAdmin?null:(isAdminViandas?simuladoPuesto:userPuestoBase);
   const puedeEscanear=(!isAdmin);  // cocineros y admin_viandas pueden ver Escanear
   const[subtab,setSubtab]=useState(isAdmin?'listado':'scan');
+  const[resInicio,setResInicio]=useState(null); // Reporte: fecha "desde" del resumen de 7 días (null = últimos 7 hasta hoy)
   const[fecha,setFecha]=useState(()=>cmdIsoDate(new Date()));
   const[personasDia,setPersonasDia]=useState([]);
   const[despachosDia,setDespachosDia]=useState([]);
@@ -3208,7 +3223,7 @@ function Comedor({user,proyectoId}){
           :<CmdEscanear personas={personasDia} despachos={despachosDia} dieta={dieta} platos={platos} onTogglePlato={togglePlato} prefix={prefix} togglePref={togglePref} onDispatch={addDespacho} onUndispatch={removeDespacho} preloadPersona={picked} clearPreload={()=>setPicked(null)} fecha={fecha} isReadOnly={isReadOnly}/>
       )}
       {subtab==='listado'&&<CmdListado personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} dieta={dieta} chaletSet={chaletSet} platos={platos} onTogglePlato={togglePlato} isAdmin={canEditDieta} onOpenDieta={setDietaEditing} onPick={puedeEscanear?onPickFromList:null} onDispatch={addDespacho} onUndispatch={removeDespacho} canDispatch={!!userPuesto||isAdmin} isReadOnly={isReadOnly}/>}
-      {subtab==='reporte'&&<CmdReporte personas={personasDia} despachos={despachosDia} fecha={fecha} onVerDia={verDia}/>}
+      {subtab==='reporte'&&<CmdReporte personas={personasDia} despachos={despachosDia} fecha={fecha} onVerDia={verDia} resInicio={resInicio} setResInicio={setResInicio}/>}
     </>}
     {toast&&<div className={'cmd-toast '+(toast.err?'err':'')}>{toast.msg}</div>}
     {dietaEditing&&<CmdDietaModal persona={dietaEditing} currentValue={dieta[dietaEditing.dni]} onSave={(v)=>saveDieta(dietaEditing.dni,v)} onQuit={()=>quitDieta(dietaEditing.dni)} onClose={()=>setDietaEditing(null)}/>}
