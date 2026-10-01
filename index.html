@@ -294,6 +294,35 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .cmd-ptag.camp{color:var(--cmd-info);background:rgba(96,165,250,.15);}
 .cmd-ptag.chal{color:var(--cmd-purple);background:rgba(167,139,250,.15);}
 .cmd-ptag.admin{color:var(--cmd-pri);background:rgba(245,158,11,.15);}
+/* Pedido semanal + certificados (Rev99) */
+.cmd-wk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:10px 12px;}
+.cmd-wk .nav{background:var(--s2);border:1px solid var(--bd);color:var(--tx);border-radius:4px;padding:6px 12px;font-size:14px;cursor:pointer;}
+.cmd-wk .ttl{font-weight:800;font-size:15px;}
+.cmd-wk .sub{font-size:11px;color:var(--tx3);}
+.cmd-chip{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;padding:3px 8px;border-radius:4px;white-space:nowrap;}
+.cmd-chip.none{color:var(--tx3);border:1px dashed var(--tx3);}
+.cmd-chip.bor{color:var(--cmd-dieta);background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.5);}
+.cmd-chip.ok{color:var(--cmd-ok);background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.5);}
+.cmd-btn{background:var(--s2);border:1px solid var(--bd);color:var(--tx2);border-radius:4px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--fh);}
+.cmd-btn.pri{background:var(--cmd-pri);border-color:var(--cmd-pri);color:#000;}
+.cmd-btn.ok{background:var(--cmd-ok);border-color:var(--cmd-ok);color:#000;}
+.cmd-btn:disabled{opacity:.4;cursor:not-allowed;}
+.cmd-num{width:64px;text-align:right;background:var(--s2);border:1px solid var(--bd);color:var(--tx);border-radius:4px;padding:4px 6px;font-family:var(--fm);font-size:12px;}
+.cmd-mcards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;}
+.cmd-mcard{background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;cursor:pointer;text-align:left;font-family:var(--fh);color:var(--tx);}
+.cmd-mcard.on{border-color:var(--cmd-pri);background:rgba(245,158,11,.1);}
+.cmd-mcard .t{font-size:11px;font-weight:800;text-transform:uppercase;color:var(--tx2);}
+.cmd-mcard .v{font-family:var(--fm);font-size:12px;margin-top:4px;}
+.cmd-tblw{overflow-x:auto;}
+.cmd-hint{margin-top:10px;font-size:11px;color:var(--tx3);line-height:1.5;}
+.cmd-aviso{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.45);border-left:3px solid var(--cmd-dieta);border-radius:4px;padding:8px 10px;margin-bottom:8px;font-size:12px;color:var(--cmd-dieta);}
+.dif-pos{color:var(--cmd-dieta)!important;}
+.dif-neg{color:var(--cmd-ok)!important;}
+.dif-0{color:var(--tx3)!important;}
+.cmd-clist{display:flex;flex-direction:column;gap:6px;}
+.cmd-citem{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:10px 12px;cursor:pointer;text-align:left;color:var(--tx);font-family:var(--fh);}
+.cmd-citem:hover{border-color:var(--cmd-pri);}
+@media(max-width:700px){.cmd-mcards{grid-template-columns:1fr 1fr}.cmd-tabs{overflow-x:auto}.cmd-tab{white-space:nowrap;font-size:12px;padding:10px 8px}}
 </style>
 </head>
 <body>
@@ -302,7 +331,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev98";
+const APP_REV="Rev99";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -351,11 +380,11 @@ const dbq=async(path,opts={},_retry=false)=>{
   }
 };
 const db={
-  sel:async(table,{cols="*",f=[],ord=null,lim=null,inFilter=null}={})=>{
+  sel:async(table,{cols="*",f=[],ord=null,lim=null,inFilter=null,off=null}={})=>{
     let u=`${table}?select=${encodeURIComponent(cols)}`;
     f.forEach(([k,op,v])=>{u+=`&${k}=${op}.${encodeURIComponent(v)}`;});
     if(inFilter){u+=`&${inFilter[0]}=in.(${inFilter[1].join(",")})`;}
-    if(ord)u+=`&order=${ord}`;if(lim)u+=`&limit=${lim}`;
+    if(ord)u+=`&order=${ord}`;if(lim)u+=`&limit=${lim}`;if(off)u+=`&offset=${off}`;
     const{data,ok}=await dbq(u,{h:{"Accept":"application/json"}});
     return{data:ok?(Array.isArray(data)?data:[data]):null};
   },
@@ -381,6 +410,17 @@ const db={
     let u=`${table}?`;filters.forEach(([k,op,v])=>{u+=`&${k}=${op}.${encodeURIComponent(v)}`;});
     await dbq(u,{method:"DELETE"});
   },
+};
+// Trae todas las filas de a páginas de 1000 (Supabase corta cada respuesta en 1000 filas).
+// Necesita `ord` con columnas que no se repitan, para que las páginas no se pisen.
+const dbSelAll=async(table,opts={})=>{
+  const out=[];const PAGE=1000;
+  for(let off=0;;off+=PAGE){
+    const{data}=await db.sel(table,{...opts,lim:PAGE,off});
+    if(data===null)return{data:null};
+    out.push(...data);
+    if(data.length<PAGE)return{data:out};
+  }
 };
 const VI={Camioneta:"🛻",Combi:"🚐",Colectivo:"🚌","Camión":"🚛",Auto:"🚗",Maquinaria:"🚜",Otro:"🚗"};
 const today=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
@@ -2655,8 +2695,8 @@ const CMD_REPETIBLE='cena';
 // Resumen por día: programadas (viandas_calendario) y despachadas (viandas_despachos, cuenta repeticiones de cena).
 const cmdFetchResumen=async(desde,hasta)=>{
   const[{data:cal},{data:desp}]=await Promise.all([
-    db.sel("viandas_calendario",{cols:"fecha,desayuno,almuerzo,merienda,cena",f:[["fecha","gte",desde],["fecha","lte",hasta]],lim:20000}),
-    db.sel("viandas_despachos",{cols:"fecha,comida",f:[["fecha","gte",desde],["fecha","lte",hasta]],lim:20000}),
+    dbSelAll("viandas_calendario",{cols:"fecha,dni,desayuno,almuerzo,merienda,cena",f:[["fecha","gte",desde],["fecha","lte",hasta]],ord:"fecha.asc,dni.asc"}),
+    dbSelAll("viandas_despachos",{cols:"id,fecha,comida",f:[["fecha","gte",desde],["fecha","lte",hasta]],ord:"id.asc"}),
   ]);
   const byDay={};
   const get=(f)=>byDay[f]||(byDay[f]={prog:{desayuno:0,almuerzo:0,merienda:0,cena:0},desp:{desayuno:0,almuerzo:0,merienda:0,cena:0},hayProg:false});
@@ -3034,7 +3074,7 @@ function CmdResumenSemanal({onVerDia,inicio,setInicio}){
         </tbody>
       </table>
       <div style={{marginTop:10,fontSize:11,color:'var(--tx3)',lineHeight:1.5}}>
-        Tocá un día para ver el detalle por persona. "—" = el día todavía no se sincronizó desde el Radar (el sync trae hoy + 7 días).
+        Tocá un día para ver el detalle por persona. "—" = el día todavía no se sincronizó desde el Radar (el sync trae hoy + 10 días).
         Las cenas cuentan todos los platos entregados, incluidas las repeticiones.
       </div>
     </>}
@@ -3088,6 +3128,449 @@ function CmdReporte({personas,despachos,fecha,onVerDia,resInicio,setResInicio}){
   </div>;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PEDIDO SEMANAL Y CERTIFICADOS (proveedor Lagunas del Radal) — Rev99
+// Semana de facturación: sábado a viernes. El pedido se pasa el mié/jue/vie anterior: la app saca una
+// "foto" del Radar (obra.viandas_fotos) que queda congelada como base de la facturación.
+// El certificado de cada miércoles factura el pedido de la semana en curso + las diferencias de la
+// semana anterior (ya terminada) entre lo pedido y lo que corresponde facturar.
+// Reglas de la orden de compra:
+//  · Almuerzo: se factura lo pedido; se pueden restar hasta 25 por día avisando antes de las 11 hs.
+//  · Cena: se pide el 60% de lo proyectado, con piso de 50 por día (si lo proyectado es ≤ 50, todo).
+//  · Todas: si se despacha menos de lo acordado se factura lo acordado; si se despacha más, la
+//    diferencia se suma en el certificado siguiente.
+// Solo los admins de obra (rol admin) sacan la foto, cargan ajustes y generan certificados;
+// Lagunas (admin_viandas) lo ve en solo lectura. Tablas: viandas_fotos, viandas_ajustes, viandas_certificados.
+// ═══════════════════════════════════════════════════════════════════════════
+const CERT_ALM_MAX_RESTA=25;
+const CERT_ALM_HORA_LIM=11;
+const CERT_CENA_PCT=0.6;
+const CERT_CENA_PISO=50;
+const certCero=()=>({desayuno:0,almuerzo:0,merienda:0,cena:0});
+// Sábado de la semana de facturación que contiene la fecha
+const certSemanaDe=(iso)=>{const[y,m,d]=iso.split('-').map(Number);return cmdAddDays(iso,-((new Date(y,m-1,d).getDay()+1)%7));};
+const certDias=(semana)=>{const a=[];for(let i=0;i<7;i++)a.push(cmdAddDays(semana,i));return a;};
+const certPedidoCena=(prog)=>prog<=CERT_CENA_PISO?prog:Math.max(CERT_CENA_PISO,Math.ceil(prog*CERT_CENA_PCT));
+const certPedidoDe=(prog)=>({...prog,cena:certPedidoCena(prog.cena)});
+const certLblDia=(iso)=>{const[y,m,d]=iso.split('-').map(Number);return new Date(y,m-1,d).toLocaleDateString('es-AR',{weekday:'short',day:'2-digit',month:'2-digit'});};
+const certLblSemana=(s)=>'sáb '+cmdFmtDate(s).slice(0,5)+' → vie '+cmdFmtDate(cmdAddDays(s,6)).slice(0,5);
+const certDifTxt=(n)=>n>0?'+'+n:String(n);
+const certDifCls=(n)=>n>0?'dif-pos':(n<0?'dif-neg':'dif-0');
+const certNombre=(user)=>user.nombre||user.email||'';
+// ¿Se puede cargar/cambiar el ajuste de ese día? Hasta las 11 hs del mismo día (hora del dispositivo).
+const certAjusteAbierto=(iso)=>{const hoy=cmdIsoDate(new Date());if(iso!==hoy)return iso>hoy;return new Date().getHours()<CERT_ALM_HORA_LIM;};
+// Un día/comida: lo acordado (pedido + ajuste) se factura aunque se despache menos; lo despachado de más se suma.
+const certCalc=(pedido,ajuste,desp)=>{
+  const acordado=Math.max(0,pedido+ajuste),exced=Math.max(0,desp-acordado);
+  return{pedido,ajuste:acordado-pedido,acordado,desp,exced,fact:acordado+exced,dif:(acordado-pedido)+exced};
+};
+const certCalcSemana=(foto,ajustes,desp,semana)=>{
+  const dias={},tot={};
+  CMD_COMIDAS.forEach(c=>{tot[c.key]={pedido:0,ajuste:0,acordado:0,desp:0,exced:0,fact:0,dif:0};});
+  certDias(semana).forEach(iso=>{
+    const ped=(foto&&foto.dias&&foto.dias[iso]&&foto.dias[iso].pedido)||certCero();
+    const dd=(desp&&desp[iso])||certCero();
+    dias[iso]={};
+    CMD_COMIDAS.forEach(c=>{
+      const aj=(ajustes&&ajustes[iso]&&ajustes[iso][c.key])?ajustes[iso][c.key].cantidad:0;
+      const r=certCalc(ped[c.key]||0,aj,dd[c.key]||0);
+      dias[iso][c.key]=r;
+      Object.keys(r).forEach(k=>{tot[c.key][k]+=r[k];});
+    });
+  });
+  return{dias,tot};
+};
+// Lecturas: devuelven null si la consulta falló (ej. todavía no se crearon las tablas).
+const certFetchFoto=async(semana)=>{const{data}=await db.sel("viandas_fotos",{f:[["semana","eq",semana]]});return data===null?null:{foto:data[0]||null};};
+const certFetchAjustes=async(desde,hasta)=>{
+  const{data}=await db.sel("viandas_ajustes",{f:[["fecha","gte",desde],["fecha","lte",hasta]],lim:1000});
+  if(data===null)return null;
+  const m={};data.forEach(r=>{(m[r.fecha]||(m[r.fecha]={}))[r.comida]=r;});return m;
+};
+const certFetchDesp=async(desde,hasta)=>{
+  const{data}=await dbSelAll("viandas_despachos",{cols:"id,fecha,comida",f:[["fecha","gte",desde],["fecha","lte",hasta]],ord:"id.asc"});
+  if(data===null)return null;
+  const m={};data.forEach(r=>{const x=m[r.fecha]||(m[r.fecha]=certCero());if(x[r.comida]!==undefined)x[r.comida]++;});return m;
+};
+// Programadas del Radar por día/comida + código de cada persona (la foto guarda quiénes estaban en el pedido)
+const certFetchRadar=async(desde,hasta)=>{
+  const{data}=await dbSelAll("viandas_calendario",{cols:"fecha,dni,codigo,desayuno,almuerzo,merienda,cena",f:[["fecha","gte",desde],["fecha","lte",hasta]],ord:"fecha.asc,dni.asc"});
+  if(data===null)return null;
+  const prog={},personas={};
+  data.forEach(r=>{
+    const p=prog[r.fecha]||(prog[r.fecha]=certCero());
+    if(!(r.desayuno||r.almuerzo||r.merienda||r.cena))return;
+    CMD_COMIDAS.forEach(c=>{if(r[c.key])p[c.key]++;});
+    (personas[r.fecha]||(personas[r.fecha]={}))[r.dni]=r.codigo||'';
+  });
+  return{prog,personas};
+};
+const certCopiar=async(txt,showToast)=>{try{await navigator.clipboard.writeText(txt);showToast({msg:'📋 Copiado'});}catch(e){prompt('Copiá el texto:',txt);}};
+const certTxtPedido=(semana,dias)=>{
+  const tot=certCero(),L=['Pedido de viandas — semana '+certLblSemana(semana)];
+  certDias(semana).forEach(iso=>{const p=dias[iso]||certCero();CMD_COMIDAS.forEach(c=>{tot[c.key]+=p[c.key]||0;});L.push(certLblDia(iso)+': '+CMD_COMIDAS.map(c=>c.label+' '+(p[c.key]||0)).join(' · '));});
+  L.push('TOTAL: '+CMD_COMIDAS.map(c=>c.label+' '+tot[c.key]).join(' · '));
+  return L.join('\n');
+};
+const certTxtCert=(cert)=>{
+  const d=cert.detalle,df=d.dif;
+  const L=['Certificado de viandas — miércoles '+cmdFmtDate(cert.fecha),'','Pedido semana '+certLblSemana(d.semana)+':'];
+  CMD_COMIDAS.forEach(c=>L.push('  '+c.label+': '+d.pedido.tot[c.key]));
+  if(df){
+    L.push('','Diferencia certificado anterior (semana '+certLblSemana(df.semana)+'):');
+    CMD_COMIDAS.forEach(c=>{const t=df.tot[c.key];L.push('  '+c.label+': '+certDifTxt(t.dif)+(t.ajuste?' (ajustes '+certDifTxt(t.ajuste)+', despachado de más +'+t.exced+')':''));});
+  }
+  L.push('','Total a certificar:');
+  CMD_COMIDAS.forEach(c=>L.push('  '+c.label+': '+d.total[c.key]));
+  (d.avisos||[]).forEach(a=>L.push('','⚠️ '+a));
+  return L.join('\n');
+};
+const certEsc=(s)=>String(s==null?'':s).replace(/[&<>"]/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+// Abre el certificado en una ventana aparte, en blanco y negro, lista para imprimir o guardar como PDF.
+const certImprimir=(cert)=>{
+  const w=window.open('','_blank');
+  if(!w){alert('El navegador bloqueó la ventana para imprimir. Permití las ventanas emergentes de esta página y probá de nuevo.');return;}
+  const d=cert.detalle,df=d.dif;
+  const th=CMD_COMIDAS.map(c=>'<th class="n">'+c.label+'</th>').join('');
+  const fila=(lbl,fn,cls)=>'<tr'+(cls?' class="'+cls+'"':'')+'><td>'+certEsc(lbl)+'</td>'+CMD_COMIDAS.map(c=>'<td class="n">'+fn(c.key)+'</td>').join('')+'</tr>';
+  let h='<!doctype html><html><head><meta charset="utf-8"><title>Certificado viandas '+cmdFmtDate(cert.fecha)+'</title><style>'
+    +'body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;font-size:12px}h1{font-size:18px;margin:0 0 4px}h2{font-size:13px;margin:18px 0 6px}'
+    +'table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:4px 7px;text-align:left}th{background:#eee}.n{text-align:right}'
+    +'.tot td{font-weight:bold;background:#f2f2f2}.av{background:#fff7e0;border:1px solid #d9a400;padding:6px 10px;margin:8px 0}.muted{color:#666;font-size:11px}'
+    +'@media print{body{margin:10mm}}</style></head><body>';
+  h+='<h1>Certificado de viandas — miércoles '+cmdFmtDate(cert.fecha)+'</h1>';
+  h+='<div class="muted">Proveedor: Lagunas del Radal'+(cert.generado_at?' · Generado '+certEsc(fmtTs(cert.generado_at)):'')+(cert.generado_por_nombre?' por '+certEsc(cert.generado_por_nombre):'')+'</div>';
+  (d.avisos||[]).forEach(a=>{h+='<div class="av">⚠ '+certEsc(a)+'</div>';});
+  h+='<h2>Resumen</h2><table><thead><tr><th>Concepto</th>'+th+'</tr></thead><tbody>';
+  h+=fila('Pedido semana '+certLblSemana(d.semana),k=>d.pedido.tot[k]);
+  if(df){
+    h+=fila('Dif. semana '+certLblSemana(df.semana)+' — ajustes avisados',k=>certDifTxt(df.tot[k].ajuste));
+    h+=fila('Dif. semana '+certLblSemana(df.semana)+' — despachado de más',k=>certDifTxt(df.tot[k].exced));
+  }
+  h+=fila('TOTAL A CERTIFICAR',k=>d.total[k],'tot')+'</tbody></table>';
+  h+='<h2>Pedido por día — semana '+certLblSemana(d.semana)+'</h2><table><thead><tr><th>Día</th>'+th+'</tr></thead><tbody>';
+  certDias(d.semana).forEach(iso=>{const p=d.pedido.dias[iso]||certCero();h+=fila(certLblDia(iso),k=>p[k]||0);});
+  h+=fila('Total',k=>d.pedido.tot[k],'tot')+'</tbody></table>';
+  if(df){
+    h+='<h2>Diferencias por día — semana '+certLblSemana(df.semana)+'</h2><div class="muted">Cada celda: acordado (pedido ± ajuste) / despachado → diferencia contra el pedido</div><table><thead><tr><th>Día</th>'+th+'</tr></thead><tbody>';
+    certDias(df.semana).forEach(iso=>{const r=df.dias[iso];h+=fila(certLblDia(iso),k=>r[k].acordado+' / '+r[k].desp+' → <b>'+certDifTxt(r[k].dif)+'</b>');});
+    h+=fila('Total',k=>certDifTxt(df.tot[k].dif),'tot')+'</tbody></table>';
+  }
+  h+='</body></html>';
+  w.document.write(h);w.document.close();w.focus();setTimeout(()=>{try{w.print();}catch(e){}},400);
+};
+// Si algo falla al dibujar estas secciones nuevas, que no se caiga toda la app (queda el error acá adentro).
+class CmdErrBoundary extends React.Component{
+  constructor(p){super(p);this.state={err:null};}
+  static getDerivedStateFromError(err){return{err};}
+  componentDidCatch(err,info){console.error('Viandas: error en sección',err,info);}
+  render(){
+    if(this.state.err)return <div className="cmd-empty">⚠️ Hubo un error en esta sección: {String((this.state.err&&this.state.err.message)||this.state.err)}<br/><button className="cmd-btn" style={{marginTop:10}} onClick={()=>this.setState({err:null})}>Reintentar</button></div>;
+    return this.props.children;
+  }
+}
+function CmdPedidoSemanal({user,canEdit,showToast}){
+  const hoy=cmdIsoDate(new Date());
+  const semHoy=certSemanaDe(hoy),semSig=cmdAddDays(semHoy,7);
+  const[semana,setSemana]=useState(semHoy);
+  const[foto,setFoto]=useState(null);       // fila de viandas_fotos (null = no hay)
+  const[ajustes,setAjustes]=useState({});   // fecha → comida → fila de viandas_ajustes
+  const[desp,setDesp]=useState({});         // fecha → comida → cantidad despachada
+  const[radar,setRadar]=useState(undefined);// lo que dice HOY el Radar (undefined = cargando, null = error)
+  const[radarTick,setRadarTick]=useState(0);
+  const[sigOk,setSigOk]=useState(true);     // ¿está confirmado el pedido de la semana próxima?
+  const[loading,setLoading]=useState(true);
+  const[err,setErr]=useState(null);
+  const[draft,setDraft]=useState(null);     // edición a mano del pedido (solo en borrador)
+  const[comida,setComida]=useState('almuerzo');
+  const[busy,setBusy]=useState(false);
+  const reqRef=useRef(0);
+  const dias=certDias(semana),hasta=dias[6];
+  const load=async()=>{
+    const req=++reqRef.current;
+    const[f,a,d,s]=await Promise.all([certFetchFoto(semana),certFetchAjustes(semana,hasta),certFetchDesp(semana,hasta),certFetchFoto(semSig)]);
+    if(req!==reqRef.current)return;
+    setLoading(false);
+    if(!f||a===null||d===null){setErr('No se pudieron leer los datos del pedido semanal. Si es la primera vez, falta crear las tablas viandas_fotos y viandas_ajustes en Supabase.');return;}
+    setErr(null);setFoto(f.foto);setAjustes(a);setDesp(d);setSigOk(!!(s&&s.foto&&s.foto.estado==='confirmada'));
+  };
+  // Datos en vivo cada 20 s (despachos y ajustes), así Lagunas ve los cambios sin recargar
+  useEffect(()=>{setLoading(true);setDraft(null);load();const i=setInterval(load,20000);return()=>clearInterval(i);},[semana]);
+  // El Radar se lee aparte: es la consulta más pesada y no hace falta repetirla cada 20 s
+  useEffect(()=>{let vivo=true;setRadar(undefined);certFetchRadar(semana,hasta).then(r=>{if(vivo)setRadar(r?r.prog:null);});return()=>{vivo=false;};},[semana,radarTick]);
+  const fotoVis=foto&&(canEdit||foto.estado==='confirmada')?foto:null; // Lagunas no ve los borradores
+  const calc=useMemo(()=>fotoVis?certCalcSemana(fotoVis,ajustes,desp,semana):null,[fotoVis,ajustes,desp,semana]);
+  const pedVal=(iso,k)=>{const x=fotoVis&&fotoVis.dias&&fotoVis.dias[iso];return x&&x.pedido?(x.pedido[k]||0):0;};
+  const progVal=(iso,k)=>{const x=fotoVis&&fotoVis.dias&&fotoVis.dias[iso];return x&&x.prog?(x.prog[k]||0):0;};
+  const deRadar=!!(fotoVis&&fotoVis.origen!=='manual');
+  const est=foto?foto.estado:null;
+
+  const crearFoto=async(desdeRadar)=>{
+    if(est==='confirmada'){alert('El pedido de esta semana ya está confirmado. Para cambiarlo primero tocá "🔓 Reabrir".');return;}
+    if(foto&&!confirm('Ya hay un pedido en borrador para esta semana. ¿Reemplazarlo'+(desdeRadar?' con lo que dice hoy el Radar':' por uno en cero para cargar a mano')+'?\n\nSe pierden los cambios hechos a mano.'))return;
+    setBusy(true);
+    const d={};let personas=null;
+    if(desdeRadar){
+      const r=await certFetchRadar(semana,hasta);
+      if(!r){setBusy(false);alert('No se pudo leer el Radar (viandas_calendario).');return;}
+      const sinDatos=dias.filter(iso=>!r.prog[iso]);
+      if(sinDatos.length&&!confirm('El Radar no tiene datos para: '+sinDatos.map(certLblDia).join(', ')+'.\n\nEsos días quedan en 0 y los podés completar a mano antes de confirmar. Si falta sincronizar, primero tocá "🔄 Actualizar calendario".\n\n¿Sacar la foto igual?')){setBusy(false);return;}
+      dias.forEach(iso=>{const prog=r.prog[iso]||certCero();d[iso]={prog,pedido:certPedidoDe(prog)};});
+      personas=r.personas;
+    }else{
+      dias.forEach(iso=>{d[iso]={prog:certCero(),pedido:certCero()};});
+    }
+    const{ok}=await db.ins("viandas_fotos",{semana,estado:'borrador',origen:desdeRadar?'radar':'manual',dias:d,personas,tomada_por:user.id,tomada_por_nombre:certNombre(user),tomada_at:new Date().toISOString(),confirmada_por:null,confirmada_por_nombre:null,confirmada_at:null},true,"semana");
+    setBusy(false);
+    if(!ok){alert('No se pudo guardar el pedido. ¿Ya se crearon las tablas en Supabase?');return;}
+    showToast({msg:desdeRadar?'📸 Foto guardada en borrador: revisala y confirmala':'✍️ Pedido en cero: completalo y guardá'});
+    await load();
+    if(!desdeRadar){const dr={};dias.forEach(iso=>{dr[iso]=certCero();});setDraft(dr);}
+  };
+  const editar=()=>{const dr={};dias.forEach(iso=>{const x=foto.dias&&foto.dias[iso];dr[iso]={...((x&&x.pedido)||certCero())};});setDraft(dr);};
+  const setCelda=(iso,k,v)=>setDraft(prev=>({...prev,[iso]:{...prev[iso],[k]:v.replace(/[^0-9]/g,'')}}));
+  const draftNum=(iso,k)=>parseInt(draft[iso][k],10)||0;
+  const guardarDraft=async()=>{
+    const d={};
+    dias.forEach(iso=>{const x=foto.dias&&foto.dias[iso];const p={};CMD_COMIDAS.forEach(c=>{p[c.key]=draftNum(iso,c.key);});d[iso]={prog:(x&&x.prog)||certCero(),pedido:p};});
+    setBusy(true);const{ok}=await db.upd("viandas_fotos",{dias:d},[["semana","eq",semana]]);setBusy(false);
+    if(!ok){alert('No se pudieron guardar los cambios.');return;}
+    showToast({msg:'💾 Pedido guardado'});setDraft(null);load();
+  };
+  const confirmar=async()=>{
+    const tot=certCero();dias.forEach(iso=>CMD_COMIDAS.forEach(c=>{tot[c.key]+=pedVal(iso,c.key);}));
+    if(!confirm('¿Confirmar el pedido de la semana '+certLblSemana(semana)+'?\n\n'+CMD_COMIDAS.map(c=>c.label+': '+tot[c.key]).join('\n')+'\n\nQueda como base del certificado y Lagunas lo ve. Después solo se puede cambiar reabriéndolo.'))return;
+    setBusy(true);const{ok}=await db.upd("viandas_fotos",{estado:'confirmada',confirmada_por:user.id,confirmada_por_nombre:certNombre(user),confirmada_at:new Date().toISOString()},[["semana","eq",semana]]);setBusy(false);
+    if(!ok){alert('No se pudo confirmar el pedido.');return;}
+    showToast({msg:'✅ Pedido confirmado'});load();
+  };
+  const reabrir=async()=>{
+    if(!confirm('¿Reabrir el pedido de la semana '+certLblSemana(semana)+'?\n\nVuelve a borrador para poder editarlo y Lagunas deja de verlo hasta que lo confirmes de nuevo. Si ya generaste un certificado con este pedido, después volvé a generarlo.'))return;
+    setBusy(true);const{ok}=await db.upd("viandas_fotos",{estado:'borrador',confirmada_por:null,confirmada_por_nombre:null,confirmada_at:null},[["semana","eq",semana]]);setBusy(false);
+    if(!ok){alert('No se pudo reabrir el pedido.');return;}
+    load();
+  };
+  // Ajuste del almuerzo: restar hasta 25 viandas de un día, antes de las 11 hs de ese día
+  const ajustar=async(iso)=>{
+    if(!certAjusteAbierto(iso)){alert('El ajuste del '+certLblDia(iso)+' se podía cargar hasta las '+CERT_ALM_HORA_LIM+' hs de ese día.');return;}
+    const aj=ajustes[iso]&&ajustes[iso].almuerzo;
+    const ped=pedVal(iso,'almuerzo'),act=aj?-aj.cantidad:0;
+    const s=prompt('¿Cuántos almuerzos se restan el '+certLblDia(iso)+'?\n\nPedido: '+ped+'. Máximo '+CERT_ALM_MAX_RESTA+' por día, avisando a Lagunas antes de las '+CERT_ALM_HORA_LIM+' hs.\nPoné 0 para quitar el ajuste.',String(act));
+    if(s===null)return;
+    const n=parseInt(s,10);
+    if(isNaN(n)||n<0||n>CERT_ALM_MAX_RESTA){alert('Tiene que ser un número entre 0 y '+CERT_ALM_MAX_RESTA+'.');return;}
+    if(n>ped){alert('No se puede restar más de lo pedido ('+ped+').');return;}
+    if(!certAjusteAbierto(iso)){alert('Ya pasaron las '+CERT_ALM_HORA_LIM+' hs: el ajuste de hoy no se puede cargar.');return;}
+    if(n===0){
+      if(aj)await db.del("viandas_ajustes",[["fecha","eq",iso],["comida","eq","almuerzo"]]);
+      showToast({msg:'Ajuste quitado'});
+    }else{
+      const motivo=prompt('Motivo (opcional):',aj&&aj.motivo?aj.motivo:'');
+      const{ok}=await db.ins("viandas_ajustes",{fecha:iso,comida:'almuerzo',cantidad:-n,motivo:motivo||null,cargado_por:user.id,cargado_por_nombre:certNombre(user),cargado_at:new Date().toISOString()},true,"fecha,comida");
+      if(!ok){alert('No se pudo guardar el ajuste. ¿Ya se creó la tabla viandas_ajustes en Supabase?');return;}
+      showToast({msg:'🍽️ −'+n+' almuerzos el '+certLblDia(iso)});
+    }
+    load();
+  };
+
+  const avisoSig=canEdit&&[3,4,5].includes(new Date().getDay())&&semana!==semSig&&!sigOk;
+  const t=calc?calc.tot[comida]:null;
+  return <div>
+    <div className="cmd-wk">
+      <button className="nav" onClick={()=>setSemana(cmdAddDays(semana,-7))} title="Semana anterior">◀</button>
+      <div>
+        <div className="ttl">Semana {certLblSemana(semana)}</div>
+        <div className="sub">{semana===semHoy?'en curso':(semana===semSig?'próxima':(semana>semHoy?'futura':'pasada'))} · se certifica el mié {cmdFmtDate(cmdAddDays(semana,4)).slice(0,5)}</div>
+      </div>
+      <button className="nav" onClick={()=>setSemana(cmdAddDays(semana,7))} title="Semana siguiente">▶</button>
+      {!foto?<span className="cmd-chip none">Sin pedido</span>:(est==='confirmada'?<span className="cmd-chip ok">✅ Confirmado</span>:<span className="cmd-chip bor">✏️ Borrador</span>)}
+      {semana!==semHoy&&<button className="cmd-btn" onClick={()=>setSemana(semHoy)}>Semana actual</button>}
+      <button className="cmd-btn" style={{marginLeft:'auto'}} onClick={()=>{load();setRadarTick(x=>x+1);}}>↻ actualizar</button>
+    </div>
+    {avisoSig&&<div className="cmd-aviso" style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>📸 Todavía no está confirmado el pedido de la semana próxima ({certLblSemana(semSig)}).<button className="cmd-btn pri" onClick={()=>setSemana(semSig)}>Ir a esa semana</button></div>}
+    {loading?<div className="cmd-empty">Cargando…</div>:(err?<div className="cmd-aviso">{err}</div>:<>
+      <div className="cmd-rep">
+        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
+          <h3 style={{margin:0}}>📸 Pedido a Lagunas (foto)</h3>
+          {fotoVis&&<span style={{fontSize:11,color:'var(--tx3)'}}>{fotoVis.origen==='manual'?'cargado a mano':'sacado del Radar'} {fmtTs(fotoVis.tomada_at)}{fotoVis.tomada_por_nombre?' por '+fotoVis.tomada_por_nombre:''}{fotoVis.estado==='confirmada'&&fotoVis.confirmada_at?' · confirmado '+fmtTs(fotoVis.confirmada_at)+(fotoVis.confirmada_por_nombre?' por '+fotoVis.confirmada_por_nombre:''):''}</span>}
+          <div style={{marginLeft:'auto',display:'flex',gap:6,flexWrap:'wrap'}}>
+            {canEdit&&!draft&&est!=='confirmada'&&<button className="cmd-btn pri" disabled={busy} onClick={()=>crearFoto(true)}>📸 {foto?'Volver a sacar':'Sacar foto'} del Radar</button>}
+            {canEdit&&!draft&&!foto&&<button className="cmd-btn" disabled={busy} onClick={()=>crearFoto(false)}>✍️ Cargar a mano</button>}
+            {canEdit&&!draft&&est==='borrador'&&<button className="cmd-btn" onClick={editar}>✏️ Editar</button>}
+            {draft&&<button className="cmd-btn ok" disabled={busy} onClick={guardarDraft}>💾 Guardar</button>}
+            {draft&&<button className="cmd-btn" onClick={()=>setDraft(null)}>Cancelar</button>}
+            {canEdit&&!draft&&est==='borrador'&&<button className="cmd-btn ok" disabled={busy} onClick={confirmar}>✅ Confirmar pedido</button>}
+            {canEdit&&!draft&&est==='confirmada'&&<button className="cmd-btn" disabled={busy} onClick={reabrir}>🔓 Reabrir</button>}
+            {fotoVis&&!draft&&<button className="cmd-btn" onClick={()=>{const m={};dias.forEach(iso=>{m[iso]=(fotoVis.dias&&fotoVis.dias[iso]&&fotoVis.dias[iso].pedido)||certCero();});certCopiar(certTxtPedido(semana,m),showToast);}}>📋 Copiar</button>}
+          </div>
+        </div>
+        {!fotoVis?<div style={{color:'var(--tx3)',fontSize:12,padding:8,lineHeight:1.5}}>{canEdit?'Todavía no hay pedido para esta semana. La foto se saca el miércoles, jueves o viernes anterior, con el Radar actualizado.':(foto?'El pedido de esta semana todavía no fue confirmado por la obra.':'Todavía no hay pedido para esta semana.')}</div>:
+        <div className="cmd-tblw"><table>
+          <thead><tr><th>Día</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
+          <tbody>
+            {dias.map(iso=><tr key={iso}><td>{certLblDia(iso)}</td>{CMD_COMIDAS.map(c=>{const pv=pedVal(iso,c.key),gv=progVal(iso,c.key);return <td key={c.key} className="n">
+              {draft?<input className="cmd-num" inputMode="numeric" value={draft[iso][c.key]} onChange={e=>setCelda(iso,c.key,e.target.value)}/>:pv}
+              {deRadar&&gv!==pv&&<div style={{fontSize:9,color:'var(--tx3)',fontWeight:500}}>Radar {gv}</div>}
+            </td>;})}</tr>)}
+            <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Total</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{dias.reduce((a,iso)=>a+(draft?draftNum(iso,c.key):pedVal(iso,c.key)),0)}</td>)}</tr>
+          </tbody>
+        </table></div>}
+        <div className="cmd-hint">Cena: se pide el {Math.round(CERT_CENA_PCT*100)}% de lo que proyecta el Radar, con un mínimo de {CERT_CENA_PISO} por día (si hay {CERT_CENA_PISO} o menos, se pide todo). Almuerzo: se pueden restar hasta {CERT_ALM_MAX_RESTA} por día avisando antes de las {CERT_ALM_HORA_LIM} hs (se carga abajo, en el seguimiento).</div>
+      </div>
+      {calc&&<div className="cmd-rep">
+        <h3>📊 Seguimiento de la semana</h3>
+        <div className="cmd-mcards">
+          {CMD_COMIDAS.map(c=>{const x=calc.tot[c.key];return <button key={c.key} className={'cmd-mcard'+(comida===c.key?' on':'')} onClick={()=>setComida(c.key)}>
+            <div className="t">{c.em} {c.label}</div>
+            <div className="v">Pedido {x.pedido} · Desp. {x.desp}</div>
+            <div className={'v '+certDifCls(x.dif)} style={{fontWeight:800}}>Dif. {certDifTxt(x.dif)}</div>
+          </button>;})}
+        </div>
+        <div className="cmd-tblw"><table>
+          <thead><tr><th>Día</th><th className="n" title="Lo que dice hoy el Radar (puede haber cambiado desde la foto)">Radar hoy</th><th className="n">Pedido</th>{comida==='almuerzo'&&<th className="n">Ajuste</th>}<th className="n">Acordado</th><th className="n">Desp.</th><th className="n">A facturar</th><th className="n">Dif.</th></tr></thead>
+          <tbody>
+            {dias.map(iso=>{const r=calc.dias[iso][comida],fut=iso>hoy,gv=progVal(iso,comida);
+              const rh=radar?(radar[iso]?radar[iso][comida]:0):null;
+              const aj=ajustes[iso]&&ajustes[iso][comida];
+              return <tr key={iso} style={iso===hoy?{background:'rgba(245,158,11,.06)'}:undefined}>
+                <td>{certLblDia(iso)}{iso===hoy&&<span style={{fontSize:10,color:'var(--cmd-pri)',marginLeft:6}}>hoy</span>}</td>
+                <td className="n" style={{color:(rh!==null&&deRadar&&rh!==gv)?'var(--cmd-dieta)':'var(--tx3)'}} title={deRadar?'Al sacar la foto el Radar decía '+gv:''}>{rh===null?(radar===undefined?'…':'—'):rh}</td>
+                <td className="n">{r.pedido}</td>
+                {comida==='almuerzo'&&<td className="n" style={{whiteSpace:'nowrap'}}>
+                  {r.ajuste!==0&&<span className={certDifCls(r.ajuste)} title={aj?((aj.motivo?aj.motivo+' · ':'')+(aj.cargado_por_nombre||'')+(aj.cargado_at?' '+fmtTs(aj.cargado_at):'')):''}>{r.ajuste}</span>}
+                  {canEdit&&certAjusteAbierto(iso)&&<button className="cmd-undo" style={{marginLeft:6}} onClick={()=>ajustar(iso)}>{r.ajuste?'cambiar':'− restar'}</button>}
+                </td>}
+                <td className="n">{r.acordado}</td>
+                <td className="n" style={{color:fut?'var(--tx3)':undefined}}>{fut?'—':r.desp}</td>
+                <td className="n">{fut?'—':r.fact}</td>
+                <td className={'n '+certDifCls(r.dif)}>{fut&&!r.dif?'—':certDifTxt(r.dif)}</td>
+              </tr>;})}
+            <tr style={{borderTop:'2px solid var(--bd)'}}>
+              <td style={{fontWeight:800}}>Total</td>
+              <td className="n" style={{color:'var(--tx3)'}}>{radar?dias.reduce((a,iso)=>a+(radar[iso]?radar[iso][comida]:0),0):'…'}</td>
+              <td className="n">{t.pedido}</td>
+              {comida==='almuerzo'&&<td className={'n '+certDifCls(t.ajuste)}>{t.ajuste||''}</td>}
+              <td className="n">{t.acordado}</td><td className="n">{t.desp}</td><td className="n">{t.fact}</td>
+              <td className={'n '+certDifCls(t.dif)}>{certDifTxt(t.dif)}</td>
+            </tr>
+          </tbody>
+        </table></div>
+        <div className="cmd-hint">Acordado = pedido{comida==='almuerzo'?' menos lo restado':''}. A facturar = lo acordado, o lo despachado si fue más. La diferencia contra el pedido va en el certificado del miércoles siguiente (positivo se suma; negativo queda a favor de la obra). "Radar hoy" en amarillo = cambió desde la foto.{comida==='cena'?' Las cenas repetidas cuentan como despachadas.':''}</div>
+      </div>}
+    </>)}
+  </div>;
+}
+// Detalle de un certificado (guardado o vista previa antes de guardar)
+function CmdCertDetalle({cert,preview,onVolver,onGuardar,busy,showToast}){
+  const d=cert.detalle,df=d.dif;
+  return <div className="cmd-rep">
+    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
+      <button className="cmd-btn" onClick={onVolver}>← Volver</button>
+      <h3 style={{margin:0}}>🧾 Certificado del mié {cmdFmtDate(cert.fecha)}</h3>
+      {preview?<span className="cmd-chip bor">Vista previa · sin guardar</span>:<span style={{fontSize:11,color:'var(--tx3)'}}>generado {cert.generado_at?fmtTs(cert.generado_at):''}{cert.generado_por_nombre?' por '+cert.generado_por_nombre:''}</span>}
+      <div style={{marginLeft:'auto',display:'flex',gap:6,flexWrap:'wrap'}}>
+        {preview&&<button className="cmd-btn ok" disabled={busy} onClick={onGuardar}>💾 Guardar certificado</button>}
+        <button className="cmd-btn" onClick={()=>certImprimir(cert)}>🖨️ Imprimir / PDF</button>
+        <button className="cmd-btn" onClick={()=>certCopiar(certTxtCert(cert),showToast)}>📋 Copiar</button>
+      </div>
+    </div>
+    {(d.avisos||[]).map((a,i)=><div key={i} className="cmd-aviso">⚠️ {a}</div>)}
+    <div className="cmd-tblw"><table>
+      <thead><tr><th>Concepto</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
+      <tbody>
+        <tr><td>Pedido semana {certLblSemana(d.semana)}</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{d.pedido.tot[c.key]}</td>)}</tr>
+        {df&&<tr><td>Dif. semana {certLblSemana(df.semana)} · ajustes avisados</td>{CMD_COMIDAS.map(c=><td key={c.key} className={'n '+certDifCls(df.tot[c.key].ajuste)}>{certDifTxt(df.tot[c.key].ajuste)}</td>)}</tr>}
+        {df&&<tr><td>Dif. semana {certLblSemana(df.semana)} · despachado de más</td>{CMD_COMIDAS.map(c=><td key={c.key} className={'n '+certDifCls(df.tot[c.key].exced)}>{certDifTxt(df.tot[c.key].exced)}</td>)}</tr>}
+        <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Total a certificar</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n" style={{color:'var(--cmd-pri)',fontSize:14}}>{d.total[c.key]}</td>)}</tr>
+      </tbody>
+    </table></div>
+    {df&&<>
+      <h3 style={{marginTop:18}}>Diferencias por día · semana {certLblSemana(df.semana)}</h3>
+      <div className="cmd-tblw"><table>
+        <thead><tr><th>Día</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
+        <tbody>
+          {certDias(df.semana).map(iso=><tr key={iso}><td>{certLblDia(iso)}</td>{CMD_COMIDAS.map(c=>{const r=df.dias[iso][c.key];return <td key={c.key} className="n" title={'Pedido '+r.pedido+(r.ajuste?' · ajuste '+r.ajuste:'')+' · acordado '+r.acordado+' · despachado '+r.desp+' · a facturar '+r.fact}>
+            <span style={{color:'var(--tx3)',fontWeight:500}}>{r.acordado} / {r.desp} → </span><span className={certDifCls(r.dif)}>{certDifTxt(r.dif)}</span>
+          </td>;})}</tr>)}
+        </tbody>
+      </table></div>
+      <div className="cmd-hint">Cada celda: acordado (pedido ± ajuste) / despachado → diferencia contra el pedido. Positivo se suma a este certificado; negativo queda a favor de la obra.</div>
+    </>}
+  </div>;
+}
+function CmdCertificados({user,canEdit,showToast}){
+  const hoy=cmdIsoDate(new Date());
+  const[lista,setLista]=useState(null);
+  const[err,setErr]=useState(null);
+  const[ver,setVer]=useState(null);        // certificado guardado abierto
+  const[preview,setPreview]=useState(null);// certificado calculado sin guardar
+  const[fechaN,setFechaN]=useState(()=>cmdAddDays(certSemanaDe(hoy),4));
+  const[busy,setBusy]=useState(false);
+  const load=async()=>{
+    const{data}=await db.sel("viandas_certificados",{ord:"semana.desc",lim:200});
+    if(data===null){setErr('No se pudo leer el historial de certificados. Si es la primera vez, falta crear la tabla viandas_certificados en Supabase.');setLista([]);return;}
+    setErr(null);setLista(data);
+  };
+  useEffect(()=>{load();},[]);
+  const semN=certSemanaDe(fechaN||hoy);
+  const calcular=async()=>{
+    const semana=semN,prev=cmdAddDays(semN,-7),prevHasta=cmdAddDays(prev,6);
+    setBusy(true);
+    const[f,fp,aj,de]=await Promise.all([certFetchFoto(semana),certFetchFoto(prev),certFetchAjustes(prev,prevHasta),certFetchDesp(prev,prevHasta)]);
+    setBusy(false);
+    if(!f||!fp||aj===null||de===null){alert('No se pudieron leer los datos. ¿Ya se crearon las tablas en Supabase?');return;}
+    const foto=f.foto,fotoPrev=fp.foto;
+    if(!foto||foto.estado!=='confirmada'){alert('Falta '+(foto?'confirmar':'sacar')+' la foto del pedido de la semana '+certLblSemana(semana)+'.\n\nEl certificado factura ese pedido: hacelo desde "📦 Pedido semanal".');return;}
+    const avisos=[];
+    const pedido={dias:{},tot:certCero()};
+    certDias(semana).forEach(iso=>{const x=foto.dias&&foto.dias[iso];const p=(x&&x.pedido)||certCero();pedido.dias[iso]=p;CMD_COMIDAS.forEach(c=>{pedido.tot[c.key]+=p[c.key]||0;});});
+    let dif=null;
+    if(!fotoPrev||fotoPrev.estado!=='confirmada'){
+      avisos.push('No hay pedido confirmado de la semana '+certLblSemana(prev)+': el certificado sale sin diferencias de la semana anterior.');
+    }else{
+      const cs=certCalcSemana(fotoPrev,aj,de,prev);
+      dif={semana:prev,dias:cs.dias,tot:cs.tot};
+      if(prevHasta>=hoy)avisos.push('La semana '+certLblSemana(prev)+' todavía no terminó: las diferencias pueden cambiar.');
+      const sinDesp=certDias(prev).filter(iso=>iso<=hoy&&!de[iso]);
+      if(sinDesp.length)avisos.push('En la semana '+certLblSemana(prev)+' no hay despachos registrados en la app el '+sinDesp.map(certLblDia).join(', ')+'. Para esos días se toma lo acordado, sin sumar diferencias.');
+    }
+    const total={};CMD_COMIDAS.forEach(c=>{total[c.key]=pedido.tot[c.key]+(dif?dif.tot[c.key].dif:0);});
+    setPreview({semana,fecha:cmdAddDays(semana,4),detalle:{semana,pedido,dif,total,avisos},generado_por_nombre:certNombre(user)});
+  };
+  const guardar=async()=>{
+    const p=preview;
+    if((lista||[]).some(x=>x.semana===p.semana)&&!confirm('Ya hay un certificado guardado para el mié '+cmdFmtDate(p.fecha)+'. ¿Reemplazarlo por este?'))return;
+    const row={semana:p.semana,fecha:p.fecha,detalle:p.detalle,generado_por:user.id,generado_por_nombre:certNombre(user),generado_at:new Date().toISOString()};
+    setBusy(true);const{ok}=await db.ins("viandas_certificados",row,true,"semana");setBusy(false);
+    if(!ok){alert('No se pudo guardar el certificado. ¿Ya se creó la tabla viandas_certificados en Supabase?');return;}
+    showToast({msg:'🧾 Certificado guardado'});setPreview(null);setVer(row);load();
+  };
+  if(preview)return <CmdCertDetalle cert={preview} preview busy={busy} onVolver={()=>setPreview(null)} onGuardar={guardar} showToast={showToast}/>;
+  if(ver)return <CmdCertDetalle cert={ver} onVolver={()=>setVer(null)} showToast={showToast}/>;
+  return <div>
+    {canEdit&&<div className="cmd-rep">
+      <h3>🧾 Nuevo certificado</h3>
+      <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+        <label style={{fontSize:11,color:'var(--tx2)',textTransform:'uppercase',fontWeight:700,letterSpacing:.5}}>Miércoles del certificado</label>
+        <input type="date" value={fechaN} onChange={e=>setFechaN(e.target.value)} style={{background:'var(--s2)',border:'1px solid var(--bd)',color:'var(--tx)',borderRadius:4,padding:'6px 8px',fontFamily:'var(--fm)',fontSize:13}}/>
+        <button className="cmd-btn pri" disabled={busy||!fechaN} onClick={calcular}>{busy?'Calculando…':'Calcular'}</button>
+      </div>
+      <div className="cmd-hint">Certificado del mié {cmdFmtDate(cmdAddDays(semN,4))}: factura el pedido de la semana {certLblSemana(semN)} + las diferencias de la semana {certLblSemana(cmdAddDays(semN,-7))}. Se calcula, lo revisás y recién ahí lo guardás.</div>
+    </div>}
+    <div className="cmd-rep">
+      <h3>Historial de certificados</h3>
+      {err&&<div className="cmd-aviso">{err}</div>}
+      {lista===null?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Cargando…</div>:
+       (lista.length===0?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Todavía no hay certificados guardados.</div>:
+       <div className="cmd-clist">{lista.map(c=><button key={c.semana} className="cmd-citem" onClick={()=>setVer(c)}>
+         <strong>Mié {cmdFmtDate(c.fecha)}</strong>
+         <span style={{fontSize:12,color:'var(--tx2)'}}>pedido {certLblSemana(c.semana)}</span>
+         <span style={{fontFamily:'var(--fm)',fontSize:12,marginLeft:'auto'}}>{CMD_COMIDAS.map(x=>x.em+' '+((c.detalle&&c.detalle.total&&c.detalle.total[x.key])||0)).join('   ')}</span>
+       </button>)}</div>)}
+    </div>
+  </div>;
+}
+
 // ─── Componente Comedor (wrapper del módulo entero) — Fase B: Supabase ─────
 function Comedor({user,proyectoId}){
   const isAdmin=user.rol==='admin';              // admin general de ControlObra
@@ -3099,6 +3582,7 @@ function Comedor({user,proyectoId}){
   // userPuesto: para cocineros el que viene del rol; para admin general null (no escanea); para admin_viandas el que eligió simular
   const userPuesto=isAdmin?null:(isAdminViandas?simuladoPuesto:userPuestoBase);
   const puedeEscanear=(!isAdmin);  // cocineros y admin_viandas pueden ver Escanear
+  const verPedidos=isAdmin||isAdminViandas; // Pedido semanal + Certificados: admin edita, Lagunas (admin_viandas) solo mira
   const[subtab,setSubtab]=useState(isAdmin?'listado':'scan');
   const[resInicio,setResInicio]=useState(null); // Reporte: fecha "desde" del resumen de 7 días (null = últimos 7 hasta hoy)
   const[fecha,setFecha]=useState(()=>cmdIsoDate(new Date()));
@@ -3214,6 +3698,8 @@ function Comedor({user,proyectoId}){
       {puedeEscanear&&<button className={'cmd-tab '+(subtab==='scan'?'active':'')} onClick={()=>setSubtab('scan')}>📷 Escanear</button>}
       <button className={'cmd-tab '+(subtab==='listado'?'active':'')} onClick={()=>setSubtab('listado')}>📋 Listado</button>
       <button className={'cmd-tab '+(subtab==='reporte'?'active':'')} onClick={()=>setSubtab('reporte')}>📊 Reporte</button>
+      {verPedidos&&<button className={'cmd-tab '+(subtab==='pedido'?'active':'')} onClick={()=>setSubtab('pedido')}>📦 Pedido semanal</button>}
+      {verPedidos&&<button className={'cmd-tab '+(subtab==='cert'?'active':'')} onClick={()=>setSubtab('cert')}>🧾 Certificados</button>}
     </div>
     {loading?<div className="cmd-empty">Cargando datos del día…</div>:<>
       {subtab==='scan'&&puedeEscanear&&(
@@ -3224,6 +3710,8 @@ function Comedor({user,proyectoId}){
       )}
       {subtab==='listado'&&<CmdListado personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} dieta={dieta} chaletSet={chaletSet} platos={platos} onTogglePlato={togglePlato} isAdmin={canEditDieta} onOpenDieta={setDietaEditing} onPick={puedeEscanear?onPickFromList:null} onDispatch={addDespacho} onUndispatch={removeDespacho} canDispatch={!!userPuesto||isAdmin} isReadOnly={isReadOnly}/>}
       {subtab==='reporte'&&<CmdReporte personas={personasDia} despachos={despachosDia} fecha={fecha} onVerDia={verDia} resInicio={resInicio} setResInicio={setResInicio}/>}
+      {subtab==='pedido'&&verPedidos&&<CmdErrBoundary><CmdPedidoSemanal user={user} canEdit={isAdmin} showToast={showToast}/></CmdErrBoundary>}
+      {subtab==='cert'&&verPedidos&&<CmdErrBoundary><CmdCertificados user={user} canEdit={isAdmin} showToast={showToast}/></CmdErrBoundary>}
     </>}
     {toast&&<div className={'cmd-toast '+(toast.err?'err':'')}>{toast.msg}</div>}
     {dietaEditing&&<CmdDietaModal persona={dietaEditing} currentValue={dieta[dietaEditing.dni]} onSave={(v)=>saveDieta(dietaEditing.dni,v)} onQuit={()=>quitDieta(dietaEditing.dni)} onClose={()=>setDietaEditing(null)}/>}
@@ -3259,7 +3747,7 @@ function RadarSyncBtn({user,onDone}){
       if(!confirm('El sync del Radar todavía no está configurado. ¿Configurar ahora la URL y el secret del web app?'))return;
       if(!await cfgURL())return;
     }
-    if(!confirm('¿Ejecutar sincronización del Radar de Obra ahora?\n\nLee del sheet las fechas de hoy + 7 días adelante y las pisa en viandas_calendario. Puede tardar 30-60 segundos.'))return;
+    if(!confirm('¿Ejecutar sincronización del Radar de Obra ahora?\n\nLee del sheet las fechas de hoy + 10 días adelante y las pisa en viandas_calendario. Puede tardar 30-60 segundos.'))return;
     setSyncing(true);setMsg(null);
     const res=await runRadarSync();
     if(!res.ok)setMsg({t:'err',txt:res.msg.split('\n')[0]});
@@ -3272,7 +3760,7 @@ function RadarSyncBtn({user,onDone}){
     setTimeout(()=>setMsg(null),5000);
   };
   return <div style={{display:'flex',alignItems:'center',gap:6,marginLeft:8}}>
-    <button onClick={doSync} disabled={syncing} style={{background:'rgba(96,165,250,.12)',border:'1px solid var(--cmd-info)',color:'var(--cmd-info)',borderRadius:4,padding:'5px 10px',fontFamily:'var(--fh)',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:.3,cursor:syncing?'wait':'pointer',opacity:syncing?.5:1}} title="Ejecutar el sync del Radar de Obra ahora (hoy + 7 días)">
+    <button onClick={doSync} disabled={syncing} style={{background:'rgba(96,165,250,.12)',border:'1px solid var(--cmd-info)',color:'var(--cmd-info)',borderRadius:4,padding:'5px 10px',fontFamily:'var(--fh)',fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:.3,cursor:syncing?'wait':'pointer',opacity:syncing?.5:1}} title="Ejecutar el sync del Radar de Obra ahora (hoy + 10 días)">
       {syncing?'⏳ sincronizando…':'🔄 Actualizar calendario'}
     </button>
     <button onClick={cfgURL} style={{background:'none',border:'1px solid var(--bd)',color:'var(--tx3)',borderRadius:4,padding:'5px 7px',fontSize:11,cursor:'pointer'}} title="Configurar URL y secret del web app del Radar de Obra">⚙️</button>
