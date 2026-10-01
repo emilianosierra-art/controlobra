@@ -302,7 +302,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev97";
+const APP_REV="Rev98";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -459,7 +459,7 @@ const personaEstado=(id,habs,radarMap,dni)=>{
   return"ok";
 };
 // vehiculoEstado(id, habs) — Rev86: retorna "no" (sin sh_ingreso), "par" (sh_ingreso OK pero
-// sh_manejo no — bloquea en P2/P3 pero pasa por P1), "ok" (todo OK).
+// sh_manejo no — desde Rev98 solo advierte, no bloquea en ningún puesto), "ok" (todo OK).
 const vehiculoEstado=(id,habs)=>{
   const shIng=habSt(getHab("vehiculo",id,"sh_ingreso",habs));
   if(shIng!=="ok")return"no";
@@ -480,7 +480,8 @@ const chkAuth=(type,id,habs)=>{
 // Reglas:
 //  Persona — P1 bloquea si falta sh_ingreso o cp_ingreso. P2/P3 bloquea además si falta sh_chalet.
 //            sh_manejo solo advierte (naranja), nunca bloquea.
-//  Vehiculo — P1 bloquea solo si falta sh_ingreso. P2/P3 bloquea también si falta sh_manejo (subir chalet).
+//  Vehiculo — todos los puestos bloquean solo si falta sh_ingreso. sh_manejo (subir chalet) solo advierte
+//             (naranja) desde Rev98; antes bloqueaba en P2/P3.
 //
 // Rev86+: cp_ingreso se DERIVA de viandas_calendario del día vía `radarMap` (Radar de Obra).
 //   - radarMap[dni].cpIngresoOk === true  → CP Ingreso OK
@@ -524,16 +525,15 @@ const getHabPills=(entityType,entityId,habs,puesto,radarMap,personaDni)=>{
       reason:blocks?("Falta: "+reasons.join(" + ")):null,
     };
   }
-  // vehiculo
+  // vehiculo — Rev98: solo bloquea por S&H Ingreso en todos los puestos; Subir Chalet (sh_manejo) solo advierte.
   const shIng=getStatus("sh_ingreso"),shMan=getStatus("sh_manejo");
-  const blocks=isP1?(shIng!=="ok"):(shIng!=="ok"||shMan!=="ok");
+  const blocks=shIng!=="ok";
   const reasons=[];
   if(shIng!=="ok")reasons.push("S&H Ingreso");
-  if(!isP1&&shMan!=="ok")reasons.push("S&H Subir Chalet");
   return{
     pills:[
       {label:"S&H Ingreso",short:"ING",color:shIng==="ok"?"green":"red"},
-      {label:"Subir Chalet",short:"CHA",color:shMan==="ok"?"green":"red"},
+      {label:"Subir Chalet",short:"CHA",color:shMan==="ok"?"green":"orange"},
     ],
     blocks,
     reason:blocks?("Falta: "+reasons.join(" + ")):null,
