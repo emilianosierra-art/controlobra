@@ -264,6 +264,12 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .cmd-mbtn .lbl{font-weight:800;text-transform:uppercase;font-size:14px;letter-spacing:.5px;}
 .cmd-mbtn .st{font-size:11px;text-transform:uppercase;color:var(--tx3);font-weight:600;letter-spacing:.3px;}
 .cmd-mbtn.na{opacity:.3;cursor:not-allowed;}
+.cmd-mbtn.na.agr{opacity:.55;cursor:pointer;border-style:dashed;}
+.cmd-warnbox{color:var(--cmd-err)!important;background:rgba(239,68,68,.12);border:2px solid var(--cmd-err);border-radius:6px;padding:12px!important;font-weight:800;font-size:14px;margin-bottom:8px;}
+.cmd-row .badgeAgreg{background:var(--cmd-info);color:#000;font-size:10px;font-weight:800;padding:2px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.3px;}
+.cmd-inp{width:100%;padding:9px 10px;background:var(--s2);border:1px solid var(--bd);color:var(--tx);border-radius:6px;font-size:14px;font-family:var(--fh);margin-bottom:10px;}
+.cmd-inp:focus{outline:none;border-color:var(--cmd-pri);}
+.cmd-modal .btnSave:disabled{opacity:.4;cursor:not-allowed;}
 .cmd-mbtn.pend{border-color:var(--cmd-ok);background:rgba(16,185,129,.06);}
 .cmd-mbtn.pend .lbl,.cmd-mbtn.pend .st{color:var(--cmd-ok);}
 .cmd-mbtn.disp{border-color:var(--cmd-pri);background:rgba(245,158,11,.12);}
@@ -331,7 +337,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev99";
+const APP_REV="Rev100";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -2690,8 +2696,45 @@ const cmdFetchPlatos=async()=>{
   const m={};(data||[]).forEach(r=>{m[r.dni]=r.entregado_at;});
   return m;
 };
-// La cena se puede repetir (más de un plato por persona por día); el resto de las comidas, una sola vez.
-const CMD_REPETIBLE='cena';
+// Almuerzo y cena se pueden entregar más de una vez por persona por día (con aviso); desayuno y merienda, una sola.
+const CMD_REPETIBLES=['almuerzo','cena'];
+const cmdRepetible=(k)=>CMD_REPETIBLES.includes(k);
+const cmdHora=(ts)=>new Date(ts).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+const cmdOtro=(k)=>(k==='cena'||k==='merienda')?'otra':'otro';
+// Aviso al entregar por segunda vez la misma comida: cuántas veces, a qué hora y en qué puesto la retiró.
+const cmdAvisoRepetir=(persona,comida,desps)=>{
+  const c=CMD_COMIDAS.find(x=>x.key===comida);
+  const l=desps.filter(d=>d.dni===persona.dni&&d.comida===comida).sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+  return '⚠️ ATENCIÓN: '+persona.nombre+' '+persona.apellido+' YA RETIRÓ '+c.label.toUpperCase()+' HOY'+(l.length>1?' ('+l.length+' veces)':'')+'\n'
+    +l.map(d=>'· '+cmdHora(d.ts)+' en '+cmdPuestoShort(d.puesto)).join('\n')
+    +'\n\n¿Entregar '+cmdOtro(comida)+' '+c.label.toLowerCase()+'?';
+};
+// Agregados: personas que no están en el listado del día, o comidas que no tenían programadas, que la cocina
+// entrega igual. Quedan registrados en obra.viandas_agregados (quién, cuándo, en qué puesto) y se suman al listado.
+const cmdFetchAgregados=async(fecha)=>{
+  const{data}=await db.sel("viandas_agregados",{f:[["fecha","eq",fecha]],lim:2000});
+  const m={};(data||[]).forEach(r=>{m[r.dni]=r;});
+  return m;
+};
+const cmdMergeAgregados=(radar,ag)=>{
+  const keys=CMD_COMIDAS.map(c=>c.key);
+  const enRadar=new Set();
+  const out=radar.map(p=>{
+    enRadar.add(p.dni);
+    const a=ag[p.dni];if(!a)return p;
+    const extras=(a.comidas||[]).filter(k=>!p.comidas.includes(k));
+    if(!extras.length)return p;
+    return{...p,comidas:keys.filter(k=>p.comidas.includes(k)||extras.includes(k)),extras,agregado:a};
+  });
+  Object.values(ag).forEach(a=>{
+    if(enRadar.has(a.dni))return;
+    const comidas=keys.filter(k=>(a.comidas||[]).includes(k));
+    if(!comidas.length)return;
+    out.push({dni:a.dni,id:a.dni,nombre:a.nombre||'(sin nombre)',apellido:a.apellido||'',empresa:a.empresa||'',code:null,letra:null,letraNom:'',numero:null,comidas,extras:comidas,agregado:a,noListado:true});
+  });
+  return out;
+};
+const cmdComidaPorHora=()=>{const h=new Date().getHours();return h<10?'desayuno':(h<15?'almuerzo':(h<19?'merienda':'cena'));};
 // Resumen por día: programadas (viandas_calendario) y despachadas (viandas_despachos, cuenta repeticiones de cena).
 const cmdFetchResumen=async(desde,hasta)=>{
   const[{data:cal},{data:desp}]=await Promise.all([
@@ -2755,11 +2798,73 @@ function CmdDietaModal({persona,currentValue,onSave,onQuit,onClose}){
     </div>
   </div>;
 }
-function CmdMealPill({comida,aplica,despachado,count,onClick,clickable}){
+// Alta de alguien que no está en el listado del día: se busca el DNI en la base de personas para completar
+// nombre/empresa, se eligen las comidas que se le entregan y queda registrado en viandas_agregados.
+function CmdAgregarModal({dniInicial,personas,onClose,onConfirm}){
+  const[dni,setDni]=useState(dniInicial||'');
+  const[nombre,setNombre]=useState('');
+  const[apellido,setApellido]=useState('');
+  const[empresa,setEmpresa]=useState('');
+  const[comidas,setComidas]=useState(()=>new Set([cmdComidaPorHora()]));
+  const[motivo,setMotivo]=useState('');
+  const[base,setBase]=useState(null); // null = sin buscar · false = no está en la base · objeto = encontrado
+  const[saving,setSaving]=useState(false);
+  const clean=dni.trim();
+  const enLista=personas.find(p=>p.dni===clean);
+  useEffect(()=>{
+    if(!/^\d{6,9}$/.test(clean)){setBase(null);return;}
+    let vivo=true;
+    db.sel("personas",{cols:"dni,nombre,apellido,empresa",f:[["dni","eq",clean],["deleted_at","is","null"]],lim:1}).then(({data})=>{
+      if(!vivo)return;
+      const p=data&&data[0];
+      setBase(p||false);
+      if(p){setNombre(p.nombre||'');setApellido(p.apellido||'');setEmpresa(p.empresa||'');}
+    });
+    return()=>{vivo=false;};
+  },[clean]);
+  const toggle=(k)=>setComidas(prev=>{const n=new Set(prev);if(n.has(k))n.delete(k);else n.add(k);return n;});
+  const valido=/^\d{6,9}$/.test(clean)&&!enLista&&(nombre.trim()||apellido.trim())&&comidas.size>0;
+  const confirmar=async()=>{
+    if(!valido||saving)return;
+    setSaving(true);
+    await onConfirm({dni:clean,nombre:nombre.trim(),apellido:apellido.trim(),empresa:empresa.trim()},CMD_COMIDAS.map(c=>c.key).filter(k=>comidas.has(k)),motivo.trim());
+    setSaving(false);
+  };
+  return <div className="cmd-modov" onClick={onClose}>
+    <div className="cmd-modal" onClick={e=>e.stopPropagation()}>
+      <h3 style={{color:'var(--cmd-info)'}}>➕ Agregar persona al listado de hoy</h3>
+      <div className="who">Para alguien que no figura en el Radar. Queda registrado quién lo agregó, cuándo y en qué puesto.</div>
+      <label>DNI</label>
+      <input className="cmd-inp" inputMode="numeric" autoFocus={!dniInicial} value={dni} onChange={e=>setDni(e.target.value.replace(/[^0-9]/g,''))} placeholder="Sin puntos"/>
+      {enLista&&<div className="cmd-aviso">{enLista.nombre} {enLista.apellido} ya está en el listado de hoy. Buscalo y tocá la comida: si no la tiene programada, la app te deja entregarla igual.</div>}
+      {!enLista&&base&&<div style={{fontSize:11,color:'var(--cmd-ok)',marginTop:-6,marginBottom:10}}>✓ Encontrado en la base de personal</div>}
+      {!enLista&&base===false&&<div style={{fontSize:11,color:'var(--cmd-dieta)',marginTop:-6,marginBottom:10}}>No está en la base de personal: completá el nombre a mano.</div>}
+      {!enLista&&<>
+        <div style={{display:'flex',gap:8}}>
+          <div style={{flex:1}}><label>Nombre</label><input className="cmd-inp" value={nombre} onChange={e=>setNombre(e.target.value)} autoFocus={!!dniInicial}/></div>
+          <div style={{flex:1}}><label>Apellido</label><input className="cmd-inp" value={apellido} onChange={e=>setApellido(e.target.value)}/></div>
+        </div>
+        <label>Empresa</label>
+        <input className="cmd-inp" value={empresa} onChange={e=>setEmpresa(e.target.value)}/>
+        <label>Comida que se le entrega ahora</label>
+        <div className="cmd-fbar" style={{marginBottom:10}}>
+          {CMD_COMIDAS.map(c=><button key={c.key} className={'cmd-fbtn '+(comidas.has(c.key)?'active':'')} onClick={()=>toggle(c.key)}>{c.em} {c.label}</button>)}
+        </div>
+        <label>Motivo (opcional)</label>
+        <input className="cmd-inp" value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder='Ej: "visita", "no estaba en el Radar", "subcontratista nuevo"'/>
+      </>}
+      <div className="actions">
+        <button className="btnSave" style={{background:'var(--cmd-info)'}} disabled={!valido||saving} onClick={confirmar}>{saving?'Guardando…':'Agregar y entregar'}</button>
+        <button className="btnCancel" onClick={onClose}>Cancelar</button>
+      </div>
+    </div>
+  </div>;
+}
+function CmdMealPill({comida,aplica,despachado,count,onClick,clickable,agregable}){
   const cls=!aplica?'na':(despachado?'disp':'pend');
-  const canClick=aplica&&clickable&&onClick;
-  const repetible=comida.key===CMD_REPETIBLE;
-  const tip=!canClick?undefined:(!despachado?'Click para despachar':(repetible?'Click para registrar otra cena':'Click para deshacer'));
+  const canClick=clickable&&onClick&&(aplica||agregable);
+  const repetible=cmdRepetible(comida.key);
+  const tip=!canClick?undefined:(!aplica?'No programado · click para entregar igual (queda como agregado)':(!despachado?'Click para despachar':(repetible?'Ya retiró · click para entregar '+cmdOtro(comida.key)+' (con aviso)':'Click para deshacer')));
   return <div className={'cmd-mp '+cls} onClick={canClick?onClick:undefined} style={canClick?{cursor:'pointer'}:undefined} title={tip}>
     <span className="em">{comida.em}</span>
     <span className="lbl">{comida.short}</span>
@@ -2795,40 +2900,44 @@ function CmdPrefixBar({prefix,togglePref}){
     </div>
   </div>;
 }
-function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,onTogglePlato,isAdmin,onOpenDieta,onPick,onDispatch,onUndispatch,canDispatch,isReadOnly}){
+function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,onTogglePlato,isAdmin,onOpenDieta,onPick,onDispatch,onUndispatch,canDispatch,isReadOnly,onAgregarComida,onAgregarPersona}){
   const[q,setQ]=useState('');
   const[mealFilters,setMealFilters]=useState(new Set());
   const[locFilters,setLocFilters]=useState(new Set());
   const[statusFilter,setStatusFilter]=useState(null);
   const[dietaOnly,setDietaOnly]=useState(false);
   const[chaletOnly,setChaletOnly]=useState(false);
+  const[agregOnly,setAgregOnly]=useState(false);
+  const puedeAgregar=canDispatch&&!isReadOnly&&!!onAgregarComida;
   const isDisp=(pid,ckey)=>despachos.some(d=>d.personaId===pid&&d.comida===ckey);
   const dispCount=(pid,ckey)=>despachos.filter(d=>d.personaId===pid&&d.comida===ckey).length;
   // Último despacho de esa comida (para deshacer; en cena puede haber varios)
   const lastDispId=(pid,ckey)=>{const l=despachos.filter(d=>d.personaId===pid&&d.comida===ckey).sort((a,b)=>new Date(b.ts)-new Date(a.ts));return l[0]?l[0].id:null;};
   const toggleMeal=(k)=>setMealFilters(prev=>{const n=new Set(prev);if(n.has(k))n.delete(k);else n.add(k);return n;});
   const toggleLoc=(l)=>setLocFilters(prev=>{const n=new Set(prev);if(n.has(l))n.delete(l);else n.add(l);return n;});
-  const clearFilters=()=>{setMealFilters(new Set());setLocFilters(new Set());setStatusFilter(null);setDietaOnly(false);setChaletOnly(false);setQ('');};
+  const clearFilters=()=>{setMealFilters(new Set());setLocFilters(new Set());setStatusFilter(null);setDietaOnly(false);setChaletOnly(false);setAgregOnly(false);setQ('');};
   const chSet=chaletSet||new Set();
   const pl=platos||{};
   const chaletCount=useMemo(()=>personas.filter(p=>chSet.has(p.dni)).length,[personas,chSet]);
+  const agregCount=useMemo(()=>personas.filter(p=>p.agregado).length,[personas]);
   const toggleMealFor=(e,p,ckey)=>{
     e.stopPropagation();
     if(isReadOnly||!canDispatch)return;
-    if(!p.comidas.includes(ckey))return;
+    if(!p.comidas.includes(ckey)){if(onAgregarComida)onAgregarComida(p,ckey);return;}
     const n=dispCount(p.id,ckey);
-    if(n>0&&ckey===CMD_REPETIBLE){
-      if(!confirm(p.nombre+' '+p.apellido+' ya retiró '+n+' cena'+(n>1?'s':'')+'.\n\n¿Registrar otra cena?'))return;
+    if(n>0&&cmdRepetible(ckey)){
+      if(!confirm(cmdAvisoRepetir(p,ckey,despachos)))return;
       onDispatch(p,ckey,true);return;
     }
     if(n>0){if(!confirm('¿Deshacer despacho de '+CMD_COMIDAS.find(c=>c.key===ckey).label+' para '+p.nombre+' '+p.apellido+'?'))return;onUndispatch(lastDispId(p.id,ckey));}
     else onDispatch(p,ckey);
   };
-  const deshacerUltimaCena=(e,p)=>{
+  // Almuerzo y cena pueden tener varios despachos: este botón borra el último
+  const deshacerUltima=(e,p,ckey)=>{
     e.stopPropagation();
     if(isReadOnly||!canDispatch)return;
-    const id=lastDispId(p.id,CMD_REPETIBLE);if(!id)return;
-    if(!confirm('¿Deshacer la última cena despachada a '+p.nombre+' '+p.apellido+'?'))return;
+    const id=lastDispId(p.id,ckey);if(!id)return;
+    if(!confirm('¿Deshacer el último despacho de '+CMD_COMIDAS.find(c=>c.key===ckey).label.toLowerCase()+' de '+p.nombre+' '+p.apellido+'?'))return;
     onUndispatch(id);
   };
   const locCounts=useMemo(()=>{const m={};personas.forEach(p=>{if(p.letra)m[p.letra]=(m[p.letra]||0)+1;});return m;},[personas]);
@@ -2841,21 +2950,26 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
       if(locFilters.size>0&&!locFilters.has(p.letra))return false;
       if(dietaOnly&&!cmdIsDietaActiveForDate(dieta[p.dni],fecha))return false;
       if(chaletOnly&&!chSet.has(p.dni))return false;
+      if(agregOnly&&!p.agregado)return false;
       for(const k of mealFilters)if(!p.comidas.includes(k))return false;
       if(statusFilter==='pendientes'&&!p.comidas.some(c=>!isDisp(p.id,c)))return false;
       if(statusFilter==='completos'&&!p.comidas.every(c=>isDisp(p.id,c)))return false;
       return true;
     });
-  },[q,personas,despachos,mealFilters,locFilters,statusFilter,dietaOnly,chaletOnly,chSet,dieta,fecha]);
+  },[q,personas,despachos,mealFilters,locFilters,statusFilter,dietaOnly,chaletOnly,agregOnly,chSet,dieta,fecha]);
   return <div>
     <CmdDateBar fecha={fecha} setFecha={setFecha}/>
-    <input className="cmd-search" placeholder="Buscar por DNI, nombre o empresa..." value={q} onChange={e=>setQ(e.target.value)}/>
+    <div style={{display:'flex',gap:8,alignItems:'flex-start'}}>
+      <input className="cmd-search" style={{flex:1}} placeholder="Buscar por DNI, nombre o empresa..." value={q} onChange={e=>setQ(e.target.value)}/>
+      {puedeAgregar&&onAgregarPersona&&<button className="cmd-btn pri" style={{padding:'12px 14px',whiteSpace:'nowrap'}} onClick={()=>onAgregarPersona(/^\d{6,9}$/.test(q.trim())?q.trim():'')} title="Registrar a alguien que no está en el listado de hoy y entregarle la comida">➕ Agregar persona</button>}
+    </div>
     <div className="cmd-fbar">
       <span className="lbl">Estado:</span>
       <button className={'cmd-fbtn status '+(statusFilter==='pendientes'?'active':'')} onClick={()=>setStatusFilter(statusFilter==='pendientes'?null:'pendientes')}>⏳ Con pendientes</button>
       <button className={'cmd-fbtn status '+(statusFilter==='completos'?'active':'')} onClick={()=>setStatusFilter(statusFilter==='completos'?null:'completos')}>✓ Completos</button>
       <button className={'cmd-fbtn dieta '+(dietaOnly?'active':'')} onClick={()=>setDietaOnly(!dietaOnly)}>🥗 Dieta ({dietaCount})</button>
       <button className={'cmd-fbtn chalet '+(chaletOnly?'active':'')} onClick={()=>setChaletOnly(!chaletOnly)} title="Personas que comen en el chalet (subieron por P2 antes de 11 AM o el garitero lo marcó)">🏔️ En chalet ({chaletCount})</button>
+      {agregCount>0&&<button className={'cmd-fbtn loc '+(agregOnly?'active':'')} onClick={()=>setAgregOnly(!agregOnly)} title="Personas que no estaban en el listado o recibieron una comida no programada">➕ Agregados ({agregCount})</button>}
       {CMD_COMIDAS.map(c=>(
         <button key={c.key} className={'cmd-fbtn '+(mealFilters.has(c.key)?'active':'')} onClick={()=>toggleMeal(c.key)}>{c.em} {c.short}</button>
       ))}
@@ -2868,7 +2982,7 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
           {CMD_LETRAS[l]||l} <span style={{opacity:.6,marginLeft:2}}>({locCounts[l]})</span>
         </button>
       ))}
-      {(mealFilters.size>0||locFilters.size>0||statusFilter||dietaOnly||chaletOnly||q)&&<button className="cmd-fclear" onClick={clearFilters}>Limpiar todo</button>}
+      {(mealFilters.size>0||locFilters.size>0||statusFilter||dietaOnly||chaletOnly||agregOnly||q)&&<button className="cmd-fclear" onClick={clearFilters}>Limpiar todo</button>}
     </div>}
     <div style={{fontSize:11,color:'var(--tx3)',marginBottom:8,padding:'0 4px'}}>{filtered.length} persona{filtered.length===1?'':'s'} · {personas.length} en total del día</div>
     {filtered.length===0?<div className="cmd-empty">Sin resultados con esos filtros.</div>:
@@ -2886,6 +3000,7 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
               <span className="name">{p.nombre} {p.apellido}</span>
               {dietaAplica&&<span className="badgeDieta">🥗 Dieta</span>}
               {comeChalet&&<span className="badgeChalet" title="Come el almuerzo en el chalet (subió por P2/P3 hoy)">🏔️ Chalet</span>}
+              {p.agregado&&<span className="badgeAgreg" title={'Agregado '+cmdHora(p.agregado.agregado_at)+' en '+cmdPuestoShort(p.agregado.puesto)+(p.agregado.motivo?' · '+p.agregado.motivo:'')}>{p.noListado?'➕ No listado':'➕ Agregado'}</span>}
               {tienePlato
                 ?<span className="badgePlato" title={'Tiene plato/tarjeta desde '+fmtTs(pl[p.dni])} onClick={e=>{e.stopPropagation();onTogglePlato&&onTogglePlato(p);}}>🍽 Plato ✓</span>
                 :(onTogglePlato&&<span className="badgePlato no" title="Todavía no recibió plato/tarjeta — click para marcar la entrega" onClick={e=>{e.stopPropagation();onTogglePlato(p);}}>+ Plato/tarjeta</span>)}
@@ -2897,9 +3012,10 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
             {CMD_COMIDAS.map(c=>{
               const cnt=dispCount(p.id,c.key);
               return <div key={c.key} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                <CmdMealPill comida={c} aplica={p.comidas.includes(c.key)} despachado={cnt>0} count={cnt} clickable={canClickPill} onClick={(e)=>toggleMealFor(e,p,c.key)}/>
+                <CmdMealPill comida={c} aplica={p.comidas.includes(c.key)} despachado={cnt>0} count={cnt} clickable={canClickPill} agregable={puedeAgregar} onClick={(e)=>toggleMealFor(e,p,c.key)}/>
                 {c.key==='almuerzo'&&comeChalet&&p.comidas.includes('almuerzo')&&<span style={{fontSize:8,fontWeight:800,color:'var(--cmd-purple)',letterSpacing:.3,textTransform:'uppercase'}}>CHALET</span>}
-                {c.key===CMD_REPETIBLE&&cnt>0&&canClickPill&&<button className="cmd-undo" onClick={e=>deshacerUltimaCena(e,p)} title="Deshacer la última cena">− deshacer</button>}
+                {(p.extras||[]).includes(c.key)&&<span style={{fontSize:8,fontWeight:800,color:'var(--cmd-info)',letterSpacing:.3,textTransform:'uppercase'}} title="Comida no programada en el Radar, entregada como agregado">AGREG.</span>}
+                {cmdRepetible(c.key)&&cnt>0&&canClickPill&&<button className="cmd-undo" onClick={e=>deshacerUltima(e,p,c.key)} title={'Deshacer el último despacho de '+c.label.toLowerCase()}>− deshacer</button>}
               </div>;
             })}
             {isAdmin&&!isReadOnly&&(
@@ -2919,13 +3035,15 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
     }
   </div>;
 }
-function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,prefix,togglePref,onDispatch,onUndispatch,preloadPersona,clearPreload,fecha,isReadOnly}){
+function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,prefix,togglePref,onDispatch,onUndispatch,preloadPersona,clearPreload,fecha,isReadOnly,onAgregarComida,onAgregarPersona}){
   const[dni,setDni]=useState('');
-  const[persona,setPersona]=useState(null);
+  const[personaSel,setPersona]=useState(null);
+  // Siempre la versión actual del listado (si se le agrega una comida, la tarjeta se actualiza sola)
+  const persona=personaSel?(personas.find(x=>x.dni===personaSel.dni)||personaSel):null;
   const[msg,setMsg]=useState(null);
   const inputRef=useRef(null);
   useEffect(()=>{
-    if(preloadPersona){setPersona(preloadPersona);setDni(preloadPersona.dni);clearPreload&&clearPreload();}
+    if(preloadPersona){setPersona(preloadPersona);setDni(preloadPersona.dni);setMsg(null);clearPreload&&clearPreload();}
     setTimeout(()=>inputRef.current&&inputRef.current.focus(),30);
   },[preloadPersona]);
   const dispCount=(ckey)=>persona?despachos.filter(d=>d.personaId===persona.id&&d.comida===ckey).length:0;
@@ -2936,27 +3054,33 @@ function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,prefix,toggl
     const clean=dni.trim();if(!clean)return;
     if(isReadOnly){setMsg({t:'err',txt:'No se puede despachar en fechas pasadas.'});return;}
     const p=personas.find(x=>x.dni===clean);
-    if(!p){setMsg({t:'err',txt:'DNI '+clean+' no está en el listado del '+cmdFmtDate(fecha)});setPersona(null);return;}
+    if(!p){setMsg({t:'err',txt:'DNI '+clean+' no está en el listado del '+cmdFmtDate(fecha),agregar:clean});setPersona(null);setDni('');return;}
     setPersona(p);setMsg(null);
     const auto=[...prefix].filter(c=>p.comidas.includes(c)&&!despachos.some(d=>d.personaId===p.id&&d.comida===c));
     auto.forEach(c=>onDispatch(p,c));
-    if(auto.length>0){const ems=auto.map(k=>CMD_COMIDAS.find(c=>c.key===k).em).join(' ');setMsg({t:'ok',txt:ems+' · auto-despachado'});}
+    // Si ya retiró alguna de las comidas del modo prefijado, se avisa fuerte (no se vuelve a despachar sola)
+    const ya=[...prefix].filter(c=>p.comidas.includes(c)&&despachos.some(d=>d.personaId===p.id&&d.comida===c));
+    const partes=[];
+    if(ya.length>0)partes.push('⚠️ YA RETIRÓ HOY: '+ya.map(k=>{const c=CMD_COMIDAS.find(x=>x.key===k);const l=despachos.filter(d=>d.personaId===p.id&&d.comida===k).sort((a,b)=>new Date(b.ts)-new Date(a.ts))[0];return c.em+' '+c.label.toUpperCase()+' ('+cmdHora(l.ts)+' · '+cmdPuestoShort(l.puesto)+')';}).join(' · ')+(ya.some(cmdRepetible)?' — si corresponde entregar '+cmdOtro(ya.find(cmdRepetible))+', tocá la comida':''));
+    if(auto.length>0)partes.push(auto.map(k=>CMD_COMIDAS.find(c=>c.key===k).em).join(' ')+' · auto-despachado');
+    if(partes.length)setMsg({t:ya.length?'warn':'ok',txt:partes.join('   ·   ')});
     setDni('');setTimeout(()=>inputRef.current&&inputRef.current.focus(),30);
   };
   const tapMeal=(ckey)=>{
-    if(isReadOnly||!persona||!persona.comidas.includes(ckey))return;
+    if(isReadOnly||!persona)return;
+    if(!persona.comidas.includes(ckey)){if(onAgregarComida)onAgregarComida(persona,ckey);return;}
     const n=dispCount(ckey);
-    if(n>0&&ckey===CMD_REPETIBLE){
-      if(!confirm(persona.nombre+' '+persona.apellido+' ya retiró '+n+' cena'+(n>1?'s':'')+'.\n\n¿Registrar otra cena?'))return;
+    if(n>0&&cmdRepetible(ckey)){
+      if(!confirm(cmdAvisoRepetir(persona,ckey,despachos)))return;
       onDispatch(persona,ckey,true);return;
     }
     const id=getDispId(ckey);
     if(id){if(!confirm('¿Deshacer despacho de '+CMD_COMIDAS.find(c=>c.key===ckey).label+' para '+persona.nombre+' '+persona.apellido+'?'))return;onUndispatch(id);}
     else onDispatch(persona,ckey);
   };
-  const deshacerUltimaCena=()=>{
-    const id=getDispId(CMD_REPETIBLE);if(!id)return;
-    if(!confirm('¿Deshacer la última cena despachada a '+persona.nombre+' '+persona.apellido+'?'))return;
+  const deshacerUltima=(ckey)=>{
+    const id=getDispId(ckey);if(!id)return;
+    if(!confirm('¿Deshacer el último despacho de '+CMD_COMIDAS.find(c=>c.key===ckey).label.toLowerCase()+' de '+persona.nombre+' '+persona.apellido+'?'))return;
     onUndispatch(id);
   };
   const reset=()=>{setPersona(null);setDni('');setMsg(null);setTimeout(()=>inputRef.current&&inputRef.current.focus(),30);};
@@ -2971,12 +3095,16 @@ function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,prefix,toggl
       <input ref={inputRef} placeholder={isReadOnly?'Solo lectura — fecha pasada':'DNI (escaneá o tipeá + Enter)'} value={dni} onChange={e=>setDni(e.target.value)} onKeyDown={e=>e.key==='Enter'&&buscar()} inputMode="numeric" autoFocus disabled={isReadOnly}/>
       <button onClick={buscar} disabled={isReadOnly}>Buscar</button>
     </div>
-    {msg&&<div className="cmd-empty" style={{color:msg.t==='err'?'var(--cmd-err)':'var(--cmd-ok)',padding:12}}>{msg.txt}</div>}
+    {msg&&<div className={'cmd-empty'+(msg.t==='warn'?' cmd-warnbox':'')} style={msg.t==='warn'?undefined:{color:msg.t==='err'?'var(--cmd-err)':'var(--cmd-ok)',padding:12}}>
+      {msg.txt}
+      {msg.agregar&&onAgregarPersona&&!isReadOnly&&<div style={{marginTop:10}}><button className="cmd-btn pri" onClick={()=>onAgregarPersona(msg.agregar)}>➕ Agregar a la lista y entregar</button></div>}
+    </div>}
     {persona?<div className={'cmd-pcard'+(hasDieta?' dieta':'')}>
       <h2>{persona.nombre} {persona.apellido}</h2>
       <div className="metaRow">
         <span>DNI {persona.dni}</span><span>·</span><span>{persona.empresa}</span>
         {persona.letra&&<span className="letra" title={persona.letraNom}>{persona.letra}-{persona.numero} · {persona.letraNom}</span>}
+        {persona.agregado&&<span className="cmd-ptag camp" style={{fontSize:10,padding:'3px 7px'}}>{persona.noListado?'➕ No listado · agregado':'➕ Con comida agregada'} {cmdHora(persona.agregado.agregado_at)} · {cmdPuestoShort(persona.agregado.puesto)}</span>}
       </div>
       {hasDieta&&<div className="cmd-dbanner">
         <div>🥗 MENÚ DIETA — servir almuerzo dietético</div>
@@ -2997,20 +3125,22 @@ function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,prefix,toggl
           const aplica=persona.comidas.includes(c.key);const cnt=dispCount(c.key);const disp=cnt>0;
           const cls=!aplica?'na':(disp?'disp':'pend');
           const showDT=hasDieta&&c.key==='almuerzo'&&aplica;
-          const repetible=c.key===CMD_REPETIBLE;
-          const st=!aplica?'No corresponde'
+          const repetible=cmdRepetible(c.key);
+          const esExtra=(persona.extras||[]).includes(c.key);
+          const st=!aplica?(onAgregarComida?'No programado · tocar para entregar igual':'No corresponde')
             :!disp?'Tocar para despachar'
-            :repetible?('Despachada ×'+cnt+' · tocar para repetir')
+            :repetible?('Retirado'+(cnt>1?' ×'+cnt:'')+' '+cmdHora(despachos.filter(d=>d.personaId===persona.id&&d.comida===c.key).sort((a,b)=>new Date(b.ts)-new Date(a.ts))[0].ts)+' · tocar para '+cmdOtro(c.key))
             :'Despachado ✓ (tocar deshace)';
-          return <button key={c.key} className={'cmd-mbtn '+cls} onClick={()=>tapMeal(c.key)} disabled={!aplica||isReadOnly}>
+          return <button key={c.key} className={'cmd-mbtn '+cls+(!aplica&&onAgregarComida?' agr':'')} onClick={()=>tapMeal(c.key)} disabled={isReadOnly||(!aplica&&!onAgregarComida)}>
             {showDT&&<span className="dtag">DIETA</span>}
+            {esExtra&&<span className="dtag" style={{background:'var(--cmd-info)',left:6,right:'auto'}}>AGREGADO</span>}
             <span className="em">{c.em}</span>
             <span className="lbl">{c.label}</span>
             <span className="st">{st}</span>
           </button>;
         })}
       </div>
-      {dispCount(CMD_REPETIBLE)>0&&!isReadOnly&&<button className="cmd-undo" style={{marginTop:8}} onClick={deshacerUltimaCena}>↶ Deshacer la última cena</button>}
+      {!isReadOnly&&CMD_REPETIBLES.filter(k=>dispCount(k)>0).map(k=><button key={k} className="cmd-undo" style={{marginTop:8,marginRight:6}} onClick={()=>deshacerUltima(k)}>↶ Deshacer {k==='cena'?'la última cena':'el último almuerzo'}</button>)}
       <button onClick={reset} style={{marginTop:14,width:'100%',padding:10,background:'var(--s2)',border:'1px solid var(--bd)',color:'var(--tx2)',borderRadius:6,fontWeight:600,cursor:'pointer',fontFamily:'var(--fh)'}}>Escanear otro</button>
     </div>:(!msg&&<div className="cmd-empty">Escaneá un DNI (o tipealo y Enter)<br/>para ver las comidas de la persona.</div>)}
   </div>;
@@ -3081,33 +3211,53 @@ function CmdResumenSemanal({onVerDia,inicio,setInicio}){
   </div>;
 }
 function CmdReporte({personas,despachos,fecha,onVerDia,resInicio,setResInicio}){
+  // Programada = del Radar; las comidas agregadas en el día van en su propia columna
+  const prog=(p,k)=>p.comidas.includes(k)&&!(p.extras||[]).includes(k);
   const porComida=useMemo(()=>CMD_COMIDAS.map(c=>({
     ...c,
-    total:personas.filter(p=>p.comidas.includes(c.key)).length,
+    total:personas.filter(p=>prog(p,c.key)).length,
+    agregadas:personas.filter(p=>(p.extras||[]).includes(c.key)).length,
     despachadas:despachos.filter(d=>d.comida===c.key).length,
     camp:despachos.filter(d=>d.comida===c.key&&d.puesto==='DESPACHO CAMPAMENTO').length,
     chal:despachos.filter(d=>d.comida===c.key&&d.puesto==='DESPACHO CHALET').length,
-    // Pendientes = personas con la comida programada que todavía no retiraron ninguna (no se resta, así la cena repetida no da negativo)
-    pendientes:personas.filter(p=>p.comidas.includes(c.key)&&!despachos.some(d=>d.dni===p.dni&&d.comida===c.key)).length,
+    // Pendientes = personas con la comida programada que todavía no retiraron ninguna (no se resta, así almuerzo/cena repetidos no dan negativo)
+    pendientes:personas.filter(p=>prog(p,c.key)&&!despachos.some(d=>d.dni===p.dni&&d.comida===c.key)).length,
+    repetidas:despachos.filter(d=>d.comida===c.key).length-new Set(despachos.filter(d=>d.comida===c.key).map(d=>d.dni)).size,
   })),[personas,despachos]);
+  const agregadosDia=personas.filter(p=>p.agregado&&(p.extras||[]).length);
   return <div>
     <CmdResumenSemanal onVerDia={onVerDia} inicio={resInicio} setInicio={setResInicio}/>
     <div className="cmd-rep">
       <h3>{cmdFmtDate(fecha)} · por tipo de comida</h3>
-      <table>
-        <thead><tr><th>Comida</th><th className="n">Solicitadas</th><th className="n">Despachadas</th><th className="n">Camp.</th><th className="n">Chalet</th><th className="n">Pendientes</th></tr></thead>
+      <div className="cmd-tblw"><table>
+        <thead><tr><th>Comida</th><th className="n">Solicitadas</th><th className="n" title="Entregadas a gente que no estaba en el listado o que no la tenía programada">Agregadas</th><th className="n">Despachadas</th><th className="n" title="Platos entregados de más a alguien que ya había retirado">Repetidas</th><th className="n">Camp.</th><th className="n">Chalet</th><th className="n">Pendientes</th></tr></thead>
         <tbody>{porComida.map(c=>(
           <tr key={c.key}>
             <td>{c.em} {c.label}</td>
             <td className="n">{c.total}</td>
+            <td className="n" style={{color:c.agregadas?'var(--cmd-info)':'var(--tx3)'}}>{c.agregadas}</td>
             <td className="n" style={{color:'var(--cmd-pri)'}}>{c.despachadas}</td>
+            <td className="n" style={{color:c.repetidas?'var(--cmd-err)':'var(--tx3)'}}>{c.repetidas}</td>
             <td className="n" style={{color:'var(--cmd-info)'}}>{c.camp}</td>
             <td className="n" style={{color:'var(--cmd-purple)'}}>{c.chal}</td>
             <td className="n" style={{color:'var(--cmd-ok)'}}>{c.pendientes}</td>
           </tr>
         ))}</tbody>
-      </table>
+      </table></div>
     </div>
+    {agregadosDia.length>0&&<div className="cmd-rep">
+      <h3>➕ Agregados del día ({agregadosDia.length})</h3>
+      <div className="cmd-tblw"><table>
+        <thead><tr><th>Persona</th><th>Comidas agregadas</th><th>Puesto</th><th>Hora</th><th>Motivo</th></tr></thead>
+        <tbody>{agregadosDia.map(p=><tr key={p.dni}>
+          <td>{p.nombre} {p.apellido}<div style={{fontSize:10,color:'var(--tx3)'}}>DNI {p.dni}{p.empresa?' · '+p.empresa:''}{p.noListado?' · no estaba en el listado':''}</div></td>
+          <td>{p.extras.map(k=>{const c=CMD_COMIDAS.find(x=>x.key===k);return c.em+' '+c.short;}).join('  ')}</td>
+          <td><span className={'cmd-ptag '+cmdPuestoClass(p.agregado.puesto)}>{cmdPuestoShort(p.agregado.puesto)}</span></td>
+          <td style={{fontFamily:'var(--fm)',fontSize:11}}>{cmdHora(p.agregado.agregado_at)}</td>
+          <td style={{fontSize:11}}>{p.agregado.motivo||''}</td>
+        </tr>)}</tbody>
+      </table></div>
+    </div>}
     <div className="cmd-rep">
       <h3>Últimos despachos del día</h3>
       {despachos.length===0?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Sin despachos aún.</div>:
@@ -3586,7 +3736,10 @@ function Comedor({user,proyectoId}){
   const[subtab,setSubtab]=useState(isAdmin?'listado':'scan');
   const[resInicio,setResInicio]=useState(null); // Reporte: fecha "desde" del resumen de 7 días (null = últimos 7 hasta hoy)
   const[fecha,setFecha]=useState(()=>cmdIsoDate(new Date()));
-  const[personasDia,setPersonasDia]=useState([]);
+  const[personasRadar,setPersonasRadar]=useState([]); // listado del día según el Radar
+  const[agregados,setAgregados]=useState({});         // dni → fila de viandas_agregados (no listados / comidas no programadas)
+  const personasDia=useMemo(()=>cmdMergeAgregados(personasRadar,agregados),[personasRadar,agregados]);
+  const[agregando,setAgregando]=useState(null);       // DNI inicial del modal "Agregar persona" (null = cerrado)
   const[despachosDia,setDespachosDia]=useState([]);
   const[dieta,setDieta]=useState({});
   const[chaletSet,setChaletSet]=useState(new Set()); // DNIs de personas que comen en chalet hoy
@@ -3600,40 +3753,83 @@ function Comedor({user,proyectoId}){
 
   // Cargar personas del día + despachos del día + dieta + come_chalet + platos (todo desde Supabase)
   const loadAll=async()=>{
-    const[p,d,di,ch,pl]=await Promise.all([
+    const[p,d,di,ch,pl,ag]=await Promise.all([
       cmdFetchPersonasFecha(fecha),
       cmdFetchDespachos(fecha),
       cmdFetchDieta(),
       cmdFetchComeChalet(fecha),
       cmdFetchPlatos(),
+      cmdFetchAgregados(fecha),
     ]);
-    setPersonasDia(p);setDespachosDia(d);setDieta(di);setChaletSet(ch);setPlatos(pl);setLoading(false);
+    setPersonasRadar(p);setDespachosDia(d);setDieta(di);setChaletSet(ch);setPlatos(pl);setAgregados(ag);setLoading(false);
   };
-  // Poll cada 3s: refresca despachos + dieta + chaletSet + platos (el calendario del día no cambia intra-día)
+  // Poll cada 3s: refresca despachos + dieta + chaletSet + platos + agregados (el calendario del día no cambia intra-día)
   const loadSync=async()=>{
-    const[d,di,ch,pl]=await Promise.all([cmdFetchDespachos(fecha),cmdFetchDieta(),cmdFetchComeChalet(fecha),cmdFetchPlatos()]);
-    setDespachosDia(d);setDieta(di);setChaletSet(ch);setPlatos(pl);
+    const[d,di,ch,pl,ag]=await Promise.all([cmdFetchDespachos(fecha),cmdFetchDieta(),cmdFetchComeChalet(fecha),cmdFetchPlatos(),cmdFetchAgregados(fecha)]);
+    setDespachosDia(d);setDieta(di);setChaletSet(ch);setPlatos(pl);setAgregados(ag);
   };
   useEffect(()=>{setLoading(true);loadAll();},[fecha]);
   useEffect(()=>{const i=setInterval(loadSync,3000);return()=>clearInterval(i);},[fecha]);
 
-  // repetir=true solo aplica a la cena (se puede entregar más de un plato por persona por día)
+  // repetir=true solo aplica a almuerzo y cena (se puede entregar más de un plato por persona por día, con aviso)
   const addDespacho=async(persona,comida,repetir=false)=>{
-    const puedeRepetir=repetir&&comida===CMD_REPETIBLE;
-    // Idempotencia: chequeo local + unique index en DB (fecha,dni,comida) salvo cena
+    const puedeRepetir=repetir&&cmdRepetible(comida);
+    // Idempotencia: chequeo local + unique index en DB (fecha,dni,comida) para desayuno y merienda
     if(!puedeRepetir&&despachosDia.some(d=>d.dni===persona.dni&&d.comida===comida))return;
     const record={fecha,dni:persona.dni,comida,puesto:userPuesto||'ADMIN',operador_id:user.id,operador_email:user.email||null};
     const{data,ok}=await db.ins("viandas_despachos",record);
-    if(!ok){showToast({msg:puedeRepetir?'No se pudo registrar la cena repetida (¿falta el cambio en Supabase?)':'No se pudo despachar (¿ya despachado por el otro puesto?)',err:true});await loadSync();return;}
+    if(!ok){showToast({msg:puedeRepetir?'No se pudo registrar el plato repetido (¿falta el cambio del índice en Supabase?)':'No se pudo despachar (¿ya despachado por el otro puesto?)',err:true});await loadSync();return;}
     const c=CMD_COMIDAS.find(x=>x.key===comida);
     showToast({msg:`${c.em} ${c.label}${puedeRepetir?' (repetida)':''} → ${persona.nombre} ${persona.apellido}`});
     // Optimista: agrega local ya, próximo poll confirma
     if(data&&data[0])setDespachosDia(prev=>[...prev,{id:data[0].id,personaId:data[0].dni,dni:data[0].dni,comida:data[0].comida,puesto:data[0].puesto,operador:data[0].operador_email,ts:data[0].ts,fecha:data[0].fecha}]);
   };
   const removeDespacho=async(id)=>{
+    const des=despachosDia.find(x=>x.id===id);
     await db.del("viandas_despachos",[["id","eq",id]]);
     setDespachosDia(prev=>prev.filter(x=>x.id!==id));
     showToast({msg:'Despacho deshecho',dur:1500});
+    // Si era una comida agregada y no le queda ningún otro despacho de esa comida, se saca del agregado
+    // (y si no le queda ninguna comida agregada, se borra el registro: fue un error de carga).
+    const a=des&&agregados[des.dni];
+    if(!a||!(a.comidas||[]).includes(des.comida))return;
+    if(despachosDia.some(x=>x.id!==id&&x.dni===des.dni&&x.comida===des.comida))return;
+    const rest=(a.comidas||[]).filter(k=>k!==des.comida);
+    if(rest.length){
+      await db.upd("viandas_agregados",{comidas:rest},[["fecha","eq",fecha],["dni","eq",des.dni]]);
+      setAgregados(m=>({...m,[des.dni]:{...a,comidas:rest}}));
+    }else{
+      await db.del("viandas_agregados",[["fecha","eq",fecha],["dni","eq",des.dni]]);
+      setAgregados(m=>{const n={...m};delete n[des.dni];return n;});
+    }
+  };
+  // Entregar a alguien que no está en el listado, o una comida que no tenía programada: se registra en
+  // viandas_agregados (quién, cuándo, en qué puesto, motivo) y se despacha.
+  const agregarYDespachar=async(p,comidasSel,motivo)=>{
+    const prev=agregados[p.dni];
+    const comidas=CMD_COMIDAS.map(c=>c.key).filter(k=>comidasSel.includes(k)||(prev&&(prev.comidas||[]).includes(k)));
+    const row={fecha,dni:p.dni,nombre:p.nombre||null,apellido:p.apellido||null,empresa:p.empresa||null,comidas,
+      motivo:motivo||(prev&&prev.motivo)||null,
+      puesto:prev?prev.puesto:(userPuesto||'ADMIN'),
+      agregado_por:prev?prev.agregado_por:user.id,
+      agregado_por_email:prev?prev.agregado_por_email:(user.email||null),
+      agregado_at:prev?prev.agregado_at:new Date().toISOString()};
+    const{ok}=await db.ins("viandas_agregados",row,true,"fecha,dni");
+    if(!ok){showToast({msg:'No se pudo registrar el agregado (¿falta crear la tabla viandas_agregados en Supabase?)',err:true,dur:4000});return false;}
+    setAgregados(m=>({...m,[p.dni]:row}));
+    for(const k of comidasSel)await addDespacho(p,k);
+    return true;
+  };
+  const agregarComida=async(persona,ckey)=>{
+    const c=CMD_COMIDAS.find(x=>x.key===ckey);
+    if(!confirm('⚠️ '+persona.nombre+' '+persona.apellido+' NO tiene '+c.label.toLowerCase()+' programad'+(ckey==='cena'||ckey==='merienda'?'a':'o')+' hoy en el Radar.\n\n¿Entregar igual?\nQueda registrado como agregado (quién, cuándo y en qué puesto).'))return;
+    await agregarYDespachar(persona,[ckey],null);
+  };
+  const confirmarAgregado=async(p,comidasSel,motivo)=>{
+    const ok=await agregarYDespachar(p,comidasSel,motivo);
+    if(!ok)return;
+    setAgregando(null);
+    if(subtab==='scan')setPicked({...p,id:p.dni,comidas:comidasSel});
   };
   const saveDieta=async(dni,val)=>{
     // val = {nota,hasta}; upsert por dni (PK)
@@ -3706,15 +3902,16 @@ function Comedor({user,proyectoId}){
         // Admin viandas sin puesto elegido → pantalla de selección; luego pasa al escaneo real
         isAdminViandas&&!simuladoPuesto
           ?<CmdSeleccionPuesto onElegir={setSimuladoPuesto}/>
-          :<CmdEscanear personas={personasDia} despachos={despachosDia} dieta={dieta} platos={platos} onTogglePlato={togglePlato} prefix={prefix} togglePref={togglePref} onDispatch={addDespacho} onUndispatch={removeDespacho} preloadPersona={picked} clearPreload={()=>setPicked(null)} fecha={fecha} isReadOnly={isReadOnly}/>
+          :<CmdEscanear personas={personasDia} despachos={despachosDia} dieta={dieta} platos={platos} onTogglePlato={togglePlato} prefix={prefix} togglePref={togglePref} onDispatch={addDespacho} onUndispatch={removeDespacho} preloadPersona={picked} clearPreload={()=>setPicked(null)} fecha={fecha} isReadOnly={isReadOnly} onAgregarComida={agregarComida} onAgregarPersona={setAgregando}/>
       )}
-      {subtab==='listado'&&<CmdListado personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} dieta={dieta} chaletSet={chaletSet} platos={platos} onTogglePlato={togglePlato} isAdmin={canEditDieta} onOpenDieta={setDietaEditing} onPick={puedeEscanear?onPickFromList:null} onDispatch={addDespacho} onUndispatch={removeDespacho} canDispatch={!!userPuesto||isAdmin} isReadOnly={isReadOnly}/>}
+      {subtab==='listado'&&<CmdListado personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} dieta={dieta} chaletSet={chaletSet} platos={platos} onTogglePlato={togglePlato} isAdmin={canEditDieta} onOpenDieta={setDietaEditing} onPick={puedeEscanear?onPickFromList:null} onDispatch={addDespacho} onUndispatch={removeDespacho} canDispatch={!!userPuesto||isAdmin} isReadOnly={isReadOnly} onAgregarComida={agregarComida} onAgregarPersona={setAgregando}/>}
       {subtab==='reporte'&&<CmdReporte personas={personasDia} despachos={despachosDia} fecha={fecha} onVerDia={verDia} resInicio={resInicio} setResInicio={setResInicio}/>}
       {subtab==='pedido'&&verPedidos&&<CmdErrBoundary><CmdPedidoSemanal user={user} canEdit={isAdmin} showToast={showToast}/></CmdErrBoundary>}
       {subtab==='cert'&&verPedidos&&<CmdErrBoundary><CmdCertificados user={user} canEdit={isAdmin} showToast={showToast}/></CmdErrBoundary>}
     </>}
     {toast&&<div className={'cmd-toast '+(toast.err?'err':'')}>{toast.msg}</div>}
     {dietaEditing&&<CmdDietaModal persona={dietaEditing} currentValue={dieta[dietaEditing.dni]} onSave={(v)=>saveDieta(dietaEditing.dni,v)} onQuit={()=>quitDieta(dietaEditing.dni)} onClose={()=>setDietaEditing(null)}/>}
+    {agregando!==null&&<CmdAgregarModal dniInicial={agregando} personas={personasDia} onClose={()=>setAgregando(null)} onConfirm={confirmarAgregado}/>}
   </div>;
 }
 
@@ -3864,6 +4061,7 @@ function Puesto({user,pid}){
   const[radarMap,setRadarMap]=useState({});
   const[radarLoaded,setRadarLoaded]=useState(null); // timestamp última carga
   const[refreshingRadar,setRefreshingRadar]=useState(false);
+  const[radarMsg,setRadarMsg]=useState(null); // "✓ Radar actualizado" unos segundos después del botón
   const[showManual,setShowManual]=useState(false);
   const[detalleSes,setDetalleSes]=useState(null);
   const[refreshKey,setRefreshKey]=useState(0);
@@ -3883,7 +4081,16 @@ function Puesto({user,pid}){
     if(!isOnline())return;
     try{const m=await fetchRadarDia();setRadarMap(m||{});setRadarLoaded(Date.now());}catch(e){console.warn("loadRadar:",e);}
   };
-  const refreshRadarManual=async()=>{setRefreshingRadar(true);await loadRadar();setRefreshingRadar(false);};
+  // Botón "🔄 Actualizar": primero trae lo último del sheet del Radar (sync remoto, 30-60 s) y después re-lee.
+  // Antes solo re-leía Supabase, así que un cambio recién hecho en el sheet no aparecía.
+  const refreshRadarManual=async()=>{
+    setRefreshingRadar(true);setRadarMsg(null);
+    const res=await runRadarSync();
+    await loadRadar();
+    setRefreshingRadar(false);
+    if(!res.ok){alert(res.msg);return;}
+    setRadarMsg("✓ Radar actualizado");setTimeout(()=>setRadarMsg(null),8000);
+  };
   useEffect(()=>{loadRadar();const i=setInterval(loadRadar,60*60*1000);return()=>clearInterval(i);},[pid]);
 
   useEffect(()=>{
@@ -4112,9 +4319,9 @@ function Puesto({user,pid}){
       <div style={{display:"flex",alignItems:"center",gap:10}}>
         <div style={{fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)",textAlign:"right"}} title="El estado de CP Ingreso se deriva del Radar de Obra del día. Se auto-refresca cada 1 hora.">
           📅 Radar {radarLoaded?new Date(radarLoaded).toLocaleTimeString("es-AR",{hour:"2-digit",minute:"2-digit"}):"..."}
-          <br/><span style={{opacity:.7}}>{Object.keys(radarMap).length} personas hoy</span>
+          <br/>{radarMsg?<span style={{color:"var(--gr)",fontWeight:700}}>{radarMsg}</span>:<span style={{opacity:.7}}>{Object.keys(radarMap).length} personas hoy</span>}
         </div>
-        <button className="bsm" onClick={refreshRadarManual} disabled={refreshingRadar} style={{fontSize:11}} title="Volver a leer viandas_calendario ahora">{refreshingRadar?"...":"🔄 Actualizar"}</button>
+        <button className="bsm" onClick={refreshRadarManual} disabled={refreshingRadar} style={{fontSize:11}} title="Trae lo último del sheet del Radar y actualiza la vista (tarda 30-60 segundos)">{refreshingRadar?"⏳ sincronizando… (30-60 s)":"🔄 Actualizar"}</button>
         <Clock/>
       </div>
     </div>
