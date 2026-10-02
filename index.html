@@ -270,6 +270,10 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .cmd-inp{width:100%;padding:9px 10px;background:var(--s2);border:1px solid var(--bd);color:var(--tx);border-radius:6px;font-size:14px;font-family:var(--fh);margin-bottom:10px;}
 .cmd-inp:focus{outline:none;border-color:var(--cmd-pri);}
 .cmd-modal .btnSave:disabled{opacity:.4;cursor:not-allowed;}
+.cmd-atraso{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:13px;font-weight:700;}
+.cmd-atraso .t{flex:1;min-width:200px;}
+.cmd-atraso.ro{background:var(--s1);border:1px solid var(--bd);color:var(--tx2);}
+.cmd-atraso.on{background:rgba(245,158,11,.15);border:2px solid var(--cmd-pri);color:var(--cmd-pri);text-transform:uppercase;letter-spacing:.3px;}
 .cmd-mbtn.pend{border-color:var(--cmd-ok);background:rgba(16,185,129,.06);}
 .cmd-mbtn.pend .lbl,.cmd-mbtn.pend .st{color:var(--cmd-ok);}
 .cmd-mbtn.disp{border-color:var(--cmd-pri);background:rgba(245,158,11,.12);}
@@ -337,7 +341,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev100";
+const APP_REV="Rev102";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -707,6 +711,7 @@ function ChaletMini({proyectoId,user}){
     if(!confirm(`¿Sacar a ${nom||item.dni} del conteo de montaña?\n\nSe registra una BAJADA manual por Puesto 2 (queda fuera del camino y del chalet).`))return;
     const{ok}=await db.ins("movimientos_manuales",{proyecto_id:proyectoId,puesto:"Puesto 2",operador_id:user.id,persona_id:item._synth?null:item.id,dni_raw:item.dni||null,nombre_raw:item._synth?("No registrado: "+(item.dni||"")):`${item.nombre} ${item.apellido}`,direccion:"salida"});
     if(!ok){alert("No se pudo registrar la salida. Reintentá.");return;}
+    if(!item._synth)await sacarDeAlmuerzoChalet([item],user);
     await load();
   };
   // Sacar un VEHÍCULO del conteo: los vehículos NO usan movimientos_manuales (su posición sale
@@ -992,6 +997,19 @@ function ChaletCounter({proyectoId}){
 }
 
 // ─── MOVIMIENTO MANUAL ────────────────────────────────────────────────────────
+// Si alguien baja de la montaña antes de las 13 y estaba anotado para almorzar en el chalet, se pregunta si se lo
+// saca de esa lista (comidas_diarias.come=false). Lo usan el movimiento manual y el "sacar del conteo de montaña";
+// la bajada con vehículo tiene su propio aviso en el Puesto.
+const sacarDeAlmuerzoChalet=async(personasBajan,user)=>{
+  if(horaArg()>=13)return;
+  const ids=personasBajan.map(p=>p.id).filter(Boolean);
+  if(!ids.length)return;
+  const{data:cd}=await db.sel("comidas_diarias",{f:[["fecha","eq",today()],["tipo","eq","almuerzo"],["ubicacion","eq","chalet"],["come","eq",true]],inFilter:["persona_id",ids]});
+  if(!cd||!cd.length)return;
+  const nombres=cd.map(c=>{const p=personasBajan.find(x=>x.id===c.persona_id);return p?(p.nombre+' '+p.apellido):'';}).filter(Boolean);
+  if(!confirm("🍽 Anotado para almorzar en el chalet hoy:\n\n"+nombres.map(n=>"· "+n).join("\n")+"\n\nSi baja antes de las 13 seguramente no come arriba. ¿Sacarlo de la lista de almuerzo del chalet?"))return;
+  for(const c of cd)await db.upd("comidas_diarias",{come:false,modificada_por:user.id,modificada_at:new Date().toISOString()},[["id","eq",c.id]]);
+};
 function MovimientoManual({user,proyectoId,onClose,onSaved}){
   const[step,setStep]=useState("dir");
   const[dir,setDir]=useState(null);
@@ -1009,6 +1027,8 @@ function MovimientoManual({user,proyectoId,onClose,onSaved}){
     const rawTyped=search.trim().toUpperCase();
     const{ok,data}=await db.ins("movimientos_manuales",{proyecto_id:proyectoId,puesto:user.puesto_nombre,operador_id:user.id,persona_id:persona?persona.id:null,dni_raw:persona?persona.dni:(rawTyped||null),nombre_raw:persona?`${persona.nombre} ${persona.apellido}`:(rawTyped?("No registrado: "+rawTyped):null),direccion:dir});
     if(!ok){alert("No se pudo guardar el movimiento.\n\nDetalle: "+JSON.stringify(data));setSaving(false);return;}
+    // Baja caminando por P2/P3 antes de las 13 y estaba anotado para almorzar en el chalet: mismo aviso que con vehículo
+    if(persona&&dir==="salida"&&!isP1)await sacarDeAlmuerzoChalet([persona],user);
     setSaving(false);onSaved&&onSaved();onClose();
   };
   return <div className="mo"><div className="md">
@@ -2871,14 +2891,14 @@ function CmdMealPill({comida,aplica,despachado,count,onClick,clickable,agregable
     {despachado&&<span className="check">{count>1?count:'✓'}</span>}
   </div>;
 }
-function CmdDateBar({fecha,setFecha}){
+function CmdDateBar({fecha,setFecha,readOnly}){
   const today=cmdIsoDate(new Date());
   const isToday=fecha===today;const isPast=fecha<today;
   return <div className="cmd-datebar">
     <label>Fecha</label>
-    <input type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/>
+    <input type="date" value={fecha} onChange={e=>e.target.value&&setFecha(e.target.value)}/>
     {!isToday&&<button className="btnDate today" onClick={()=>setFecha(today)}>← Hoy</button>}
-    {isPast&&<span className="warn">📖 día pasado — solo lectura</span>}
+    {isPast&&(readOnly?<span className="warn">📖 día pasado — solo lectura</span>:<span className="warn" style={{color:'var(--cmd-pri)'}}>✏️ carga atrasada</span>)}
   </div>;
 }
 function CmdPrefixBar({prefix,togglePref}){
@@ -2943,7 +2963,9 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
   const locCounts=useMemo(()=>{const m={};personas.forEach(p=>{if(p.letra)m[p.letra]=(m[p.letra]||0)+1;});return m;},[personas]);
   const locKeys=useMemo(()=>Object.keys(locCounts).sort(),[locCounts]);
   const dietaCount=useMemo(()=>personas.filter(p=>cmdIsDietaActiveForDate(dieta[p.dni],fecha)).length,[personas,dieta,fecha]);
-  const filtered=useMemo(()=>{
+  // Todos los filtros salvo Pendientes/Completos (así se pueden contar ambos sobre la misma base).
+  // Comidas tildadas: la persona tiene que tenerlas TODAS programadas.
+  const base=useMemo(()=>{
     const s=q.trim().toLowerCase();
     return personas.filter(p=>{
       if(s&&!(p.dni.includes(s)||(p.nombre+' '+p.apellido).toLowerCase().includes(s)||(p.empresa||'').toLowerCase().includes(s)))return false;
@@ -2952,23 +2974,40 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
       if(chaletOnly&&!chSet.has(p.dni))return false;
       if(agregOnly&&!p.agregado)return false;
       for(const k of mealFilters)if(!p.comidas.includes(k))return false;
-      if(statusFilter==='pendientes'&&!p.comidas.some(c=>!isDisp(p.id,c)))return false;
-      if(statusFilter==='completos'&&!p.comidas.every(c=>isDisp(p.id,c)))return false;
       return true;
     });
-  },[q,personas,despachos,mealFilters,locFilters,statusFilter,dietaOnly,chaletOnly,agregOnly,chSet,dieta,fecha]);
+  },[q,personas,mealFilters,locFilters,dietaOnly,chaletOnly,agregOnly,chSet,dieta,fecha]);
+  // Pendientes/Completos miran SOLO las comidas tildadas (antes miraban todas las de la persona, y por eso
+  // "pendientes + almuerzo" traía también a los que ya habían almorzado pero tenían la cena pendiente).
+  //  · Sin comidas tildadas: pendiente = le falta retirar alguna; completo = retiró todas.
+  //  · Con comidas tildadas: pendiente = no retiró NINGUNA de las tildadas; completo = retiró TODAS las tildadas.
+  const esPend=(p)=>mealFilters.size?[...mealFilters].every(c=>!isDisp(p.id,c)):p.comidas.some(c=>!isDisp(p.id,c));
+  const esComp=(p)=>(mealFilters.size?[...mealFilters]:p.comidas).every(c=>isDisp(p.id,c));
+  const nPend=useMemo(()=>base.filter(esPend).length,[base,despachos,mealFilters]);
+  const nComp=useMemo(()=>base.filter(esComp).length,[base,despachos,mealFilters]);
+  const filtered=useMemo(()=>statusFilter==='pendientes'?base.filter(esPend):(statusFilter==='completos'?base.filter(esComp):base),[base,despachos,statusFilter,mealFilters]);
+  // Frase que explica qué se está mostrando
+  const descFiltro=(()=>{
+    const ms=[...mealFilters].map(k=>CMD_COMIDAS.find(c=>c.key===k).label.toLowerCase());
+    const lista=ms.length>1?ms.slice(0,-1).join(', ')+' y '+ms[ms.length-1]:ms[0];
+    if(!ms.length)return statusFilter==='pendientes'?'Personas a las que les falta retirar alguna comida':(statusFilter==='completos'?'Personas que ya retiraron todas sus comidas':null);
+    const prog='Personas con '+lista+' programad'+(ms.length>1?'os':(mealFilters.has('cena')||mealFilters.has('merienda')?'a':'o'));
+    if(statusFilter==='pendientes')return prog+(ms.length>1?' que todavía no retiraron ninguna de esas comidas':' que todavía no lo retiraron');
+    if(statusFilter==='completos')return prog+(ms.length>1?' que ya retiraron todas esas comidas':' que ya lo retiraron');
+    return prog;
+  })();
   return <div>
-    <CmdDateBar fecha={fecha} setFecha={setFecha}/>
+    <CmdDateBar fecha={fecha} setFecha={setFecha} readOnly={isReadOnly}/>
     <div style={{display:'flex',gap:8,alignItems:'flex-start'}}>
       <input className="cmd-search" style={{flex:1}} placeholder="Buscar por DNI, nombre o empresa..." value={q} onChange={e=>setQ(e.target.value)}/>
       {puedeAgregar&&onAgregarPersona&&<button className="cmd-btn pri" style={{padding:'12px 14px',whiteSpace:'nowrap'}} onClick={()=>onAgregarPersona(/^\d{6,9}$/.test(q.trim())?q.trim():'')} title="Registrar a alguien que no está en el listado de hoy y entregarle la comida">➕ Agregar persona</button>}
     </div>
     <div className="cmd-fbar">
       <span className="lbl">Estado:</span>
-      <button className={'cmd-fbtn status '+(statusFilter==='pendientes'?'active':'')} onClick={()=>setStatusFilter(statusFilter==='pendientes'?null:'pendientes')}>⏳ Con pendientes</button>
-      <button className={'cmd-fbtn status '+(statusFilter==='completos'?'active':'')} onClick={()=>setStatusFilter(statusFilter==='completos'?null:'completos')}>✓ Completos</button>
+      <button className={'cmd-fbtn status '+(statusFilter==='pendientes'?'active':'')} onClick={()=>setStatusFilter(statusFilter==='pendientes'?null:'pendientes')}>⏳ Pendientes ({nPend})</button>
+      <button className={'cmd-fbtn status '+(statusFilter==='completos'?'active':'')} onClick={()=>setStatusFilter(statusFilter==='completos'?null:'completos')}>✓ Completos ({nComp})</button>
       <button className={'cmd-fbtn dieta '+(dietaOnly?'active':'')} onClick={()=>setDietaOnly(!dietaOnly)}>🥗 Dieta ({dietaCount})</button>
-      <button className={'cmd-fbtn chalet '+(chaletOnly?'active':'')} onClick={()=>setChaletOnly(!chaletOnly)} title="Personas que comen en el chalet (subieron por P2 antes de 11 AM o el garitero lo marcó)">🏔️ En chalet ({chaletCount})</button>
+      <button className={'cmd-fbtn chalet '+(chaletOnly?'active':'')} onClick={()=>setChaletOnly(!chaletOnly)} title="Personas anotadas para ALMORZAR en el chalet hoy (subieron por P2/P3 antes de las 11 o el garitero lo tildó). No indica si ahora están arriba.">🏔️ Almuerzan en chalet ({chaletCount})</button>
       {agregCount>0&&<button className={'cmd-fbtn loc '+(agregOnly?'active':'')} onClick={()=>setAgregOnly(!agregOnly)} title="Personas que no estaban en el listado o recibieron una comida no programada">➕ Agregados ({agregCount})</button>}
       {CMD_COMIDAS.map(c=>(
         <button key={c.key} className={'cmd-fbtn '+(mealFilters.has(c.key)?'active':'')} onClick={()=>toggleMeal(c.key)}>{c.em} {c.short}</button>
@@ -2984,7 +3023,7 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
       ))}
       {(mealFilters.size>0||locFilters.size>0||statusFilter||dietaOnly||chaletOnly||agregOnly||q)&&<button className="cmd-fclear" onClick={clearFilters}>Limpiar todo</button>}
     </div>}
-    <div style={{fontSize:11,color:'var(--tx3)',marginBottom:8,padding:'0 4px'}}>{filtered.length} persona{filtered.length===1?'':'s'} · {personas.length} en total del día</div>
+    <div style={{fontSize:11,color:'var(--tx3)',marginBottom:8,padding:'0 4px'}}>{filtered.length} persona{filtered.length===1?'':'s'} · {personas.length} en total del día{descFiltro&&<span style={{color:'var(--cmd-pri)',marginLeft:6}}>· {descFiltro}</span>}</div>
     {filtered.length===0?<div className="cmd-empty">Sin resultados con esos filtros.</div>:
       filtered.map(p=>{
         const dv=dieta[p.dni];
@@ -2999,7 +3038,7 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
             <div className="nameRow">
               <span className="name">{p.nombre} {p.apellido}</span>
               {dietaAplica&&<span className="badgeDieta">🥗 Dieta</span>}
-              {comeChalet&&<span className="badgeChalet" title="Come el almuerzo en el chalet (subió por P2/P3 hoy)">🏔️ Chalet</span>}
+              {comeChalet&&<span className="badgeChalet" title="Anotado para almorzar en el chalet hoy (lo marca el garitero de P2/P3 al subir antes de las 11)">🏔️ Almuerza en chalet</span>}
               {p.agregado&&<span className="badgeAgreg" title={'Agregado '+cmdHora(p.agregado.agregado_at)+' en '+cmdPuestoShort(p.agregado.puesto)+(p.agregado.motivo?' · '+p.agregado.motivo:'')}>{p.noListado?'➕ No listado':'➕ Agregado'}</span>}
               {tienePlato
                 ?<span className="badgePlato" title={'Tiene plato/tarjeta desde '+fmtTs(pl[p.dni])} onClick={e=>{e.stopPropagation();onTogglePlato&&onTogglePlato(p);}}>🍽 Plato ✓</span>
@@ -3052,7 +3091,7 @@ function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,prefix,toggl
   const getDispId=(ckey)=>{if(!persona)return null;const l=despachos.filter(d=>d.personaId===persona.id&&d.comida===ckey).sort((a,b)=>new Date(b.ts)-new Date(a.ts));return l[0]?l[0].id:null;};
   const buscar=()=>{
     const clean=dni.trim();if(!clean)return;
-    if(isReadOnly){setMsg({t:'err',txt:'No se puede despachar en fechas pasadas.'});return;}
+    if(isReadOnly){setMsg({t:'err',txt:'Es un día pasado: para cargar despachos atrasados tocá "✏️ Cargar despachos atrasados" arriba.'});return;}
     const p=personas.find(x=>x.dni===clean);
     if(!p){setMsg({t:'err',txt:'DNI '+clean+' no está en el listado del '+cmdFmtDate(fecha),agregar:clean});setPersona(null);setDni('');return;}
     setPersona(p);setMsg(null);
@@ -3267,7 +3306,9 @@ function CmdReporte({personas,despachos,fecha,onVerDia,resInicio,setResInicio}){
             const p=personas.find(x=>x.dni===d.dni);
             const c=CMD_COMIDAS.find(x=>x.key===d.comida);
             return <tr key={d.id}>
-              <td style={{fontFamily:'var(--fm)',fontSize:11}}>{new Date(d.ts).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'})}</td>
+              <td style={{fontFamily:'var(--fm)',fontSize:11}}>{cmdIsoDate(new Date(d.ts))!==d.fecha
+                ?<span title="Cargado después (carga atrasada)">✏️ {cmdFmtDate(cmdIsoDate(new Date(d.ts))).slice(0,5)} {cmdHora(d.ts)}</span>
+                :cmdHora(d.ts)}</td>
               <td>{p?(p.nombre+' '+p.apellido):d.dni}</td>
               <td>{c.em} {c.label}</td>
               <td><span className={'cmd-ptag '+cmdPuestoClass(d.puesto)}>{cmdPuestoShort(d.puesto)}</span></td>
@@ -3864,7 +3905,23 @@ function Comedor({user,proyectoId}){
   const verDia=(f)=>{setFecha(f);setSubtab('listado');};
   const togglePref=(k)=>setPrefix(prev=>{const n=new Set(prev);if(n.has(k))n.delete(k);else n.add(k);return n;});
   const stats=useMemo(()=>{const t={},d={};CMD_COMIDAS.forEach(c=>{t[c.key]=personasDia.filter(p=>p.comidas.includes(c.key)).length;d[c.key]=despachosDia.filter(x=>x.comida===c.key).length;});return{t,d};},[personasDia,despachosDia]);
-  const isReadOnly=fecha<cmdIsoDate(new Date());
+  // Días pasados: solo lectura, salvo que se habilite la "carga atrasada" para esa fecha (para pasar lo que se
+  // anotó en papel cuando no hubo sistema o luz). Se habilita por fecha: al cambiar de día vuelve a quedar bloqueado.
+  const hoyIso=cmdIsoDate(new Date());
+  const esPasado=fecha<hoyIso;
+  const[atrasoFecha,setAtrasoFecha]=useState(null);
+  const isReadOnly=esPasado&&atrasoFecha!==fecha;
+  const puedeCargarAtrasado=!!userPuesto||isAdmin;
+  const habilitarAtraso=async()=>{
+    // Si las diferencias de esa semana ya se certificaron, lo que se cargue no va a figurar en ese certificado
+    const{data}=await db.sel("viandas_certificados",{cols:"semana,fecha",f:[["semana","eq",cmdAddDays(certSemanaDe(fecha),7)]]});
+    const yaCert=data&&data[0];
+    if(!confirm('✏️ CARGA ATRASADA — '+cmdFmtDate(fecha)+'\n\nUsala solo para pasar los despachos que se anotaron en papel cuando no hubo sistema o luz. Cada despacho queda con fecha '+cmdFmtDate(fecha)+' (y la hora real en que lo cargás).'
+      +(yaCert?'\n\n⚠️ Las diferencias de esa semana ya se certificaron el mié '+cmdFmtDate(yaCert.fecha)+'. Lo que cargues ahora no va a figurar en ese certificado: avisale a un admin para que lo vuelva a generar.':'')
+      +'\n\n¿Habilitar la carga para ese día?'))return;
+    setAtrasoFecha(fecha);
+  };
+  const terminarAtraso=()=>{setAtrasoFecha(null);setFecha(hoyIso);};
   const onPickFromList=(p)=>{setPicked(p);setSubtab('scan');};
   useEffect(()=>{if(isAdmin&&subtab==='scan')setSubtab('listado');},[isAdmin]);
 
@@ -3890,6 +3947,16 @@ function Comedor({user,proyectoId}){
       ))}
       <div style={{marginLeft:'auto',fontSize:10,color:'var(--tx3)',whiteSpace:'nowrap'}}>Fecha: <strong style={{color:'var(--tx2)'}}>{cmdFmtDate(fecha)}</strong></div>
     </div>
+    {esPasado&&(isReadOnly
+      ?<div className="cmd-atraso ro">
+        <span className="t">📖 Estás viendo el {cmdFmtDate(fecha)}: día pasado, solo lectura.</span>
+        {puedeCargarAtrasado&&<button className="cmd-btn pri" onClick={habilitarAtraso}>✏️ Cargar despachos atrasados</button>}
+        <button className="cmd-btn" onClick={()=>setFecha(hoyIso)}>← Volver a hoy</button>
+      </div>
+      :<div className="cmd-atraso on">
+        <span className="t">✏️ Carga atrasada · despachos del {cmdFmtDate(fecha)}</span>
+        <button className="cmd-btn ok" onClick={terminarAtraso}>✓ Terminar y volver a hoy</button>
+      </div>)}
     <div className="cmd-tabs">
       {puedeEscanear&&<button className={'cmd-tab '+(subtab==='scan'?'active':'')} onClick={()=>setSubtab('scan')}>📷 Escanear</button>}
       <button className={'cmd-tab '+(subtab==='listado'?'active':'')} onClick={()=>setSubtab('listado')}>📋 Listado</button>
@@ -4122,6 +4189,15 @@ function Puesto({user,pid}){
     }catch(e){console.warn("loadComidasHoy:",e);}
   };
   useEffect(()=>{loadComidasHoy();const i=setInterval(loadComidasHoy,30000);return()=>clearInterval(i);},[]);
+  // "Almorzará en chalet" de una persona al fichar en P2/P3: si hoy ya se decidió (en el otro puesto, al bajar
+  // o desde la solapa Chalet) se respeta esa decisión; si no hay nada, por defecto SÍ cuando sube antes de las 11.
+  // info: fila de comidas_diarias recién leída (null = no tiene); undefined = usar la que está en memoria.
+  const comidaDefault=(personaId,info)=>{
+    const c=info!==undefined?info:comidasHoy[personaId];
+    const decidido=!!(c&&c.tipo==="almuerzo"&&c.ubicacion==="chalet");
+    const esMontana=effPuesto==="Puesto 2"||effPuesto==="Puesto 3";
+    return{tieneComidaHoy:decidido&&!!c.come,comeArriba:decidido?!!c.come:(esMontana&&horaArg()<11)};
+  };
 
   const sf=d=>{setFlash(d);setTimeout(()=>setFlash(null),2800);};
 
@@ -4177,13 +4253,22 @@ function Puesto({user,pid}){
           const candidatos=(regs||[]).filter(rr=>rr.persona_id);
           if(candidatos.length){
             const pids=candidatos.map(rr=>rr.persona_id);
-            const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,dni",inFilter:["id",pids]});
+            // Comida de hoy leída en el momento (la decisión de P2 tiene que valer en P3, aunque la memoria
+            // de este puesto tenga hasta 30 s de atraso)
+            const[{data:pers},{data:cds}]=await Promise.all([
+              db.sel("personas",{cols:"id,nombre,apellido,empresa,dni",inFilter:["id",pids]}),
+              db.sel("comidas_diarias",{f:[["fecha","eq",todayStr],["tipo","eq","almuerzo"]],inFilter:["persona_id",pids]}),
+            ]);
             const personasMap={};(pers||[]).forEach(p=>{personasMap[p.id]=p;});
+            const cdMap={};(cds||[]).forEach(c=>{cdMap[c.persona_id]=c;});
             suggestedPax=candidatos.map(rr=>{
               const p=personasMap[rr.persona_id];
               if(!p)return null;
               const auth=getHabPills("persona",p.id,freshHabs,effPuesto,radarMap,p.dni);
-              return {raw:p.dni,person:p,ok:!auth.blocks,reason:auth.reason,pills:auth.pills,activeAuths:[],_sugerido:true};
+              // Antes los sugeridos no traían este dato y al entrar a P3 quedaban SIEMPRE anotados para almorzar
+              // (aunque en P2 los hubieran destildado o subieran después de las 11).
+              const cm=comidaDefault(p.id,cds?(cdMap[p.id]||null):undefined);
+              return {raw:p.dni,person:p,ok:!auth.blocks,reason:auth.reason,pills:auth.pills,activeAuths:[],_sugerido:true,tieneComidaHoy:cm.tieneComidaHoy,comeArriba:cm.comeArriba};
             }).filter(Boolean);
             suggestedFrom={puesto:sugerirDesde.puesto,timestamp:sugerirDesde.cerrada_at,direccion:sugerirDesde.direccion};
           }
@@ -4218,14 +4303,11 @@ function Puesto({user,pid}){
     }
     const r=getHabPills("persona",found.id,habs,effPuesto,radarMap,found.dni);
     const ok=!r.blocks;
-    // Comida de hoy + default checkbox "almorzará arriba"
-    const comidaInfo=comidasHoy[found.id];
-    const tieneComidaHoy=!!(comidaInfo&&comidaInfo.come&&comidaInfo.ubicacion==="chalet"&&comidaInfo.tipo==="almuerzo");
-    const esMontana=effPuesto==="Puesto 2"||effPuesto==="Puesto 3";
-    // Regla: quien sube por P2/P3 antes de las 11 AM come en chalet por default.
-    // El garitero puede destildar el checkbox si no aplica en ese caso puntual.
-    const comeArribaDefault=esMontana&&horaArg()<11;
-    setPax(p=>[...p,{raw:found.dni,person:found,ok,reason:r.reason,pills:r.pills,activeAuths:[],tieneComidaHoy,comeArriba:tieneComidaHoy||comeArribaDefault}]);
+    // Comida de hoy + default checkbox "almorzará arriba".
+    // Regla: quien sube por P2/P3 antes de las 11 AM come en chalet por default, salvo que hoy ya se haya
+    // decidido otra cosa (ej. en P2 lo destildaron). El garitero puede cambiar el checkbox.
+    const{tieneComidaHoy,comeArriba}=comidaDefault(found.id);
+    setPax(p=>[...p,{raw:found.dni,person:found,ok,reason:r.reason,pills:r.pills,activeAuths:[],tieneComidaHoy,comeArriba}]);
     const flashExtra=tieneComidaHoy?" · 🍽 ya contado para almorzar arriba":"";
     sf({ok,label:ok?"ACCESO PERMITIDO":"ACCESO DENEGADO",sub:`${found.nombre} ${found.apellido}${flashExtra}`,detail:`DNI ${found.dni} · ${found.empresa||""}`,reason:ok?null:r.reason});
     setVal("");
