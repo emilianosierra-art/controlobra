@@ -341,7 +341,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev102";
+const APP_REV="Rev103";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -434,6 +434,11 @@ const dbSelAll=async(table,opts={})=>{
 };
 const VI={Camioneta:"🛻",Combi:"🚐",Colectivo:"🚌","Camión":"🚛",Auto:"🚗",Maquinaria:"🚜",Otro:"🚗"};
 const today=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+// DNI normalizado: los extranjeros pueden tener letras (ej. pasaporte "AAB123456"). Se compara sin espacios y en
+// mayúsculas, así "aab123456" y "AAB123456" son la misma persona. Las búsquedas en la base usan ilike (no distingue
+// mayúsculas) por si quedó alguno cargado en minúsculas.
+const normDni=(s)=>String(s==null?'':s).trim().toUpperCase();
+const sameDni=(a,b)=>normDni(a)===normDni(b);
 
 // fetchRadarDia(fecha): retorna mapa {dni: {letra, numero, cpIngresoOk, comidas:[...]}} desde
 // viandas_calendario. Se usa para (i) derivar cp_ingreso automáticamente en Puesto/Personal
@@ -470,9 +475,9 @@ const runRadarSync=async()=>{
 };
 const fetchRadarDia=async(fecha)=>{
   const{data}=await db.sel("viandas_calendario",{f:[["fecha","eq",fecha||today()]],lim:5000});
-  const map={};
+  const map={}; // clave = DNI normalizado (normDni); leer siempre con radarDe(map,dni)
   (data||[]).forEach(r=>{
-    map[r.dni]={
+    map[normDni(r.dni)]={
       letra:r.letra,
       numero:r.numero,
       codigo:r.codigo,
@@ -482,6 +487,7 @@ const fetchRadarDia=async(fecha)=>{
   });
   return map;
 };
+const radarDe=(map,dni)=>(map&&dni)?map[normDni(dni)]:undefined;
 const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
 const fmtD=d=>d?d.split("-").reverse().join("/"):"";
 const fmtTs=ts=>new Date(ts).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
@@ -496,7 +502,7 @@ const personaEstado=(id,habs,radarMap,dni)=>{
   const shIng=habSt(getHab("persona",id,"sh_ingreso",habs));
   let cpIng;
   if(radarMap&&dni){
-    const r=radarMap[dni];
+    const r=radarDe(radarMap,dni);
     cpIng=(r&&r.letra&&r.letra!=="F")?"ok":"exp";
   }else{
     cpIng=habSt(getHab("persona",id,"cp_ingreso",habs));
@@ -540,7 +546,7 @@ const chkAuth=(type,id,habs)=>{
 //   leyendo de habs para no romper.
 const getCpIngresoStatusFromRadar=(dni,radarMap)=>{
   if(!radarMap)return null;
-  const r=radarMap[dni];
+  const r=radarDe(radarMap,dni);
   if(!r||!r.letra||r.letra==="F")return"expired";
   return"ok";
 };
@@ -1160,7 +1166,7 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
 // Rev86+: cp_ingreso ya no es manual; se calcula de viandas_calendario del día.
 // Si letra != 'F' y no es null → OK (verde). Si es F o vacía → bloqueado (rojo).
 function HabCellRadar({dni,radarMap,tdClass}){
-  const r=radarMap?radarMap[dni]:null;
+  const r=radarDe(radarMap,dni)||null;
   const ok=r&&r.letra&&r.letra!=="F";
   const codigo=r&&r.codigo?r.codigo:"—";
   const tip=r
@@ -1771,12 +1777,13 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   // Auto-refresh del Radar cada 1 hora — usa refreshRadar (rápido, sin sync remoto)
   useEffect(()=>{const i=setInterval(()=>{refreshRadar();},60*60*1000);return()=>clearInterval(i);},[]);
   const saveP=async f=>{
+    f={...f,dni:normDni(f.dni)}; // sin espacios y en mayúsculas (DNI de extranjeros con letras)
     if(editP){
       const{ok,data}=await db.upd("personas",f,[["id","eq",editP.id]]);
       if(!ok){alert("No se pudo actualizar la persona.\n\nDetalle: "+JSON.stringify(data));return;}
     } else {
       // Blindaje contra duplicados por DNI
-      const{data:exist}=await db.sel("personas",{f:[["dni","eq",f.dni]],lim:1});
+      const{data:exist}=await db.sel("personas",{f:[["dni","ilike",f.dni]],lim:1});
       if(exist&&exist[0]){
         if(exist[0].deleted_at){
           // Restaurar el que estaba borrado con los datos nuevos
@@ -1896,7 +1903,7 @@ function PersonModal({p,onClose,onSave}){
   const checkDni=async(dni)=>{
     if(!isNew||!dni||dni.length<6)return;
     // Only warn if active (not deleted) — deleted ones will be restored silently
-    const{data}=await db.sel("personas",{f:[["dni","eq",dni],["deleted_at","is","null"]],lim:1});
+    const{data}=await db.sel("personas",{f:[["dni","ilike",normDni(dni)],["deleted_at","is","null"]],lim:1});
     if(data&&data[0])setDniWarn(data[0]);
     else setDniWarn(null);
   };
@@ -2677,11 +2684,13 @@ const cmdFetchPersonasFecha=async(fecha)=>{
   const{data:cal}=await db.sel("viandas_calendario",{f:[["fecha","eq",fecha]],lim:5000});
   const rows=(cal||[]).filter(r=>r.desayuno||r.almuerzo||r.merienda||r.cena);
   if(rows.length===0)return[];
-  const dnis=rows.map(r=>r.dni);
+  // Se busca cada DNI tal cual, en mayúsculas y en minúsculas (los extranjeros pueden tener letras y estar
+  // cargados distinto en el Radar y en Personal); para los numéricos las tres variantes son la misma.
+  const dnis=[...new Set(rows.flatMap(r=>{const s=String(r.dni).trim();return[s,s.toUpperCase(),s.toLowerCase()];}))];
   const{data:pers}=await db.sel("personas",{cols:"dni,nombre,apellido,empresa",inFilter:["dni",dnis]});
-  const persMap={};(pers||[]).forEach(p=>{persMap[p.dni]=p;});
+  const persMap={};(pers||[]).forEach(p=>{persMap[normDni(p.dni)]=p;});
   return rows.map(r=>{
-    const p=persMap[r.dni]||{nombre:'(no registrado)',apellido:'',empresa:''};
+    const p=persMap[normDni(r.dni)]||{nombre:'(no registrado)',apellido:'',empresa:''};
     const comidas=[];
     if(r.desayuno)comidas.push('desayuno');
     if(r.almuerzo)comidas.push('almuerzo');
@@ -2740,20 +2749,22 @@ const cmdMergeAgregados=(radar,ag)=>{
   const keys=CMD_COMIDAS.map(c=>c.key);
   const enRadar=new Set();
   const out=radar.map(p=>{
-    enRadar.add(p.dni);
+    enRadar.add(normDni(p.dni));
     const a=ag[p.dni];if(!a)return p;
     const extras=(a.comidas||[]).filter(k=>!p.comidas.includes(k));
     if(!extras.length)return p;
     return{...p,comidas:keys.filter(k=>p.comidas.includes(k)||extras.includes(k)),extras,agregado:a};
   });
   Object.values(ag).forEach(a=>{
-    if(enRadar.has(a.dni))return;
+    if(enRadar.has(normDni(a.dni)))return;
     const comidas=keys.filter(k=>(a.comidas||[]).includes(k));
     if(!comidas.length)return;
     out.push({dni:a.dni,id:a.dni,nombre:a.nombre||'(sin nombre)',apellido:a.apellido||'',empresa:a.empresa||'',code:null,letra:null,letraNom:'',numero:null,comidas,extras:comidas,agregado:a,noListado:true});
   });
   return out;
 };
+// DNI válido para agregar: 5 a 15 letras/números con al menos un número (argentinos y extranjeros con letras)
+const cmdPareceDni=(s)=>{const t=normDni(s);return /^[A-Z0-9]{5,15}$/.test(t)&&/\d/.test(t);};
 const cmdComidaPorHora=()=>{const h=new Date().getHours();return h<10?'desayuno':(h<15?'almuerzo':(h<19?'merienda':'cena'));};
 // Resumen por día: programadas (viandas_calendario) y despachadas (viandas_despachos, cuenta repeticiones de cena).
 const cmdFetchResumen=async(desde,hasta)=>{
@@ -2829,12 +2840,12 @@ function CmdAgregarModal({dniInicial,personas,onClose,onConfirm}){
   const[motivo,setMotivo]=useState('');
   const[base,setBase]=useState(null); // null = sin buscar · false = no está en la base · objeto = encontrado
   const[saving,setSaving]=useState(false);
-  const clean=dni.trim();
-  const enLista=personas.find(p=>p.dni===clean);
+  const clean=normDni(dni);
+  const enLista=personas.find(p=>sameDni(p.dni,clean));
   useEffect(()=>{
-    if(!/^\d{6,9}$/.test(clean)){setBase(null);return;}
+    if(!cmdPareceDni(clean)){setBase(null);return;}
     let vivo=true;
-    db.sel("personas",{cols:"dni,nombre,apellido,empresa",f:[["dni","eq",clean],["deleted_at","is","null"]],lim:1}).then(({data})=>{
+    db.sel("personas",{cols:"dni,nombre,apellido,empresa",f:[["dni","ilike",clean],["deleted_at","is","null"]],lim:1}).then(({data})=>{
       if(!vivo)return;
       const p=data&&data[0];
       setBase(p||false);
@@ -2843,11 +2854,12 @@ function CmdAgregarModal({dniInicial,personas,onClose,onConfirm}){
     return()=>{vivo=false;};
   },[clean]);
   const toggle=(k)=>setComidas(prev=>{const n=new Set(prev);if(n.has(k))n.delete(k);else n.add(k);return n;});
-  const valido=/^\d{6,9}$/.test(clean)&&!enLista&&(nombre.trim()||apellido.trim())&&comidas.size>0;
+  const valido=cmdPareceDni(clean)&&!enLista&&(nombre.trim()||apellido.trim())&&comidas.size>0;
   const confirmar=async()=>{
     if(!valido||saving)return;
     setSaving(true);
-    await onConfirm({dni:clean,nombre:nombre.trim(),apellido:apellido.trim(),empresa:empresa.trim()},CMD_COMIDAS.map(c=>c.key).filter(k=>comidas.has(k)),motivo.trim());
+    // Si está en la base de personal se usa el DNI tal como figura ahí (para que coincida en todos lados)
+    await onConfirm({dni:base?String(base.dni).trim():clean,nombre:nombre.trim(),apellido:apellido.trim(),empresa:empresa.trim()},CMD_COMIDAS.map(c=>c.key).filter(k=>comidas.has(k)),motivo.trim());
     setSaving(false);
   };
   return <div className="cmd-modov" onClick={onClose}>
@@ -2855,7 +2867,7 @@ function CmdAgregarModal({dniInicial,personas,onClose,onConfirm}){
       <h3 style={{color:'var(--cmd-info)'}}>➕ Agregar persona al listado de hoy</h3>
       <div className="who">Para alguien que no figura en el Radar. Queda registrado quién lo agregó, cuándo y en qué puesto.</div>
       <label>DNI</label>
-      <input className="cmd-inp" inputMode="numeric" autoFocus={!dniInicial} value={dni} onChange={e=>setDni(e.target.value.replace(/[^0-9]/g,''))} placeholder="Sin puntos"/>
+      <input className="cmd-inp" autoCapitalize="characters" autoComplete="off" autoFocus={!dniInicial} value={dni} onChange={e=>setDni(e.target.value.replace(/[^A-Za-z0-9]/g,'').toUpperCase())} placeholder="Sin puntos (extranjeros: con letras)"/>
       {enLista&&<div className="cmd-aviso">{enLista.nombre} {enLista.apellido} ya está en el listado de hoy. Buscalo y tocá la comida: si no la tiene programada, la app te deja entregarla igual.</div>}
       {!enLista&&base&&<div style={{fontSize:11,color:'var(--cmd-ok)',marginTop:-6,marginBottom:10}}>✓ Encontrado en la base de personal</div>}
       {!enLista&&base===false&&<div style={{fontSize:11,color:'var(--cmd-dieta)',marginTop:-6,marginBottom:10}}>No está en la base de personal: completá el nombre a mano.</div>}
@@ -2968,7 +2980,7 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
   const base=useMemo(()=>{
     const s=q.trim().toLowerCase();
     return personas.filter(p=>{
-      if(s&&!(p.dni.includes(s)||(p.nombre+' '+p.apellido).toLowerCase().includes(s)||(p.empresa||'').toLowerCase().includes(s)))return false;
+      if(s&&!(String(p.dni).toLowerCase().includes(s)||(p.nombre+' '+p.apellido).toLowerCase().includes(s)||(p.empresa||'').toLowerCase().includes(s)))return false;
       if(locFilters.size>0&&!locFilters.has(p.letra))return false;
       if(dietaOnly&&!cmdIsDietaActiveForDate(dieta[p.dni],fecha))return false;
       if(chaletOnly&&!chSet.has(p.dni))return false;
@@ -3000,7 +3012,7 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
     <CmdDateBar fecha={fecha} setFecha={setFecha} readOnly={isReadOnly}/>
     <div style={{display:'flex',gap:8,alignItems:'flex-start'}}>
       <input className="cmd-search" style={{flex:1}} placeholder="Buscar por DNI, nombre o empresa..." value={q} onChange={e=>setQ(e.target.value)}/>
-      {puedeAgregar&&onAgregarPersona&&<button className="cmd-btn pri" style={{padding:'12px 14px',whiteSpace:'nowrap'}} onClick={()=>onAgregarPersona(/^\d{6,9}$/.test(q.trim())?q.trim():'')} title="Registrar a alguien que no está en el listado de hoy y entregarle la comida">➕ Agregar persona</button>}
+      {puedeAgregar&&onAgregarPersona&&<button className="cmd-btn pri" style={{padding:'12px 14px',whiteSpace:'nowrap'}} onClick={()=>onAgregarPersona(cmdPareceDni(q)?normDni(q):'')} title="Registrar a alguien que no está en el listado de hoy y entregarle la comida">➕ Agregar persona</button>}
     </div>
     <div className="cmd-fbar">
       <span className="lbl">Estado:</span>
@@ -3078,8 +3090,15 @@ function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,prefix,toggl
   const[dni,setDni]=useState('');
   const[personaSel,setPersona]=useState(null);
   // Siempre la versión actual del listado (si se le agrega una comida, la tarjeta se actualiza sola)
-  const persona=personaSel?(personas.find(x=>x.dni===personaSel.dni)||personaSel):null;
+  const persona=personaSel?(personas.find(x=>sameDni(x.dni,personaSel.dni))||personaSel):null;
   const[msg,setMsg]=useState(null);
+  // Teclado numérico por defecto (lo normal); "ABC" lo cambia a letras para DNI de extranjeros
+  const[teclado,setTeclado]=useState('numeric');
+  const cambiarTeclado=()=>{
+    setTeclado(t=>t==='numeric'?'text':'numeric');
+    // En tablets hay que sacar y volver a poner el foco para que cambie el teclado en pantalla
+    const el=inputRef.current;if(el){el.blur();setTimeout(()=>el.focus(),60);}
+  };
   const inputRef=useRef(null);
   useEffect(()=>{
     if(preloadPersona){setPersona(preloadPersona);setDni(preloadPersona.dni);setMsg(null);clearPreload&&clearPreload();}
@@ -3092,8 +3111,8 @@ function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,prefix,toggl
   const buscar=()=>{
     const clean=dni.trim();if(!clean)return;
     if(isReadOnly){setMsg({t:'err',txt:'Es un día pasado: para cargar despachos atrasados tocá "✏️ Cargar despachos atrasados" arriba.'});return;}
-    const p=personas.find(x=>x.dni===clean);
-    if(!p){setMsg({t:'err',txt:'DNI '+clean+' no está en el listado del '+cmdFmtDate(fecha),agregar:clean});setPersona(null);setDni('');return;}
+    const p=personas.find(x=>sameDni(x.dni,clean));
+    if(!p){setMsg({t:'err',txt:'DNI '+normDni(clean)+' no está en el listado del '+cmdFmtDate(fecha),agregar:normDni(clean)});setPersona(null);setDni('');return;}
     setPersona(p);setMsg(null);
     const auto=[...prefix].filter(c=>p.comidas.includes(c)&&!despachos.some(d=>d.personaId===p.id&&d.comida===c));
     auto.forEach(c=>onDispatch(p,c));
@@ -3131,7 +3150,8 @@ function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,prefix,toggl
   return <div>
     <CmdPrefixBar prefix={prefix} togglePref={togglePref}/>
     <div className="cmd-scaninp">
-      <input ref={inputRef} placeholder={isReadOnly?'Solo lectura — fecha pasada':'DNI (escaneá o tipeá + Enter)'} value={dni} onChange={e=>setDni(e.target.value)} onKeyDown={e=>e.key==='Enter'&&buscar()} inputMode="numeric" autoFocus disabled={isReadOnly}/>
+      <input ref={inputRef} placeholder={isReadOnly?'Solo lectura — fecha pasada':'DNI (escaneá o tipeá + Enter)'} value={dni} onChange={e=>setDni(e.target.value)} onKeyDown={e=>e.key==='Enter'&&buscar()} inputMode={teclado} autoCapitalize="characters" autoComplete="off" autoFocus disabled={isReadOnly}/>
+      <button onClick={cambiarTeclado} disabled={isReadOnly} title={teclado==='numeric'?'Teclado con letras (DNI de extranjeros)':'Volver al teclado numérico'} style={{background:'var(--s2)',color:'var(--tx2)',border:'1px solid var(--bd)'}}>{teclado==='numeric'?'ABC':'123'}</button>
       <button onClick={buscar} disabled={isReadOnly}>Buscar</button>
     </div>
     {msg&&<div className={'cmd-empty'+(msg.t==='warn'?' cmd-warnbox':'')} style={msg.t==='warn'?undefined:{color:msg.t==='err'?'var(--cmd-err)':'var(--cmd-ok)',padding:12}}>
@@ -4285,9 +4305,10 @@ function Puesto({user,pid}){
   const scanP=useCallback(async()=>{
     const v=val.trim();if(!v)return;
     if(!isOnline()){sf({ok:false,label:"SIN CONEXIÓN",sub:"No se puede fichar",reason:"Registrá la fichada en la hoja alternativa"});setVal("");return;}
-    if(pax.some(p=>p.raw===v.toUpperCase())){sf({ok:false,label:"DNI REPETIDO",sub:v,reason:"Ya fue escaneado"});setVal("");return;}
+    if(pax.some(p=>sameDni(p.raw,v))){sf({ok:false,label:"DNI REPETIDO",sub:v,reason:"Ya fue escaneado"});setVal("");return;}
     let found=null;
-    const{data}=await db.sel("personas",{f:[["dni","eq",v],["deleted_at","is","null"]],lim:1});
+    // ilike = igual sin distinguir mayúsculas (DNI de extranjeros con letras)
+    const{data}=await db.sel("personas",{f:[["dni","ilike",v],["deleted_at","is","null"]],lim:1});
     if(data===null){
       // Consulta falló: conexión inestable → no se ficha
       setOffline(true);
@@ -4759,11 +4780,11 @@ function PublicDashboard({onBack}){
     setSearching(true);setSearchResult(null);
     const q=search.trim();
     // Intentar como DNI
-    const{data:p}=await db.sel("personas",{f:[["dni","eq",q],["deleted_at","is","null"]],lim:1});
+    const{data:p}=await db.sel("personas",{f:[["dni","ilike",q],["deleted_at","is","null"]],lim:1});
     const habOk=(pid,tipo)=>habs.some(h=>h.entity_type==="persona"&&h.persona_id===pid&&h.tipo===tipo&&!h.suspendida&&(!h.fecha_hasta||(h.fecha_hasta+"").slice(0,10)>=today()));
     if(p&&p[0]){
       const shOk=habOk(p[0].id,"sh_ingreso");
-      const cpOk=!!(radarMap[p[0].dni]&&radarMap[p[0].dni].cpIngresoOk);
+      const cpOk=!!(radarDe(radarMap,p[0].dni)&&radarDe(radarMap,p[0].dni).cpIngresoOk);
       setSearchResult({type:"persona",data:p[0],shOk,cpOk,estado:personaEstado(p[0].id,habs,radarMap,p[0].dni)});
       setSearching(false);return;
     }
@@ -4772,7 +4793,7 @@ function PublicDashboard({onBack}){
     const found=(p2||[]).filter(x=>`${x.nombre} ${x.apellido}`.toLowerCase().includes(q.toLowerCase()));
     if(found.length===1){
       const shOk=habOk(found[0].id,"sh_ingreso");
-      const cpOk=!!(radarMap[found[0].dni]&&radarMap[found[0].dni].cpIngresoOk);
+      const cpOk=!!(radarDe(radarMap,found[0].dni)&&radarDe(radarMap,found[0].dni).cpIngresoOk);
       setSearchResult({type:"persona",data:found[0],shOk,cpOk,estado:personaEstado(found[0].id,habs,radarMap,found[0].dni)});
     } else if(found.length>1){
       setSearchResult({type:"multiple",items:found});
@@ -4934,7 +4955,7 @@ function PublicDashboard({onBack}){
             const dni=searchResult.data.dni;
             const habCheck=(tipo)=>{const h=habs.find(x=>x.entity_type==="persona"&&x.persona_id===pid&&x.tipo===tipo&&!x.suspendida&&(!x.fecha_hasta||(x.fecha_hasta+"").slice(0,10)>=today()));return h?{ok:true,fecha:h.fecha_hasta}:{ok:false};};
             const shIng=habCheck("sh_ingreso");const shCha=habCheck("sh_chalet");const shMan=habCheck("sh_manejo");
-            const rr=radarMap[dni];
+            const rr=radarDe(radarMap,dni);
             const cpOk=!!(rr&&rr.cpIngresoOk);
             const cpCod=rr?rr.codigo:"—";
             return <div style={{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:8,padding:"20px 24px"}}>
