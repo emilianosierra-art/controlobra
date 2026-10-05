@@ -341,7 +341,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev103";
+const APP_REV="Rev105";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -488,6 +488,17 @@ const fetchRadarDia=async(fecha)=>{
   return map;
 };
 const radarDe=(map,dni)=>(map&&dni)?map[normDni(dni)]:undefined;
+// Cómo se nombra cada movimiento según el puesto: P1 (obra) y P3 (chalet) ENTRA / SALE; P2 (camino) SUBE / BAJA.
+// En la base sigue guardándose "entrada" / "salida"; esto es solo el texto que se muestra.
+const PUESTO_DIR={
+  "Puesto 1":{entrada:{v:"entra",p:"entró",d:"a la obra"},salida:{v:"sale",p:"salió",d:"de la obra"}},
+  "Puesto 2":{entrada:{v:"sube",p:"subió",d:"rumbo al chalet"},salida:{v:"baja",p:"bajó",d:"hacia la obra"}},
+  "Puesto 3":{entrada:{v:"entra",p:"entró",d:"al chalet"},salida:{v:"sale",p:"salió",d:"del chalet"}},
+};
+const dirInfo=(puesto,dir)=>(PUESTO_DIR[puesto]||PUESTO_DIR["Puesto 1"])[dir==="salida"?"salida":"entrada"];
+const dirVerbo=(puesto,dir)=>dirInfo(puesto,dir).v;   // "entra" / "sale" / "sube" / "baja"
+const dirPasado=(puesto,dir)=>dirInfo(puesto,dir).p;  // "entró" / "salió" / "subió" / "bajó"
+const cap1=(s)=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
 const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
 const fmtD=d=>d?d.split("-").reverse().join("/"):"";
 const fmtTs=ts=>new Date(ts).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
@@ -1023,7 +1034,7 @@ function MovimientoManual({user,proyectoId,onClose,onSaved}){
   const[personas,setPersonas]=useState([]);
   const[saving,setSaving]=useState(false);
   const isP1=user.puesto_nombre==="Puesto 1";
-  const labels=isP1?{entrada:"Entro",salida:"Salio"}:{entrada:"Subio",salida:"Bajo"};
+  const labels={entrada:cap1(dirPasado(user.puesto_nombre,"entrada")),salida:cap1(dirPasado(user.puesto_nombre,"salida"))};
   useEffect(()=>{db.sel("personas",{f:[["deleted_at","is","null"]],ord:"apellido.asc"}).then(({data})=>{if(data)setPersonas(data);});},[]);
   const filtered=personas.filter(p=>search?`${p.nombre} ${p.apellido} ${p.dni} ${p.empresa||""}`.toLowerCase().includes(search.toLowerCase()):true);
   const save=async(persona)=>{
@@ -1043,8 +1054,8 @@ function MovimientoManual({user,proyectoId,onClose,onSaved}){
       {step==="dir"&&<>
         <div style={{fontSize:13,color:"var(--tx2)",marginBottom:16}}>Que movimiento queres registrar?</div>
         <div className="dir-big">
-          <button className="dir-big-btn in" onClick={()=>{setDir("entrada");setStep("persona");}}>entro / subio</button>
-          <button className="dir-big-btn out" onClick={()=>{setDir("salida");setStep("persona");}}>salio / bajo</button>
+          <button className="dir-big-btn in" onClick={()=>{setDir("entrada");setStep("persona");}}>⬆️ {labels.entrada}</button>
+          <button className="dir-big-btn out" onClick={()=>{setDir("salida");setStep("persona");}}>⬇️ {labels.salida}</button>
         </div>
       </>}
       {step==="persona"&&<>
@@ -1112,7 +1123,9 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
   const[localHab,setLocalHab]=useState(null); // null = usar habInit, object = guardado local
   const[saving,setSaving]=useState(false);
 
-  const hab=localHab!==null?localHab:habInit;
+  // localHab {_deleted:true} = se acaba de eliminar: la celda vuelve a "+ Agregar" sin esperar a recargar
+  // (antes ese objeto vacío se leía como habilitación vigente y mostraba "ok").
+  const hab=localHab!==null?(localHab._deleted?null:localHab):habInit;
   const _d=new Date();
   const _t=`${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
   const st=!hab?"none":hab.suspendida?"sus":(hab.fecha_hasta&&hab.fecha_hasta<_t)?"exp":"ok";
@@ -1149,7 +1162,7 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
     setShow(false);
   };
 
-  const habForModal=localHab&&!localHab._deleted?localHab:habInit;
+  const habForModal=hab; // eliminada → el modal abre como "Nueva", sin botón Eliminar
 
   return <td className={tdClass||""} style={{minWidth:88}}>
     {st==="none"
@@ -1429,7 +1442,7 @@ function PersonaDetalleModal({persona,proyectoId,onClose}){
           ?<div style={{color:"var(--tx2)",textAlign:"center",padding:12}}>Sin registros.</div>
           :<div style={{maxHeight:280,overflowY:"auto"}}>
             {historial.map(s=><div key={s.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid var(--bd)"}}>
-              <span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`} style={{fontSize:11,flexShrink:0}}>{s.direccion}</span>
+              <span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`} style={{fontSize:11,flexShrink:0}}>{dirVerbo(s.puesto,s.direccion)}</span>
               <div style={{flex:1}}>
                 <div style={{fontSize:13,fontWeight:500}}>{s.puesto}{s.veh?` · ${s.veh.patente}`:""}</div>
                 <div style={{fontSize:11,color:"var(--tx2)"}}>{fmtTs(s.cerrada_at)}</div>
@@ -1510,7 +1523,7 @@ function VehiculoDetalleModal({vehiculo,proyectoId,onClose}){
               const max=2;
               const namesStr=names.length===0?"sin pasajeros":names.length<=max?names.join(", "):names.slice(0,max).join(", ")+" y "+(names.length-max)+" más";
               return <div key={s.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"9px 0",borderBottom:"1px solid var(--bd)"}}>
-                <span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`} style={{fontSize:11,flexShrink:0,marginTop:2}}>{s.direccion}</span>
+                <span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`} style={{fontSize:11,flexShrink:0,marginTop:2}}>{dirVerbo(s.puesto,s.direccion)}</span>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:500}}>{s.puesto} · {s.total_personas} pers.{(s.total_rechazados||0)>0?<span style={{color:"var(--rd)",marginLeft:6}}>{s.total_rechazados} deneg.</span>:null}</div>
                   <div style={{fontSize:11,color:"var(--tx2)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{namesStr}</div>
@@ -1533,7 +1546,7 @@ function RegistroManualAcceso({persona,user,proyectoId,onClose,onSaved}){
   const[saving,setSaving]=useState(false);
   const[step,setStep]=useState("dir"); // dir | vehiculo | confirm
   const isP1=user.puesto_nombre==="Puesto 1";
-  const labels=isP1?{entrada:"Ingreso a obra",salida:"Salio de obra"}:{entrada:"Subio al chalet",salida:"Bajo del chalet"};
+  const labels={entrada:cap1(dirPasado(user.puesto_nombre,"entrada"))+" "+dirInfo(user.puesto_nombre,"entrada").d,salida:cap1(dirPasado(user.puesto_nombre,"salida"))+" "+dirInfo(user.puesto_nombre,"salida").d};
 
   const guardar=async()=>{
     setSaving(true);
@@ -2127,10 +2140,10 @@ function SesionDetalle({ses,onClose,onInverted}){
   },[ses.id]);
   return <div className="mo"><div className="md md-lg">
     <div className="mh">
-      <div><div className="mt">{veh?veh.patente:"Sesion"} — detalle</div><div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)",marginTop:2}}>{ses.puesto} · {fmtTs(ses.cerrada_at)} · <span className={`ld ld-${ses.direccion==="entrada"?"in":"out"}`}>{ses.direccion}</span></div></div>
+      <div><div className="mt">{veh?veh.patente:"Sesion"} — detalle</div><div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)",marginTop:2}}>{ses.puesto} · {fmtTs(ses.cerrada_at)} · <span className={`ld ld-${ses.direccion==="entrada"?"in":"out"}`}>{dirVerbo(ses.puesto,ses.direccion)}</span></div></div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         <button className="bsm" onClick={()=>{
-          const dir=ses.direccion==="entrada"?"ENTRA":"SALE";
+          const dir=dirVerbo(ses.puesto,ses.direccion).toUpperCase();
           const pat=veh?veh.patente:"SIN PATENTE";
           const desc=veh?` ${veh.descripcion||veh.tipo}`:"";
           const paxStr=pers.map(p=>`${p.nombre} ${p.apellido} ${p.empresa||""} DNI ${p.dni}`).join("; ");
@@ -2327,7 +2340,7 @@ function Registros({defaultPuesto,user}){
             const veh=vehiculos[s.vehiculo_id];
             return <tr key={s.id} style={{cursor:"pointer"}} onClick={()=>setDetalle(s)}>
               <td className="mn" style={{fontSize:12,color:"var(--tx2)"}}>{fmtTs(s.cerrada_at)}</td>
-              <td><span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`}>{s.direccion}</span></td>
+              <td><span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`}>{dirVerbo(s.puesto,s.direccion)}</span></td>
               <td style={{fontSize:12,color:"var(--tx2)"}}>{s.puesto}</td>
               <td><span style={{fontFamily:"var(--fm)",fontWeight:600}}>{veh?veh.patente:"—"}</span></td>
               <td style={{color:"var(--tx2)",fontSize:12,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getPaxLabel(s.id)}</td>
@@ -2346,7 +2359,7 @@ function Registros({defaultPuesto,user}){
           <thead><tr><th>Hora</th><th>Dir.</th><th>Puesto</th><th>Persona</th><th>DNI</th><th></th></tr></thead>
           <tbody>{manFiltered.map(m=><tr key={m.id}>
             <td className="mn" style={{fontSize:12,color:"var(--tx2)"}}>{fmtTs(m.created_at)}</td>
-            <td><span className={`ld ld-${m.direccion==="entrada"?"in":"out"}`}>{m.direccion}</span></td>
+            <td><span className={`ld ld-${m.direccion==="entrada"?"in":"out"}`}>{dirVerbo(m.puesto,m.direccion)}</span></td>
             <td style={{fontSize:12,color:"var(--tx2)"}}>{m.puesto}</td>
             <td style={{fontWeight:500}}>{m.nombre_raw||<span style={{color:"var(--tx2)"}}>Sin identificar</span>}</td>
             <td className="mn" style={{color:"var(--tx2)"}}>{m.dni_raw||"—"}</td>
@@ -2537,16 +2550,39 @@ const horaArg=()=>{
   catch(e){return new Date().getHours();}
 };
 
+// Agregar a mano a la lista de almuerzo del chalet (después de las 11 el Puesto ya no anota solo).
+// Se elige de la gente que está EN EL PREDIO (misma cuenta que "En Predio"), buscando por DNI, nombre o apellido;
+// primero aparecen los que ya están en el chalet y después los del camino. El admin puede ver toda la base.
 function ConteoViandasChaletAddModal({user,proyectoId,existentes,onClose,onAdded}){
   const[search,setSearch]=useState("");
   const[personas,setPersonas]=useState([]);
+  const[enPredio,setEnPredio]=useState(null); // Set de persona_id / dni dentro del predio
+  const[pos,setPos]=useState({});             // persona_id → "chalet" | "camino"
+  const[todaLaBase,setTodaLaBase]=useState(false);
   const[loading,setLoading]=useState(true);
   const[saving,setSaving]=useState(null);
   useEffect(()=>{
-    db.sel("personas",{f:[["deleted_at","is","null"]],ord:"apellido.asc",lim:5000}).then(({data})=>{if(data)setPersonas(data);setLoading(false);});
+    Promise.all([
+      db.sel("personas",{f:[["deleted_at","is","null"]],ord:"apellido.asc",lim:5000}),
+      calcPersonasEnPredio().catch(()=>null),
+      calcPosicionesMontana().catch(()=>null),
+    ]).then(([{data},pred,mont])=>{
+      if(data)setPersonas(data);
+      setEnPredio(pred?pred.inSet:new Set());
+      setPos((mont&&mont.persona)||{});
+      setLoading(false);
+    });
   },[]);
   const existSet=new Set(existentes.map(e=>e.persona_id));
-  const filtered=personas.filter(p=>!existSet.has(p.id)).filter(p=>!search||`${p.nombre} ${p.apellido} ${p.dni} ${p.empresa||""}`.toLowerCase().includes(search.toLowerCase()));
+  const lugar=(p)=>pos[p.id]==="chalet"?"chalet":(pos[p.id]==="camino"?"camino":"predio");
+  const orden={chalet:0,camino:1,predio:2};
+  const q=search.trim().toLowerCase();
+  const filtered=personas
+    .filter(p=>!existSet.has(p.id))
+    .filter(p=>todaLaBase||(enPredio&&(enPredio.has(p.id)||enPredio.has(p.dni))))
+    .filter(p=>!q||`${p.nombre} ${p.apellido} ${p.dni}`.toLowerCase().includes(q))
+    .sort((a,b)=>orden[lugar(a)]-orden[lugar(b)]);
+  const LUGAR_TAG={chalet:{t:"en chalet",c:"#A78BFA"},camino:{t:"en camino",c:"#60A5FA"},predio:{t:"en predio",c:"var(--tx2)"}};
   const add=async(persona)=>{
     setSaving(persona.id);
     const todayStr=today();
@@ -2560,16 +2596,20 @@ function ConteoViandasChaletAddModal({user,proyectoId,existentes,onClose,onAdded
     onAdded&&onAdded();
   };
   return <div className="mo"><div className="md">
-    <div className="mh"><div className="mt">Agregar comensal</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mh"><div className="mt">Agregar comensal en chalet</div><button className="mc" onClick={onClose}>x</button></div>
     <div className="mb">
-      <div className="f"><label>Buscar persona</label><input placeholder="Nombre, apellido o DNI..." value={search} onChange={e=>setSearch(e.target.value)} autoFocus/></div>
+      <div style={{fontSize:12,color:"var(--tx2)",marginBottom:10}}>Queda anotado para <strong style={{color:"var(--tx)"}}>almorzar hoy en el chalet</strong> (también se ve en Viandas). Solo aparece la gente que está en el predio.</div>
+      <div className="f"><label>Buscar por DNI, nombre o apellido</label><input placeholder="Ej: 30456789 o Pérez" value={search} onChange={e=>setSearch(e.target.value)} autoFocus/></div>
+      {user.rol==="admin"&&<label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--tx2)",margin:"-4px 0 8px",cursor:"pointer"}}><input type="checkbox" checked={todaLaBase} onChange={e=>setTodaLaBase(e.target.checked)} style={{width:"auto"}}/> Buscar en toda la base (no solo en el predio)</label>}
       {loading?<Spin/>:<div style={{maxHeight:340,overflowY:"auto",marginTop:4}}>
-        {filtered.slice(0,30).map(p=><div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:5,marginBottom:3,cursor:saving?"wait":"pointer",opacity:saving===p.id?.5:1}} onClick={()=>!saving&&add(p)}>
+        {filtered.slice(0,40).map(p=>{const lg=LUGAR_TAG[lugar(p)];return <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 12px",borderRadius:5,marginBottom:3,cursor:saving?"wait":"pointer",opacity:saving===p.id?.5:1}} onMouseOver={e=>e.currentTarget.style.background="var(--s2)"} onMouseOut={e=>e.currentTarget.style.background="transparent"} onClick={()=>!saving&&add(p)}>
           <div className="av">{ini(`${p.nombre} ${p.apellido}`)}</div>
           <div style={{flex:1}}><div style={{fontWeight:500}}>{p.nombre} {p.apellido}</div><div style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa||"—"} · DNI {p.dni}</div></div>
+          {(!todaLaBase||enPredio.has(p.id)||enPredio.has(p.dni))&&<span style={{fontSize:10,fontWeight:700,textTransform:"uppercase",color:lg.c,border:"1px solid currentColor",borderRadius:3,padding:"1px 6px",whiteSpace:"nowrap"}}>{lg.t}</span>}
           {saving===p.id&&<span style={{fontSize:11,color:"var(--tx2)"}}>agregando...</span>}
-        </div>)}
-        {filtered.length===0&&<div style={{textAlign:"center",color:"var(--tx2)",padding:20,fontSize:13}}>{personas.length===0?"Sin personas":"Sin resultados o ya están en la lista"}</div>}
+        </div>;})}
+        {filtered.length>40&&<div style={{textAlign:"center",color:"var(--tx3)",padding:8,fontSize:11}}>Hay {filtered.length-40} más: escribí parte del nombre o del DNI para encontrarlo.</div>}
+        {filtered.length===0&&<div style={{textAlign:"center",color:"var(--tx2)",padding:20,fontSize:13}}>{q?"Nadie en el predio coincide con la búsqueda (o ya está en la lista).":"No hay nadie más en el predio para agregar."}</div>}
       </div>}
     </div>
   </div></div>;
@@ -2582,17 +2622,22 @@ function ConteoViandasChalet({user,proyectoId}){
   const[loading,setLoading]=useState(true);
   const[showAdd,setShowAdd]=useState(false);
   const[filterEmpresa,setFilterEmpresa]=useState({});
-  const canEdit=user.rol==="admin"||user.puesto_nombre==="Puesto 2";
+  const[dieta,setDieta]=useState({});        // DNI normalizado → {nota,hasta} (menú dieta cargado en Viandas)
+  const[soloDieta,setSoloDieta]=useState(false);
+  // Agregar / quitar comensales: admin y los puestos de montaña (P2 y P3)
+  const canEdit=user.rol==="admin"||user.puesto_nombre==="Puesto 2"||user.puesto_nombre==="Puesto 3";
   const todayStr=today();
 
   const load=async()=>{
-    const[{data:c},pos]=await Promise.all([
+    const[{data:c},pos,di]=await Promise.all([
       db.sel("comidas_diarias",{f:[["fecha","eq",todayStr],["tipo","eq","almuerzo"],["ubicacion","eq","chalet"],["come","eq",true]],ord:"creada_at.asc",lim:1000}),
       calcPosicionesMontana(),
+      cmdFetchDieta().catch(()=>({})),
     ]);
     const items=c||[];
     setComidas(items);
     setLastEvents(pos.personaLast||{});
+    const dm={};Object.entries(di||{}).forEach(([k,v])=>{dm[normDni(k)]=v;});setDieta(dm);
     const pids=items.map(x=>x.persona_id);
     if(pids.length>0){
       const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,dni",inFilter:["id",pids]});
@@ -2613,28 +2658,35 @@ function ConteoViandasChalet({user,proyectoId}){
 
   const empresas=[...new Set(comidas.map(c=>{const p=personasMap[c.persona_id];return p?(p.empresa||"Sin empresa"):"—";}))].sort();
   const activeEmpresas=Object.keys(filterEmpresa).filter(e=>filterEmpresa[e]);
-  const filtered=activeEmpresas.length===0?comidas:comidas.filter(c=>{const p=personasMap[c.persona_id];const e=p?(p.empresa||"Sin empresa"):"—";return filterEmpresa[e];});
+  // Menú dieta vigente hoy (la misma regla que Viandas: con fecha "hasta" vale hasta ese día inclusive)
+  const dietaDe=(p)=>{if(!p)return null;const v=dieta[normDni(p.dni)];return cmdIsDietaActiveForDate(v,todayStr)?v:null;};
+  const porEmpresa=activeEmpresas.length===0?comidas:comidas.filter(c=>{const p=personasMap[c.persona_id];const e=p?(p.empresa||"Sin empresa"):"—";return filterEmpresa[e];});
+  const nDieta=porEmpresa.filter(c=>dietaDe(personasMap[c.persona_id])).length;
+  const filtered=soloDieta?porEmpresa.filter(c=>dietaDe(personasMap[c.persona_id])):porEmpresa;
+  const DIETA_COL="#FBBF24";
 
   return <div>
     <div className="ph2">
       <div className="ptit">Conteo Viandas Chalet · <span>Almuerzo</span> de hoy</div>
-      {canEdit&&<button className="badd" onClick={()=>setShowAdd(true)}>+ Agregar comensal</button>}
+      {canEdit&&<button className="badd" onClick={()=>setShowAdd(true)}>+ Agregar comensal en chalet</button>}
     </div>
     <div style={{background:"linear-gradient(135deg,rgba(245,158,11,.15),rgba(139,92,246,.08))",border:"2px solid var(--acc)",borderRadius:10,padding:"18px 24px",marginBottom:18,display:"flex",alignItems:"center",gap:20,flexWrap:"wrap"}}>
       <div style={{fontFamily:"var(--fh)",fontSize:64,fontWeight:900,color:"var(--acc)",lineHeight:1}}>{filtered.length}</div>
       <div>
         <div style={{fontFamily:"var(--fh)",fontSize:18,fontWeight:800,color:"var(--acc)",textTransform:"uppercase",letterSpacing:".05em"}}>Comensales en Chalet</div>
         <div style={{fontSize:13,color:"var(--tx2)",marginTop:2}}>{fmtD(todayStr)} · actualiza cada 15 seg</div>
+        {nDieta>0&&<div style={{fontSize:13,fontWeight:700,color:DIETA_COL,marginTop:4}}>🥗 {nDieta} con menú dieta</div>}
       </div>
       <button onClick={()=>{
-        const lines=filtered.map(c=>{const p=personasMap[c.persona_id];return p?`${p.nombre} ${p.apellido} — ${p.empresa||""}`:`(${c.persona_id})`;});
-        const txt=`COMENSALES EN CHALET ${fmtD(todayStr)} — TOTAL ${filtered.length}\n\n${lines.join("\n")}`;
+        const lines=filtered.map(c=>{const p=personasMap[c.persona_id];if(!p)return`(${c.persona_id})`;const d=dietaDe(p);return`${p.nombre} ${p.apellido} — ${p.empresa||""}${d?` — DIETA${d.nota?": "+d.nota:""}`:""}`;});
+        const txt=`COMENSALES EN CHALET ${fmtD(todayStr)} — TOTAL ${filtered.length}${nDieta?` (${nDieta} con dieta)`:""}\n\n${lines.join("\n")}`;
         navigator.clipboard.writeText(txt).catch(()=>{const el=document.createElement("textarea");el.value=txt;document.body.appendChild(el);el.select();document.execCommand("copy");document.body.removeChild(el);});
       }} style={{background:"rgba(245,158,11,.15)",border:"1px solid var(--acc)",color:"var(--acc)",borderRadius:5,padding:"7px 14px",fontFamily:"var(--fh)",fontSize:13,fontWeight:700,textTransform:"uppercase",cursor:"pointer",marginLeft:"auto"}}>Copiar lista</button>
     </div>
-    {empresas.length>1&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
-      {empresas.map(e=>{const on=!!filterEmpresa[e];return <button key={e} onClick={()=>setFilterEmpresa(f=>({...f,[e]:!f[e]}))} style={{padding:"3px 10px",borderRadius:12,border:"1px solid",fontSize:11,fontFamily:"var(--fm)",cursor:"pointer",background:on?"var(--acc2)":"var(--s2)",color:on?"#fff":"var(--tx2)",borderColor:on?"var(--acc2)":"var(--bd)"}}>{e}</button>;})}
-      {activeEmpresas.length>0&&<button className="bsm" onClick={()=>setFilterEmpresa({})} style={{fontSize:11}}>x Limpiar filtro</button>}
+    {(empresas.length>1||nDieta>0||soloDieta)&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+      {(nDieta>0||soloDieta)&&<button onClick={()=>setSoloDieta(!soloDieta)} style={{padding:"3px 10px",borderRadius:12,border:"1px solid",fontSize:11,fontFamily:"var(--fm)",fontWeight:700,cursor:"pointer",background:soloDieta?DIETA_COL:"var(--s2)",color:soloDieta?"#000":DIETA_COL,borderColor:DIETA_COL}}>🥗 Solo dieta ({nDieta})</button>}
+      {empresas.length>1&&empresas.map(e=>{const on=!!filterEmpresa[e];return <button key={e} onClick={()=>setFilterEmpresa(f=>({...f,[e]:!f[e]}))} style={{padding:"3px 10px",borderRadius:12,border:"1px solid",fontSize:11,fontFamily:"var(--fm)",cursor:"pointer",background:on?"var(--acc2)":"var(--s2)",color:on?"#fff":"var(--tx2)",borderColor:on?"var(--acc2)":"var(--bd)"}}>{e}</button>;})}
+      {(activeEmpresas.length>0||soloDieta)&&<button className="bsm" onClick={()=>{setFilterEmpresa({});setSoloDieta(false);}} style={{fontSize:11}}>x Limpiar filtro</button>}
     </div>}
     {loading?<Spin/>:<div className="tw"><table>
       <thead><tr><th>Persona</th><th>Empresa</th><th>Última fichada</th>{canEdit&&<th></th>}</tr></thead>
@@ -2643,17 +2695,21 @@ function ConteoViandasChalet({user,proyectoId}){
         {filtered.map(c=>{
           const p=personasMap[c.persona_id];
           const le=lastEvents[c.persona_id];
-          return <tr key={c.id}>
+          const d=dietaDe(p);
+          return <tr key={c.id} style={d?{boxShadow:`inset 3px 0 0 ${DIETA_COL}`}:undefined}>
             <td><div style={{display:"flex",alignItems:"center",gap:8}}>
               <div className="av">{p?ini(`${p.nombre} ${p.apellido}`):"?"}</div>
               <div>
-                <div style={{fontWeight:500}}>{p?`${p.nombre} ${p.apellido}`:"(persona borrada)"}</div>
+                <div style={{fontWeight:500,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>{p?`${p.nombre} ${p.apellido}`:"(persona borrada)"}
+                  {d&&<span style={{background:DIETA_COL,color:"#000",fontSize:10,fontWeight:800,padding:"1px 6px",borderRadius:3,textTransform:"uppercase",letterSpacing:".03em"}}>🥗 Dieta</span>}
+                </div>
                 {p&&<div style={{fontSize:11,color:"var(--tx2)"}}>DNI {p.dni}</div>}
+                {d&&(d.nota||d.hasta)&&<div style={{fontSize:11,color:DIETA_COL,marginTop:2}}>{d.nota?"Nota: "+d.nota:""}{d.nota&&d.hasta?" · ":""}{d.hasta?"hasta "+fmtD(d.hasta):""}</div>}
               </div>
             </div></td>
             <td style={{color:"var(--tx2)",fontSize:12}}>{p?p.empresa||"—":"—"}</td>
             <td style={{fontSize:12,color:"var(--tx2)"}}>
-              {le?<><span className={`ld ld-${le.dir==="entrada"?"in":"out"}`} style={{fontSize:10}}>{le.dir}</span> <span style={{marginLeft:6,fontFamily:"var(--fm)"}}>{le.puesto} · {fmtTs(new Date(le.t).toISOString())}</span></>:"sin fichada hoy"}
+              {le?<><span className={`ld ld-${le.dir==="entrada"?"in":"out"}`} style={{fontSize:10}}>{dirVerbo(le.puesto,le.dir)}</span> <span style={{marginLeft:6,fontFamily:"var(--fm)"}}>{le.puesto} · {fmtTs(new Date(le.t).toISOString())}</span></>:"sin fichada hoy"}
             </td>
             {canEdit&&<td><button className="bsm bsm-r" onClick={()=>quitar(c)}>Quitar</button></td>}
           </tr>;
@@ -4114,7 +4170,7 @@ function RecentSessions({puesto,onSelectSesion}){
     {list.map(s=>{
       const veh=vehiculos[s.vehiculo_id];
       return <div key={s.id} className="sr" onClick={()=>onSelectSesion(s)}>
-        <span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`}>{s.direccion}</span>
+        <span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`}>{dirVerbo(puesto,s.direccion)}</span>
         <div style={{flex:1,minWidth:0}}>
           <span style={{fontFamily:"var(--fm)",fontWeight:600,fontSize:13}}>{veh?veh.patente:"—"}</span>
           <span style={{color:"var(--tx2)",fontSize:12,marginLeft:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getPaxStr(s.id)}</span>
@@ -4394,7 +4450,7 @@ function Puesto({user,pid}){
     setDir(d);setSaving(false);setSaveStatus("online");setFase(F.D);
   };
   const nueva=()=>{setFase(F.V);setVeh(null);setPax([]);setPaxSnap([]);setVal("");setFlash(null);setPaxSugFrom(null);setSaveStatus(null);setRefreshKey(k=>k+1);};
-  const dirLabel=dir==="entrada"?"ingreso":"egreso";
+  const dirLabel=dirVerbo(effPuesto,dir);
 
   // Admin sin puesto elegido: mostrar selector
   if(isAdmin&&!adminPuesto){
@@ -4552,11 +4608,8 @@ function Puesto({user,pid}){
     </>}
 
     {fase===F.C&&(()=>{
-      const dirBtn=effPuesto==="Puesto 1"
-        ?{in:{t:"INGRESA",s:"a la obra"},out:{t:"SALE",s:"de la obra"},q:"está"}
-        :effPuesto==="Puesto 2"
-        ?{in:{t:"SUBE",s:"rumbo al chalet"},out:{t:"BAJA",s:"del chalet hacia obra"},q:"va"}
-        :{in:{t:"INGRESA",s:"al chalet"},out:{t:"SALE",s:"del chalet"},q:"está"};
+      const di=dirInfo(effPuesto,"entrada"),ds=dirInfo(effPuesto,"salida");
+      const dirBtn={in:{t:di.v.toUpperCase(),s:di.d},out:{t:ds.v.toUpperCase(),s:ds.d},q:effPuesto==="Puesto 2"?"va":"está"};
       return <>
       <div style={{marginBottom:16}}>
         <div style={{fontFamily:"var(--fh)",fontSize:14,color:"var(--acc)",letterSpacing:".1em",textTransform:"uppercase",marginBottom:10,textAlign:"center",fontWeight:700}}>{effPuesto} · El vehículo y {pax.length} persona{pax.length!==1?"s":""} {dirBtn.q}...</div>
@@ -4621,7 +4674,7 @@ function Puesto({user,pid}){
       <div className="scard"><div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
         <div className="stit">Registrado correctamente</div>
         <button onClick={()=>{
-          const d=dir==="entrada"?"SUBE":"BAJA";
+          const d=dirVerbo(effPuesto,dir).toUpperCase();
           const pat=(veh&&veh.data&&veh.data.patente)||"SIN PATENTE";
           const desc=veh&&veh.data&&veh.data.descripcion&&!veh.data._noRegistrado?` ${veh.data.descripcion}`:"";
           const snap=paxSnap.length?paxSnap:pax;
@@ -4913,7 +4966,7 @@ function PublicDashboard({onBack}){
               return <tr key={s.id}>
                 <td className="mn" style={{color:"var(--tx2)",fontSize:12}}>{fmtTs(s.cerrada_at)}</td>
                 <td style={{fontSize:12,color:"var(--tx2)"}}>{s.puesto}</td>
-                <td><span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`}>{s.direccion}</span></td>
+                <td><span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`}>{dirVerbo(s.puesto,s.direccion)}</span></td>
                 <td><span style={{fontFamily:"var(--fm)",fontWeight:600}}>{v?v.patente:"—"}</span></td>
                 <td style={{fontSize:12,color:"var(--tx2)",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getPaxStr(s.id)}</td>
                 <td style={{fontFamily:"var(--fh)",fontSize:18,fontWeight:700}}>{s.total_personas}</td>
@@ -4927,7 +4980,7 @@ function PublicDashboard({onBack}){
               <tbody>{manList.map(m=><tr key={m.id}>
                 <td className="mn" style={{color:"var(--tx2)",fontSize:12}}>{fmtTs(m.created_at)}</td>
                 <td style={{fontSize:12,color:"var(--tx2)"}}>{m.puesto}</td>
-                <td><span className={`ld ld-${m.direccion==="entrada"?"in":"out"}`}>{m.direccion}</span></td>
+                <td><span className={`ld ld-${m.direccion==="entrada"?"in":"out"}`}>{dirVerbo(m.puesto,m.direccion)}</span></td>
                 <td>{m.nombre_raw||<span style={{color:"var(--tx2)"}}>Sin identificar</span>}</td>
               </tr>)}</tbody>
             </table></div>
