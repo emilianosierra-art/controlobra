@@ -341,7 +341,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev105";
+const APP_REV="Rev106";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -3479,13 +3479,18 @@ const certTxtPedido=(semana,dias)=>{
   L.push('TOTAL: '+CMD_COMIDAS.map(c=>c.label+' '+tot[c.key]).join(' · '));
   return L.join('\n');
 };
+// Frase que explica de dónde sale el pedido (la foto). meta = {confirmada_at, confirmada_por}; los certificados
+// guardados antes de Rev106 no la tienen y muestran la frase sin fecha.
+const certFotoTxt=(meta)=>'Es el pedido «foto» que se confirmó'+(meta&&meta.confirmada_at?' el '+fmtTs(meta.confirmada_at)+(meta.confirmada_por?' ('+meta.confirmada_por+')':''):'')+' antes de empezar la semana: es la base de lo que se factura.';
+const CERT_TXT_FACT='A facturar se calcula día por día: si se despachó menos de lo acordado se factura lo acordado (no hay devolución); si se despachó más, se suma. Diferencia = a facturar − pedido.';
 const certTxtCert=(cert)=>{
   const d=cert.detalle,df=d.dif;
-  const L=['Certificado de viandas — miércoles '+cmdFmtDate(cert.fecha),'','Pedido semana '+certLblSemana(d.semana)+':'];
+  const L=['Certificado de viandas — miércoles '+cmdFmtDate(cert.fecha),'','Pedido semana '+certLblSemana(d.semana)+' (foto):','  '+certFotoTxt(d.pedido.foto)];
   CMD_COMIDAS.forEach(c=>L.push('  '+c.label+': '+d.pedido.tot[c.key]));
   if(df){
-    L.push('','Diferencia certificado anterior (semana '+certLblSemana(df.semana)+'):');
-    CMD_COMIDAS.forEach(c=>{const t=df.tot[c.key];L.push('  '+c.label+': '+certDifTxt(t.dif)+(t.ajuste?' (ajustes '+certDifTxt(t.ajuste)+', despachado de más +'+t.exced+')':''));});
+    L.push('','Semana anterior '+certLblSemana(df.semana)+' · pedido vs. despachado:');
+    CMD_COMIDAS.forEach(c=>{const t=df.tot[c.key];L.push('  '+c.label+': pedido '+t.pedido+(t.ajuste?' · ajustes '+certDifTxt(t.ajuste):'')+' · despachado '+t.desp+' · a facturar '+t.fact+' → diferencia '+certDifTxt(t.dif));});
+    L.push('  ('+CERT_TXT_FACT+')');
   }
   L.push('','Total a certificar:');
   CMD_COMIDAS.forEach(c=>L.push('  '+c.label+': '+d.total[c.key]));
@@ -3509,16 +3514,23 @@ const certImprimir=(cert)=>{
   h+='<div class="muted">Proveedor: Lagunas del Radal'+(cert.generado_at?' · Generado '+certEsc(fmtTs(cert.generado_at)):'')+(cert.generado_por_nombre?' por '+certEsc(cert.generado_por_nombre):'')+'</div>';
   (d.avisos||[]).forEach(a=>{h+='<div class="av">⚠ '+certEsc(a)+'</div>';});
   h+='<h2>Resumen</h2><table><thead><tr><th>Concepto</th>'+th+'</tr></thead><tbody>';
-  h+=fila('Pedido semana '+certLblSemana(d.semana),k=>d.pedido.tot[k]);
+  h+=fila('Pedido semana '+certLblSemana(d.semana)+' (foto)',k=>d.pedido.tot[k]);
   if(df){
     h+=fila('Dif. semana '+certLblSemana(df.semana)+' — ajustes avisados',k=>certDifTxt(df.tot[k].ajuste));
     h+=fila('Dif. semana '+certLblSemana(df.semana)+' — despachado de más',k=>certDifTxt(df.tot[k].exced));
   }
   h+=fila('TOTAL A CERTIFICAR',k=>d.total[k],'tot')+'</tbody></table>';
-  h+='<h2>Pedido por día — semana '+certLblSemana(d.semana)+'</h2><table><thead><tr><th>Día</th>'+th+'</tr></thead><tbody>';
+  h+='<h2>Pedido por día — semana '+certLblSemana(d.semana)+'</h2><div class="muted">'+certEsc(certFotoTxt(d.pedido.foto))+'</div><table><thead><tr><th>Día</th>'+th+'</tr></thead><tbody>';
   certDias(d.semana).forEach(iso=>{const p=d.pedido.dias[iso]||certCero();h+=fila(certLblDia(iso),k=>p[k]||0);});
   h+=fila('Total',k=>d.pedido.tot[k],'tot')+'</tbody></table>';
   if(df){
+    h+='<h2>Semana anterior '+certLblSemana(df.semana)+' — pedido vs. despachado</h2><div class="muted">'+certEsc(CERT_TXT_FACT)+'</div><table><thead><tr><th>Concepto</th>'+th+'</tr></thead><tbody>';
+    h+=fila('Pedido (foto)',k=>df.tot[k].pedido);
+    h+=fila('Ajustes avisados',k=>certDifTxt(df.tot[k].ajuste));
+    h+=fila('Acordado (pedido + ajustes)',k=>df.tot[k].acordado);
+    h+=fila('Despachado (real)',k=>df.tot[k].desp);
+    h+=fila('A facturar',k=>df.tot[k].fact);
+    h+=fila('Diferencia → este certificado',k=>certDifTxt(df.tot[k].dif),'tot')+'</tbody></table>';
     h+='<h2>Diferencias por día — semana '+certLblSemana(df.semana)+'</h2><div class="muted">Cada celda: acordado (pedido ± ajuste) / despachado → diferencia contra el pedido</div><table><thead><tr><th>Día</th>'+th+'</tr></thead><tbody>';
     certDias(df.semana).forEach(iso=>{const r=df.dias[iso];h+=fila(certLblDia(iso),k=>r[k].acordado+' / '+r[k].desp+' → <b>'+certDifTxt(r[k].dif)+'</b>');});
     h+=fila('Total',k=>certDifTxt(df.tot[k].dif),'tot')+'</tbody></table>';
@@ -3745,13 +3757,35 @@ function CmdCertDetalle({cert,preview,onVolver,onGuardar,busy,showToast}){
     <div className="cmd-tblw"><table>
       <thead><tr><th>Concepto</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
       <tbody>
-        <tr><td>Pedido semana {certLblSemana(d.semana)}</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{d.pedido.tot[c.key]}</td>)}</tr>
+        <tr><td>Pedido semana {certLblSemana(d.semana)} (foto)</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{d.pedido.tot[c.key]}</td>)}</tr>
         {df&&<tr><td>Dif. semana {certLblSemana(df.semana)} · ajustes avisados</td>{CMD_COMIDAS.map(c=><td key={c.key} className={'n '+certDifCls(df.tot[c.key].ajuste)}>{certDifTxt(df.tot[c.key].ajuste)}</td>)}</tr>}
         {df&&<tr><td>Dif. semana {certLblSemana(df.semana)} · despachado de más</td>{CMD_COMIDAS.map(c=><td key={c.key} className={'n '+certDifCls(df.tot[c.key].exced)}>{certDifTxt(df.tot[c.key].exced)}</td>)}</tr>}
         <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Total a certificar</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n" style={{color:'var(--cmd-pri)',fontSize:14}}>{d.total[c.key]}</td>)}</tr>
       </tbody>
     </table></div>
+    <h3 style={{marginTop:18}}>Pedido por día · semana {certLblSemana(d.semana)}</h3>
+    <div className="cmd-hint" style={{marginTop:-4,marginBottom:8}}>{certFotoTxt(d.pedido.foto)}</div>
+    <div className="cmd-tblw"><table>
+      <thead><tr><th>Día</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
+      <tbody>
+        {certDias(d.semana).map(iso=>{const p=d.pedido.dias[iso]||certCero();return <tr key={iso}><td>{certLblDia(iso)}</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{p[c.key]||0}</td>)}</tr>;})}
+        <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Total</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{d.pedido.tot[c.key]}</td>)}</tr>
+      </tbody>
+    </table></div>
     {df&&<>
+      <h3 style={{marginTop:18}}>Semana anterior {certLblSemana(df.semana)} · pedido vs. despachado</h3>
+      <div className="cmd-hint" style={{marginTop:-4,marginBottom:8}}>{CERT_TXT_FACT}</div>
+      <div className="cmd-tblw"><table>
+        <thead><tr><th>Concepto</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
+        <tbody>
+          <tr><td>Pedido (foto)</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{df.tot[c.key].pedido}</td>)}</tr>
+          <tr><td>Ajustes avisados</td>{CMD_COMIDAS.map(c=><td key={c.key} className={'n '+certDifCls(df.tot[c.key].ajuste)}>{certDifTxt(df.tot[c.key].ajuste)}</td>)}</tr>
+          <tr><td>Acordado (pedido + ajustes)</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{df.tot[c.key].acordado}</td>)}</tr>
+          <tr><td style={{fontWeight:700}}>Despachado (real)</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n" style={{fontWeight:800}}>{df.tot[c.key].desp}</td>)}</tr>
+          <tr><td>A facturar</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{df.tot[c.key].fact}</td>)}</tr>
+          <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Diferencia → este certificado</td>{CMD_COMIDAS.map(c=><td key={c.key} className={'n '+certDifCls(df.tot[c.key].dif)} style={{fontSize:14}}>{certDifTxt(df.tot[c.key].dif)}</td>)}</tr>
+        </tbody>
+      </table></div>
       <h3 style={{marginTop:18}}>Diferencias por día · semana {certLblSemana(df.semana)}</h3>
       <div className="cmd-tblw"><table>
         <thead><tr><th>Día</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
@@ -3791,12 +3825,15 @@ function CmdCertificados({user,canEdit,showToast}){
     const avisos=[];
     const pedido={dias:{},tot:certCero()};
     certDias(semana).forEach(iso=>{const x=foto.dias&&foto.dias[iso];const p=(x&&x.pedido)||certCero();pedido.dias[iso]=p;CMD_COMIDAS.forEach(c=>{pedido.tot[c.key]+=p[c.key]||0;});});
+    // Cuándo y quién confirmó cada foto, para mostrar en el certificado de dónde sale el pedido
+    const fotoMeta=(fo)=>({confirmada_at:fo.confirmada_at||null,confirmada_por:fo.confirmada_por_nombre||null});
+    pedido.foto=fotoMeta(foto);
     let dif=null;
     if(!fotoPrev||fotoPrev.estado!=='confirmada'){
       avisos.push('No hay pedido confirmado de la semana '+certLblSemana(prev)+': el certificado sale sin diferencias de la semana anterior.');
     }else{
       const cs=certCalcSemana(fotoPrev,aj,de,prev);
-      dif={semana:prev,dias:cs.dias,tot:cs.tot};
+      dif={semana:prev,dias:cs.dias,tot:cs.tot,foto:fotoMeta(fotoPrev)};
       if(prevHasta>=hoy)avisos.push('La semana '+certLblSemana(prev)+' todavía no terminó: las diferencias pueden cambiar.');
       const sinDesp=certDias(prev).filter(iso=>iso<=hoy&&!de[iso]);
       if(sinDesp.length)avisos.push('En la semana '+certLblSemana(prev)+' no hay despachos registrados en la app el '+sinDesp.map(certLblDia).join(', ')+'. Para esos días se toma lo acordado, sin sumar diferencias.');
