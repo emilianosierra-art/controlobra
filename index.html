@@ -341,7 +341,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev107";
+const APP_REV="Rev108";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -3510,19 +3510,40 @@ const certFotoTxt=(ped)=>{
 };
 // Cómo se calcula la diferencia: regla 2 (Rev107, mié→mar contra lo cobrado) o regla 1 (semana anterior completa)
 const certTxtFact=(df)=>df&&df.desde
-  ?'Cada certificado cierra 7 días, de miércoles a martes. Por día: a facturar = lo acordado (pedido vigente con revisiones y ajustes), o lo despachado si fue más (si se despachó menos, no hay devolución). Diferencia = a facturar − lo que ya se cobró por ese día.'
+  ?'Cada pedido (sábado a viernes) se cierra en dos certificados: de sábado a martes en el suyo, y de miércoles a viernes en el del miércoles siguiente. Por día: a facturar = lo acordado (pedido vigente con revisiones y ajustes), o lo despachado si fue más (si se despachó menos, no hay devolución). Diferencia = a facturar − lo que ya se cobró por ese día.'
   :'A facturar se calcula día por día: si se despachó menos de lo acordado se factura lo acordado (no hay devolución); si se despachó más, se suma. Diferencia = a facturar − pedido.';
 const certDifIsos=(df)=>df.desde?certRango(df.desde,df.hasta):certDias(df.semana);
 const certDifLbl=(df)=>df.desde?('del '+certLblDia(df.desde)+' al '+certLblDia(df.hasta)):('semana '+certLblSemana(df.semana));
 const certCob=(t)=>t.cobrado!==undefined?t.cobrado:t.pedido; // regla 1 no guardaba "cobrado"
+// Agrupa las diferencias por pedido (semana sáb→vie): cada pedido se cierra en dos certificados (sáb–mar en el suyo,
+// mié–vie en el siguiente) y así se ve qué parte de cada uno se está cerrando. Los números no cambian.
+const certDifGrupos=(df,semanaCert)=>{
+  const grupos=[];
+  certDifIsos(df).filter(iso=>df.dias[iso]).forEach(iso=>{
+    const s=df.desde?certSemanaDe(iso):df.semana;
+    let g=grupos.find(x=>x.semana===s);
+    if(!g){g={semana:s,isos:[],tot:{}};CMD_COMIDAS.forEach(c=>{g.tot[c.key]={cobrado:0,revision:0,ajuste:0,acordado:0,desp:0,exced:0,fact:0,dif:0};});grupos.push(g);}
+    g.isos.push(iso);
+    CMD_COMIDAS.forEach(c=>{const r=df.dias[iso][c.key],t=g.tot[c.key];t.cobrado+=certCob(r);Object.keys(t).forEach(k=>{if(k!=='cobrado')t[k]+=(r[k]||0);});});
+  });
+  grupos.forEach(g=>{
+    const ultimo=g.isos[g.isos.length-1],vie=cmdAddDays(g.semana,6);
+    g.lbl='del '+certLblDia(g.isos[0])+' al '+certLblDia(ultimo);
+    g.cierra=!df.desde||ultimo>=vie; // llega al viernes: con esto el pedido queda cerrado
+    g.nota=g.cierra?'con esto el pedido queda cerrado':('del '+certLblDia(cmdAddDays(ultimo,1))+' al '+certLblDia(vie)+' se cierra en el certificado del mié '+cmdFmtDate(cmdAddDays(semanaCert,11)).slice(0,5));
+  });
+  return grupos;
+};
 const certTxtCert=(cert)=>{
   const d=cert.detalle,df=d.dif;
   const L=['Certificado de viandas — miércoles '+cmdFmtDate(cert.fecha),'','Pedido semana '+certLblSemana(d.semana)+':','  '+certFotoTxt(d.pedido)];
   CMD_COMIDAS.forEach(c=>L.push('  '+c.label+': '+d.pedido.tot[c.key]));
   if(df){
-    L.push('','Diferencias '+certDifLbl(df)+' · pedido vs. despachado:');
-    CMD_COMIDAS.forEach(c=>{const t=df.tot[c.key];L.push('  '+c.label+': cobrado '+certCob(t)+(t.revision?' · revisiones '+certDifTxt(t.revision):'')+(t.ajuste?' · ajustes '+certDifTxt(t.ajuste):'')+' · despachado '+t.desp+' · a facturar '+t.fact+' → diferencia '+certDifTxt(t.dif));});
-    L.push('  ('+certTxtFact(df)+')');
+    certDifGrupos(df,d.semana).forEach(g=>{
+      L.push('','Diferencias del pedido '+certLblSemana(g.semana)+' ('+g.lbl+') — '+g.nota+':');
+      CMD_COMIDAS.forEach(c=>{const t=g.tot[c.key];L.push('  '+c.label+': cobrado '+t.cobrado+(t.revision?' · revisiones '+certDifTxt(t.revision):'')+(t.ajuste?' · ajustes '+certDifTxt(t.ajuste):'')+' · despachado '+t.desp+' · a facturar '+t.fact+' → diferencia '+certDifTxt(t.dif));});
+    });
+    L.push('','('+certTxtFact(df)+')');
   }
   L.push('','Total a certificar:');
   CMD_COMIDAS.forEach(c=>L.push('  '+c.label+': '+d.total[c.key]));
@@ -3547,29 +3568,27 @@ const certImprimir=(cert)=>{
   (d.avisos||[]).forEach(a=>{h+='<div class="av">⚠ '+certEsc(a)+'</div>';});
   h+='<h2>Resumen</h2><table><thead><tr><th>Concepto</th>'+th+'</tr></thead><tbody>';
   const regla2=!!(df&&df.desde);
+  const grupos=df?certDifGrupos(df,d.semana):[];
   h+=fila('Pedido semana '+certLblSemana(d.semana)+(regla2?' (foto + revisiones)':' (foto)'),k=>d.pedido.tot[k]);
-  if(df){
-    if(regla2)h+=fila('Dif. '+certDifLbl(df)+' — cambios por revisiones',k=>certDifTxt(df.tot[k].revision||0));
-    h+=fila('Dif. '+certDifLbl(df)+' — ajustes avisados',k=>certDifTxt(df.tot[k].ajuste));
-    h+=fila('Dif. '+certDifLbl(df)+' — despachado de más',k=>certDifTxt(df.tot[k].exced));
-  }
+  grupos.forEach(g=>{h+=fila('Diferencias del pedido '+certLblSemana(g.semana)+' ('+g.lbl+')',k=>certDifTxt(g.tot[k].dif));});
   h+=fila('TOTAL A CERTIFICAR',k=>d.total[k],'tot')+'</tbody></table>';
   h+='<h2>Pedido por día — semana '+certLblSemana(d.semana)+'</h2><div class="muted">'+certEsc(certFotoTxt(d.pedido))+'</div><table><thead><tr><th>Día</th>'+th+'</tr></thead><tbody>';
   certDias(d.semana).forEach(iso=>{const p=d.pedido.dias[iso]||certCero(),rv=d.pedido.rev&&d.pedido.rev[iso];h+=fila(certLblDia(iso)+(rv?' · Rev '+rv:''),k=>p[k]||0);});
   h+=fila('Total',k=>d.pedido.tot[k],'tot')+'</tbody></table>';
-  if(df){
-    h+='<h2>Diferencias '+certDifLbl(df)+' — pedido vs. despachado</h2><div class="muted">'+certEsc(certTxtFact(df))+'</div><table><thead><tr><th>Concepto</th>'+th+'</tr></thead><tbody>';
-    h+=fila(regla2?'Cobrado (pedido ya facturado)':'Pedido (foto)',k=>certCob(df.tot[k]));
-    if(regla2)h+=fila('Cambios por revisiones',k=>certDifTxt(df.tot[k].revision||0));
-    h+=fila('Ajustes avisados',k=>certDifTxt(df.tot[k].ajuste));
-    h+=fila(regla2?'Acordado (vigente + ajustes)':'Acordado (pedido + ajustes)',k=>df.tot[k].acordado);
-    h+=fila('Despachado (real)',k=>df.tot[k].desp);
-    h+=fila('A facturar',k=>df.tot[k].fact);
-    h+=fila('Diferencia → este certificado',k=>certDifTxt(df.tot[k].dif),'tot')+'</tbody></table>';
-    h+='<h2>Diferencias por día — '+certDifLbl(df)+'</h2><div class="muted">Cada celda: acordado / despachado → diferencia contra lo cobrado</div><table><thead><tr><th>Día</th>'+th+'</tr></thead><tbody>';
-    certDifIsos(df).forEach(iso=>{const r=df.dias[iso];if(!r)return;h+=fila(certLblDia(iso),k=>r[k].acordado+' / '+r[k].desp+' → <b>'+certDifTxt(r[k].dif)+'</b>');});
-    h+=fila('Total',k=>certDifTxt(df.tot[k].dif),'tot')+'</tbody></table>';
-  }
+  if(df)h+='<div class="muted" style="margin-top:14px">'+certEsc(certTxtFact(df))+'</div>';
+  grupos.forEach(g=>{
+    h+='<h2>Diferencias del pedido '+certLblSemana(g.semana)+' — '+certEsc(g.lbl)+'</h2><div class="muted">'+certEsc(cap1(g.nota))+'.</div><table><thead><tr><th>Concepto</th>'+th+'</tr></thead><tbody>';
+    h+=fila(regla2?'Cobrado (pedido ya facturado)':'Pedido (foto)',k=>g.tot[k].cobrado);
+    if(regla2)h+=fila('Cambios por revisiones',k=>certDifTxt(g.tot[k].revision));
+    h+=fila('Ajustes avisados',k=>certDifTxt(g.tot[k].ajuste));
+    h+=fila(regla2?'Acordado (vigente + ajustes)':'Acordado (pedido + ajustes)',k=>g.tot[k].acordado);
+    h+=fila('Despachado (real)',k=>g.tot[k].desp);
+    h+=fila('A facturar',k=>g.tot[k].fact);
+    h+=fila('Diferencia → este certificado',k=>certDifTxt(g.tot[k].dif),'tot')+'</tbody></table>';
+    h+='<div class="muted" style="margin-top:6px">Por día (acordado / despachado → diferencia contra lo cobrado):</div><table><thead><tr><th>Día</th>'+th+'</tr></thead><tbody>';
+    g.isos.forEach(iso=>{const r=df.dias[iso];h+=fila(certLblDia(iso),k=>r[k].acordado+' / '+r[k].desp+' → <b>'+certDifTxt(r[k].dif)+'</b>');});
+    h+='</tbody></table>';
+  });
   h+='</body></html>';
   w.document.write(h);w.document.close();w.focus();setTimeout(()=>{try{w.print();}catch(e){}},400);
 };
@@ -3856,6 +3875,7 @@ function CmdPedidoSemanal({user,canEdit,showToast}){
 // Detalle de un certificado (guardado o vista previa antes de guardar)
 function CmdCertDetalle({cert,preview,onVolver,onGuardar,busy,showToast}){
   const d=cert.detalle,df=d.dif,regla2=!!(df&&df.desde); // regla2 = cierre mié→mar con revisiones (Rev107)
+  const grupos=df?certDifGrupos(df,d.semana):[]; // diferencias separadas por pedido (Rev108)
   return <div className="cmd-rep">
     <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
       <button className="cmd-btn" onClick={onVolver}>← Volver</button>
@@ -3872,9 +3892,7 @@ function CmdCertDetalle({cert,preview,onVolver,onGuardar,busy,showToast}){
       <thead><tr><th>Concepto</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
       <tbody>
         <tr><td>Pedido semana {certLblSemana(d.semana)} {regla2?'(foto + revisiones)':'(foto)'}</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{d.pedido.tot[c.key]}</td>)}</tr>
-        {df&&regla2&&<tr><td>Dif. {certDifLbl(df)} · cambios por revisiones</td>{CMD_COMIDAS.map(c=>{const v=df.tot[c.key].revision||0;return <td key={c.key} className={'n '+certDifCls(v)}>{certDifTxt(v)}</td>;})}</tr>}
-        {df&&<tr><td>Dif. {certDifLbl(df)} · ajustes avisados</td>{CMD_COMIDAS.map(c=><td key={c.key} className={'n '+certDifCls(df.tot[c.key].ajuste)}>{certDifTxt(df.tot[c.key].ajuste)}</td>)}</tr>}
-        {df&&<tr><td>Dif. {certDifLbl(df)} · despachado de más</td>{CMD_COMIDAS.map(c=><td key={c.key} className={'n '+certDifCls(df.tot[c.key].exced)}>{certDifTxt(df.tot[c.key].exced)}</td>)}</tr>}
+        {grupos.map(g=><tr key={g.semana}><td>Diferencias del pedido {certLblSemana(g.semana)} <span style={{color:'var(--tx3)',fontSize:11}}>({g.lbl})</span></td>{CMD_COMIDAS.map(c=><td key={c.key} className={'n '+certDifCls(g.tot[c.key].dif)}>{certDifTxt(g.tot[c.key].dif)}</td>)}</tr>)}
         <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Total a certificar</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n" style={{color:'var(--cmd-pri)',fontSize:14}}>{d.total[c.key]}</td>)}</tr>
       </tbody>
     </table></div>
@@ -3887,32 +3905,32 @@ function CmdCertDetalle({cert,preview,onVolver,onGuardar,busy,showToast}){
         <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Total</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{d.pedido.tot[c.key]}</td>)}</tr>
       </tbody>
     </table></div>
-    {df&&<>
-      <h3 style={{marginTop:18}}>Diferencias {certDifLbl(df)} · pedido vs. despachado</h3>
-      <div className="cmd-hint" style={{marginTop:-4,marginBottom:8}}>{certTxtFact(df)}</div>
+    {df&&<div className="cmd-hint" style={{marginTop:14}}>{certTxtFact(df)}</div>}
+    {grupos.map(g=><div key={g.semana} style={{marginTop:14,borderTop:'1px solid var(--bd)',paddingTop:10}}>
+      <h3 style={{marginBottom:2}}>Diferencias del pedido {certLblSemana(g.semana)} · {g.lbl}</h3>
+      <div className="cmd-hint" style={{marginTop:0,marginBottom:8,color:g.cierra?'var(--cmd-ok)':'var(--tx3)'}}>{g.cierra?'✓ ':'⏳ '}{cap1(g.nota)}.</div>
       <div className="cmd-tblw"><table>
         <thead><tr><th>Concepto</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
         <tbody>
-          <tr><td>{regla2?'Cobrado (pedido ya facturado)':'Pedido (foto)'}</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{certCob(df.tot[c.key])}</td>)}</tr>
-          {regla2&&<tr><td>Cambios por revisiones</td>{CMD_COMIDAS.map(c=>{const v=df.tot[c.key].revision||0;return <td key={c.key} className={'n '+certDifCls(v)}>{certDifTxt(v)}</td>;})}</tr>}
-          <tr><td>Ajustes avisados</td>{CMD_COMIDAS.map(c=><td key={c.key} className={'n '+certDifCls(df.tot[c.key].ajuste)}>{certDifTxt(df.tot[c.key].ajuste)}</td>)}</tr>
-          <tr><td>{regla2?'Acordado (vigente + ajustes)':'Acordado (pedido + ajustes)'}</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{df.tot[c.key].acordado}</td>)}</tr>
-          <tr><td style={{fontWeight:700}}>Despachado (real)</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n" style={{fontWeight:800}}>{df.tot[c.key].desp}</td>)}</tr>
-          <tr><td>A facturar</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{df.tot[c.key].fact}</td>)}</tr>
-          <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Diferencia → este certificado</td>{CMD_COMIDAS.map(c=><td key={c.key} className={'n '+certDifCls(df.tot[c.key].dif)} style={{fontSize:14}}>{certDifTxt(df.tot[c.key].dif)}</td>)}</tr>
+          <tr><td>{regla2?'Cobrado (pedido ya facturado)':'Pedido (foto)'}</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{g.tot[c.key].cobrado}</td>)}</tr>
+          {regla2&&<tr><td>Cambios por revisiones</td>{CMD_COMIDAS.map(c=>{const v=g.tot[c.key].revision;return <td key={c.key} className={'n '+certDifCls(v)}>{certDifTxt(v)}</td>;})}</tr>}
+          <tr><td>Ajustes avisados</td>{CMD_COMIDAS.map(c=><td key={c.key} className={'n '+certDifCls(g.tot[c.key].ajuste)}>{certDifTxt(g.tot[c.key].ajuste)}</td>)}</tr>
+          <tr><td>{regla2?'Acordado (vigente + ajustes)':'Acordado (pedido + ajustes)'}</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{g.tot[c.key].acordado}</td>)}</tr>
+          <tr><td style={{fontWeight:700}}>Despachado (real)</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n" style={{fontWeight:800}}>{g.tot[c.key].desp}</td>)}</tr>
+          <tr><td>A facturar</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{g.tot[c.key].fact}</td>)}</tr>
+          <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Diferencia → este certificado</td>{CMD_COMIDAS.map(c=><td key={c.key} className={'n '+certDifCls(g.tot[c.key].dif)} style={{fontSize:14}}>{certDifTxt(g.tot[c.key].dif)}</td>)}</tr>
         </tbody>
       </table></div>
-      <h3 style={{marginTop:18}}>Diferencias por día · {certDifLbl(df)}</h3>
-      <div className="cmd-tblw"><table>
+      <div className="cmd-tblw" style={{marginTop:8}}><table>
         <thead><tr><th>Día</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
         <tbody>
-          {certDifIsos(df).filter(iso=>df.dias[iso]).map(iso=><tr key={iso}><td>{certLblDia(iso)}{regla2&&iso<d.semana?<span style={{fontSize:10,color:'var(--tx3)',marginLeft:6}}>sem. anterior</span>:null}</td>{CMD_COMIDAS.map(c=>{const r=df.dias[iso][c.key];return <td key={c.key} className="n" title={'Cobrado '+certCob(r)+(r.revision?' · revisiones '+certDifTxt(r.revision):'')+(r.ajuste?' · ajuste '+r.ajuste:'')+' · acordado '+r.acordado+' · despachado '+r.desp+' · a facturar '+r.fact}>
+          {g.isos.map(iso=><tr key={iso}><td>{certLblDia(iso)}</td>{CMD_COMIDAS.map(c=>{const r=df.dias[iso][c.key];return <td key={c.key} className="n" title={'Cobrado '+certCob(r)+(r.revision?' · revisiones '+certDifTxt(r.revision):'')+(r.ajuste?' · ajuste '+r.ajuste:'')+' · acordado '+r.acordado+' · despachado '+r.desp+' · a facturar '+r.fact}>
             <span style={{color:'var(--tx3)',fontWeight:500}}>{r.acordado} / {r.desp} → </span><span className={certDifCls(r.dif)}>{certDifTxt(r.dif)}</span>
           </td>;})}</tr>)}
         </tbody>
       </table></div>
-      <div className="cmd-hint">Cada celda: acordado / despachado → diferencia contra lo cobrado. Positivo se suma a este certificado; negativo queda a favor de la obra.</div>
-    </>}
+    </div>)}
+    {df&&<div className="cmd-hint">Por día: acordado / despachado → diferencia contra lo cobrado. Positivo se suma a este certificado; negativo queda a favor de la obra.</div>}
   </div>;
 }
 function CmdCertificados({user,canEdit,showToast}){
@@ -3993,7 +4011,7 @@ function CmdCertificados({user,canEdit,showToast}){
         <input type="date" value={fechaN} onChange={e=>setFechaN(e.target.value)} style={{background:'var(--s2)',border:'1px solid var(--bd)',color:'var(--tx)',borderRadius:4,padding:'6px 8px',fontFamily:'var(--fm)',fontSize:13}}/>
         <button className="cmd-btn pri" disabled={busy||!fechaN} onClick={calcular}>{busy?'Calculando…':'Calcular'}</button>
       </div>
-      <div className="cmd-hint">Certificado del mié {cmdFmtDate(cmdAddDays(semN,4))}: factura el pedido de la semana {certLblSemana(semN)} (foto + revisiones confirmadas) + las diferencias del {certLblDia(cmdAddDays(semN,-3))} al {certLblDia(cmdAddDays(semN,3))} (hasta la cena del martes). Se calcula, lo revisás y recién ahí lo guardás.</div>
+      <div className="cmd-hint">Certificado del mié {cmdFmtDate(cmdAddDays(semN,4))}: factura el pedido de la semana {certLblSemana(semN)} (foto + revisiones confirmadas) + el cierre del pedido anterior (diferencias del {certLblDia(cmdAddDays(semN,-3))} al {certLblDia(cmdAddDays(semN,-1))}) + las diferencias de este pedido del {certLblDia(semN)} al {certLblDia(cmdAddDays(semN,3))} (hasta la cena del martes). Se calcula, lo revisás y recién ahí lo guardás.</div>
     </div>}
     <div className="cmd-rep">
       <h3>Historial de certificados</h3>
