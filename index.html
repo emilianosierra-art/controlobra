@@ -344,7 +344,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev109";
+const APP_REV="Rev110";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -528,6 +528,18 @@ const personaEstado=(id,habs,radarMap,dni)=>{
   if(shChalet!=="ok"||shManejo!=="ok")return"par";
   return"ok";
 };
+// personaNivel (Rev110): hasta dónde puede llegar la persona hoy. Los grupos de Personal son acumulativos.
+//  "no"  = bloqueada: le falta S&H Ingreso o CP Ingreso (Radar)
+//  "ing" = habilitada a ingresar (S&H Ingreso + CP), sin S&H Subir a Chalet
+//  "cha" = habilitada a subir al chalet (además S&H Subir a Chalet), sin Manejo en Montaña
+//  "man" = habilitada a subir al chalet manejando (además S&H Manejo en Montaña)
+const personaNivel=(id,habs,radarMap,dni)=>{
+  if(personaEstado(id,habs,radarMap,dni)==="no")return"no";
+  if(habSt(getHab("persona",id,"sh_chalet",habs))!=="ok")return"ing";
+  return habSt(getHab("persona",id,"sh_manejo",habs))==="ok"?"man":"cha";
+};
+// Qué niveles entran en cada tarjeta/filtro de Personal
+const NIVEL_FILTRO={ingreso:["ing","cha","man"],chalet:["cha","man"],manejo:["man"],no:["no"]};
 // vehiculoEstado(id, habs) — Rev86: retorna "no" (sin sh_ingreso), "par" (sh_ingreso OK pero
 // sh_manejo no — desde Rev98 solo advierte, no bloquea en ningún puesto), "ok" (todo OK).
 const vehiculoEstado=(id,habs)=>{
@@ -1817,15 +1829,18 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
     load();
   };
   const delP=async id=>{if(!confirm("Eliminar?"))return;await db.upd("personas",{deleted_at:new Date().toISOString()},[["id","eq",id]]);load();};
+  // Nivel de habilitación de cada persona, calculado una vez por cambio de datos (se usa en tarjetas, filtro y columna Estado)
+  const nivelDe=useMemo(()=>{const m={};personas.forEach(p=>{m[p.id]=personaNivel(p.id,habs,radarMap,p.dni);});return m;},[personas,habs,radarMap]);
   let filtered=personas.filter(p=>!filter||`${p.nombre} ${p.apellido} ${p.dni} ${p.empresa||""}`.toLowerCase().includes(filter.toLowerCase()));
   if(filterEst==="venc"){
     // Filtro "próximas a vencer": personas con alguna hab S&H bloqueante (ing/chalet) o
     // informativa (manejo) que vence en los próximos 3 días.
     const hoyISO=today();const hoyT=new Date(hoyISO).getTime();const limT=hoyT+3*24*60*60*1000;
     filtered=filtered.filter(p=>habs.some(h=>h.persona_id===p.id&&["sh_ingreso","sh_chalet","sh_manejo"].includes(h.tipo)&&!h.suspendida&&h.fecha_hasta&&(()=>{const t=new Date(String(h.fecha_hasta).slice(0,10)).getTime();return t>=hoyT&&t<=limT;})()));
-  } else if(filterEst){
-    filtered=filtered.filter(p=>personaEstado(p.id,habs,radarMap,p.dni)===filterEst);
+  } else if(filterEst&&NIVEL_FILTRO[filterEst]){
+    filtered=filtered.filter(p=>NIVEL_FILTRO[filterEst].includes(nivelDe[p.id]));
   }
+  const cuantos=(k)=>personas.filter(p=>NIVEL_FILTRO[k].includes(nivelDe[p.id])).length;
   // Contar habs S&H próximas a vencer (< 3 días) — para el badge del botón
   const proxVenc=(()=>{
     const hoyISO=today();const hoyT=new Date(hoyISO).getTime();const limT=hoyT+3*24*60*60*1000;
@@ -1846,9 +1861,13 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
     <div className="ph2"><div className="ptit"><span>Personal</span>{readOnly&&<span style={{fontSize:14,fontWeight:400,color:"var(--tx2)",marginLeft:10}}>solo lectura</span>}</div><div style={{display:"flex",gap:6}}>{btns}</div></div>
     <div className="sg">
       <div className="sc"><div className="sv">{personas.length}</div><div className="slb">Total</div></div>
-      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="ok"?"":"ok")} style={filterEst==="ok"?{borderColor:"var(--gr)"}:{}}><div className="sv" style={{color:"var(--gr)"}}>{personas.filter(p=>personaEstado(p.id,habs,radarMap,p.dni)==="ok").length}</div><div className="slb">Habilitados</div></div>
-      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="par"?"":"par")} style={filterEst==="par"?{borderColor:"var(--acc)"}:{}}><div className="sv" style={{color:"var(--acc)"}}>{personas.filter(p=>personaEstado(p.id,habs,radarMap,p.dni)==="par").length}</div><div className="slb">Parciales</div></div>
-      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="no"?"":"no")} style={filterEst==="no"?{borderColor:"var(--rd)"}:{}}><div className="sv" style={{color:"var(--rd)"}}>{personas.filter(p=>personaEstado(p.id,habs,radarMap,p.dni)==="no").length}</div><div className="slb">Bloqueados</div></div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="ingreso"?"":"ingreso")} title="S&H Ingreso + CP Ingreso (del Radar) vigentes" style={filterEst==="ingreso"?{borderColor:"var(--gr)"}:{}}><div className="sv" style={{color:"var(--gr)"}}>{cuantos("ingreso")}</div><div className="slb">Habilitados a ingresar</div></div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="chalet"?"":"chalet")} title="Además de ingresar, tienen S&H Subir a Chalet" style={filterEst==="chalet"?{borderColor:"#A78BFA"}:{}}>
+        <div className="sv" style={{color:"#A78BFA"}}>{cuantos("chalet")}</div>
+        <div className="slb">Habilitados a subir a chalet</div>
+        <div onClick={e=>{e.stopPropagation();setFilterEst(filterEst==="manejo"?"":"manejo");}} title="Pueden subir al chalet manejando: tienen también S&H Manejo en Montaña" style={{marginTop:6,display:"inline-block",fontSize:12,fontFamily:"var(--fm)",fontWeight:600,color:"#60A5FA",padding:"2px 8px",borderRadius:4,border:"1px solid "+(filterEst==="manejo"?"#60A5FA":"rgba(96,165,250,.35)"),background:filterEst==="manejo"?"rgba(96,165,250,.15)":"transparent",cursor:"pointer"}}>🚗 {cuantos("manejo")} manejando</div>
+      </div>
+      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="no"?"":"no")} title="No pueden ingresar: les falta S&H Ingreso o CP Ingreso" style={filterEst==="no"?{borderColor:"var(--rd)"}:{}}><div className="sv" style={{color:"var(--rd)"}}>{cuantos("no")}</div><div className="slb">Bloqueados</div></div>
       <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="venc"?"":"venc")} title="Habilitaciones S&H que vencen en los próximos 3 días" style={{borderColor:filterEst==="venc"?"#FBBF24":(proxVenc>0?"rgba(251,191,36,.5)":undefined),animation:proxVenc>0&&filterEst!=="venc"?"pulseWarn 2s infinite":undefined}}>
         <div className="sv" style={{color:proxVenc>0?"#FBBF24":"var(--tx2)"}}>{proxVenc}</div>
         <div className="slb">⚠️ Prox. vencer</div>
@@ -1884,7 +1903,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
       <tbody key={habKey}>
         {filtered.length===0&&<tr><td colSpan={readOnly?8:9} style={{textAlign:"center",color:"var(--tx2)",padding:28}}>Sin registros</td></tr>}
         {filtered.map(p=>{
-          const est=personaEstado(p.id,habs,radarMap,p.dni);
+          const niv=nivelDe[p.id];
           return <tr key={p.id}>
             <td style={{borderRight:"1px solid var(--bd)",cursor:"pointer"}} onClick={()=>setDetalleP(p)}><div style={{display:"flex",alignItems:"center",gap:8}}><div className="av">{ini(`${p.nombre} ${p.apellido}`)}</div><div><div style={{fontWeight:500}}>{p.nombre} {p.apellido}</div>{p.cargo&&<div style={{fontSize:11,color:"var(--tx2)"}}>{p.cargo}</div>}</div></div></td>
             <td className="mn">{p.dni}</td>
@@ -1893,7 +1912,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
             <HabCell hab={getHab("persona",p.id,"sh_chalet",habs)} tipo="sh_chalet" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
             <HabCell hab={getHab("persona",p.id,"sh_manejo",habs)} tipo="sh_manejo" entityType="persona" entityId={p.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load}/>
             <HabCellRadar dni={p.dni} radarMap={radarMap} tdClass="cp-c"/>
-            <td>{est==="ok"?<span className="est-ok">ok</span>:est==="par"?<span className="est-par">parcial</span>:<span className="est-no">bloq.</span>}</td>
+            <td style={{whiteSpace:"nowrap"}}>{niv==="man"?<span className="est-ok" title="Puede subir al chalet manejando">chalet 🚗</span>:niv==="cha"?<span className="est-ok" title="Puede subir al chalet (sin Manejo en Montaña)">chalet</span>:niv==="ing"?<span className="est-par" title="Puede ingresar, pero no subir al chalet">ingreso</span>:<span className="est-no" title="No puede ingresar">bloq.</span>}</td>
             {!readOnly&&<td><div style={{display:"flex",gap:5}}>
               {(canSH||canCP)&&<button className="bsm" onClick={()=>{setEditP(p);setShowModal(true);}}>Editar</button>}
               {(userRole==="puesto"||userRole==="admin")&&<button className="bsm" style={{color:"var(--acc2)",borderColor:"rgba(59,130,246,.3)"}} onClick={()=>setRegistroP(p)}>Acceso</button>}
@@ -2864,10 +2883,18 @@ const cmdPuestoFromRol=(rol)=>{
 };
 
 // ─── Sub-componentes del módulo Comedor ─────────────────────────────────────
-function CmdDietaModal({persona,currentValue,onSave,onQuit,onClose}){
+function CmdDietaModal({persona,currentValue,fecha,onSave,onQuit,onClose}){
   const[note,setNote]=useState(cmdGetDietaNote(currentValue));
   const[hasta,setHasta]=useState(cmdGetDietaHasta(currentValue));
   const active=cmdIsDietaActive(currentValue);
+  // "Aplica hasta" anterior al día que se está mirando = dieta vencida: no se lista ni se marca. Se avisa en el modal
+  // y se pide confirmar al guardar (pasaba que una fecha vieja quedaba precargada al editar la nota).
+  const ref=fecha||cmdIsoDate(new Date());
+  const vencida=!!(hasta&&hasta<ref);
+  const guardar=()=>{
+    if(vencida&&!confirm('La fecha "Aplica hasta" ('+cmdFmtDate(hasta)+') es anterior al '+cmdFmtDate(ref)+': la dieta queda guardada pero vencida, no se va a mostrar en la lista.\n\n¿Guardar igual?'))return;
+    onSave({nota:note,hasta:hasta||null});
+  };
   return <div className="cmd-modov" onClick={onClose}>
     <div className="cmd-modal" onClick={e=>e.stopPropagation()}>
       <h3>🥗 Menú dieta</h3>
@@ -2880,8 +2907,9 @@ function CmdDietaModal({persona,currentValue,onSave,onQuit,onClose}){
         {hasta&&<button onClick={()=>setHasta('')} style={{background:'var(--s2)',border:'1px solid var(--bd)',color:'var(--tx3)',padding:'8px 10px',borderRadius:6,fontSize:11,cursor:'pointer'}}>Sin fecha</button>}
       </div>
       <div className="hint">Vacío = permanente. Con fecha, la dieta aplica <strong>hasta ese día inclusive</strong>.</div>
+      {vencida&&<div style={{marginTop:8,padding:'8px 10px',borderRadius:6,background:'rgba(239,68,68,.12)',border:'1px solid var(--cmd-err)',color:'var(--cmd-err)',fontSize:12,fontWeight:700}}>⚠️ Con esta fecha la dieta está vencida (ya pasó el {cmdFmtDate(hasta)}): no se va a mostrar en la lista. Tocá "Sin fecha" o poné una fecha a partir del {cmdFmtDate(ref)}.</div>}
       <div className="actions">
-        <button className="btnSave" onClick={()=>onSave({nota:note,hasta:hasta||null})}>{active?'Actualizar':'Marcar dieta'}</button>
+        <button className="btnSave" onClick={guardar}>{active?'Actualizar':'Marcar dieta'}</button>
         {active&&<button className="btnQuit" onClick={onQuit}>Quitar dieta</button>}
         <button className="btnCancel" onClick={onClose}>Cancelar</button>
       </div>
@@ -3130,7 +3158,8 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
             })}
             {isAdmin&&!isReadOnly&&(
               <button className={'cmd-editbtn '+(dietaAplica?'on':'')} onClick={e=>{e.stopPropagation();onOpenDieta(p);}} title="Editar menú dieta">
-                {cmdIsDietaActive(dv)?'🥗 Editar':'🥗 + Dieta'}
+                {/* Dieta guardada pero con "hasta" anterior a la fecha que se mira: se avisa que está vencida (antes decía "Editar" y confundía) */}
+                {cmdIsDietaActive(dv)?(dietaAplica?'🥗 Editar':'🥗 Vencida '+cmdFmtDate(cmdGetDietaHasta(dv)).slice(0,5)):'🥗 + Dieta'}
               </button>
             )}
           </div>
@@ -4245,7 +4274,7 @@ function Comedor({user,proyectoId}){
       {subtab==='cert'&&verPedidos&&<CmdErrBoundary><CmdCertificados user={user} canEdit={isAdmin} showToast={showToast}/></CmdErrBoundary>}
     </>}
     {toast&&<div className={'cmd-toast '+(toast.err?'err':'')}>{toast.msg}</div>}
-    {dietaEditing&&<CmdDietaModal persona={dietaEditing} currentValue={dieta[dietaEditing.dni]} onSave={(v)=>saveDieta(dietaEditing.dni,v)} onQuit={()=>quitDieta(dietaEditing.dni)} onClose={()=>setDietaEditing(null)}/>}
+    {dietaEditing&&<CmdDietaModal persona={dietaEditing} currentValue={dieta[dietaEditing.dni]} fecha={fecha} onSave={(v)=>saveDieta(dietaEditing.dni,v)} onQuit={()=>quitDieta(dietaEditing.dni)} onClose={()=>setDietaEditing(null)}/>}
     {agregando!==null&&<CmdAgregarModal dniInicial={agregando} personas={personasDia} onClose={()=>setAgregando(null)} onConfirm={confirmarAgregado}/>}
   </div>;
 }
@@ -5223,7 +5252,7 @@ function PublicDashboard({onBack}){
               <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
                 <div className="av" style={{width:44,height:44,fontSize:16}}>{ini(`${searchResult.data.nombre} ${searchResult.data.apellido}`)}</div>
                 <div style={{flex:1}}><div style={{fontFamily:"var(--fh)",fontSize:22,fontWeight:700}}>{searchResult.data.nombre} {searchResult.data.apellido}</div><div style={{fontSize:13,color:"var(--tx2)"}}>{searchResult.data.empresa} · DNI {searchResult.data.dni}</div></div>
-                <div>{searchResult.estado==="ok"?<span className="est-ok">Habilitado</span>:searchResult.estado==="par"?<span className="est-par">Parcial</span>:<span className="est-no">Bloqueado</span>}</div>
+                <div>{(()=>{const niv=personaNivel(searchResult.data.id,habs,radarMap,searchResult.data.dni);return niv==="man"?<span className="est-ok">Habilitado a chalet manejando</span>:niv==="cha"?<span className="est-ok">Habilitado a subir a chalet</span>:niv==="ing"?<span className="est-par">Habilitado a ingresar</span>:<span className="est-no">Bloqueado</span>;})()}</div>
               </div>
               <div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>S&H</div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
