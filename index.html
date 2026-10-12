@@ -108,6 +108,9 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .fl{padding:13px 18px;border-radius:6px;margin-bottom:12px;animation:fi .15s ease}
 .fl-ok{background:rgba(16,185,129,.1);border:2px solid var(--gr)}.fl-no{background:rgba(239,68,68,.1);border:2px solid var(--rd)}
 .fll{font-family:var(--fh);font-size:22px;font-weight:800}.fl-ok .fll{color:var(--gr)}.fl-no .fll{color:var(--rd)}
+.fl-warn{background:rgba(245,158,11,.14);border:2px solid var(--acc)}.fl-warn .fll{color:var(--acc)}
+.fl-aviso{font-family:var(--fh);font-size:17px;font-weight:800;color:var(--acc);margin-top:6px;letter-spacing:.02em}
+.drv-warn{background:rgba(245,158,11,.14);border:2px solid var(--acc);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-family:var(--fh);font-weight:800;color:var(--acc);font-size:16px;letter-spacing:.02em}
 @keyframes fi{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
 .pi{display:flex;align-items:center;gap:10px;padding:9px 13px;border-radius:5px;margin-bottom:5px;border:1px solid transparent}
 .pi.ok{background:rgba(16,185,129,.07);border-color:rgba(16,185,129,.22)}.pi.no{background:rgba(239,68,68,.07);border-color:rgba(239,68,68,.22)}
@@ -341,7 +344,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev108";
+const APP_REV="Rev109";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -4463,8 +4466,16 @@ function Puesto({user,pid}){
     const esMontana=effPuesto==="Puesto 2"||effPuesto==="Puesto 3";
     return{tieneComidaHoy:decidido&&!!c.come,comeArriba:decidido?!!c.come:(esMontana&&horaArg()<11)};
   };
+  // Conductor = la primera persona escaneada después del vehículo. En P2 y P3 se avisa (no bloquea) si no tiene
+  // S&H Manejo en Montaña vigente: cartel al escanearlo, marca en la lista y aviso antes de confirmar.
+  const esMontanaP=effPuesto==="Puesto 2"||effPuesto==="Puesto 3";
+  const manejoOk=(p)=>!!(p&&p.pills&&p.pills.some(x=>x.short==="MAN"&&x.color==="green"));
+  const AVISO_MANEJO="⚠️ ATENCIÓN: NO HABILITADO PARA MANEJO EN MONTAÑA";
+  const conductor=(esMontanaP&&veh&&pax.length>0)?pax[0]:null;
+  const conductorSinManejo=!!(conductor&&!manejoOk(conductor));
+  const nombreDe=(p)=>p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI ${p.raw}`;
 
-  const sf=d=>{setFlash(d);setTimeout(()=>setFlash(null),2800);};
+  const sf=d=>{setFlash(d);setTimeout(()=>setFlash(null),(d&&d.dur)||2800);};
 
   const scanV=useCallback(async()=>{
     const v=val.trim().toUpperCase();if(!v)return;
@@ -4509,8 +4520,9 @@ function Puesto({user,pid}){
           null;
         if(sugerirDesde){
           const{data:regs}=await db.sel("registros_acceso",{
-            cols:"persona_id,resultado",
-            f:[["sesion_id","eq",sugerirDesde.id]]
+            cols:"persona_id,resultado,orden_escaneo",
+            f:[["sesion_id","eq",sugerirDesde.id]],
+            ord:"orden_escaneo.asc" // en el mismo orden en que se escanearon: el primero es el conductor
           });
           // Incluir TODOS los pasajeros de la sesión origen (aprobados Y bloqueados):
           // si alguien subió bloqueado por P2, igual tiene que sugerirse al llegar a P3.
@@ -4562,22 +4574,24 @@ function Puesto({user,pid}){
     }
     setOffline(false); // la consulta funcionó → hay conexión
     found=data&&data[0];
+    const esConductor=esMontanaP&&!!veh&&pax.length===0; // el primero después del vehículo es quien maneja
     if(!found){
       setPax(p=>[...p,{raw:v.toUpperCase(),person:null,ok:false,reason:"DNI no encontrado",activeAuths:[]}]);
-      sf({ok:false,label:"SIN REGISTRO",sub:v,reason:"DNI no encontrado"});
+      sf({ok:false,label:"SIN REGISTRO",sub:v,reason:"DNI no encontrado",aviso:esConductor?AVISO_MANEJO+" (conductor sin registro)":null,dur:esConductor?6000:undefined});
       setVal("");return;
     }
     const r=getHabPills("persona",found.id,habs,effPuesto,radarMap,found.dni);
     const ok=!r.blocks;
+    const avisoManejo=esConductor&&!r.pills.some(x=>x.short==="MAN"&&x.color==="green");
     // Comida de hoy + default checkbox "almorzará arriba".
     // Regla: quien sube por P2/P3 antes de las 11 AM come en chalet por default, salvo que hoy ya se haya
     // decidido otra cosa (ej. en P2 lo destildaron). El garitero puede cambiar el checkbox.
     const{tieneComidaHoy,comeArriba}=comidaDefault(found.id);
     setPax(p=>[...p,{raw:found.dni,person:found,ok,reason:r.reason,pills:r.pills,activeAuths:[],tieneComidaHoy,comeArriba}]);
     const flashExtra=tieneComidaHoy?" · 🍽 ya contado para almorzar arriba":"";
-    sf({ok,label:ok?"ACCESO PERMITIDO":"ACCESO DENEGADO",sub:`${found.nombre} ${found.apellido}${flashExtra}`,detail:`DNI ${found.dni} · ${found.empresa||""}`,reason:ok?null:r.reason});
+    sf({ok,label:ok?"ACCESO PERMITIDO":"ACCESO DENEGADO",sub:`${found.nombre} ${found.apellido}${flashExtra}`,detail:`DNI ${found.dni} · ${found.empresa||""}`,reason:ok?null:r.reason,aviso:avisoManejo?AVISO_MANEJO:null,dur:avisoManejo?6000:undefined});
     setVal("");
-  },[val,habs,pax,user,effPuesto,comidasHoy]);
+  },[val,habs,pax,user,effPuesto,comidasHoy,veh]);
 
   const scan=()=>{if(fase===F.V)scanV();else if(fase===F.P)scanP();};
   const onKey=e=>{if(e.key==="Enter")scan();};
@@ -4742,7 +4756,7 @@ function Puesto({user,pid}){
         <div className="sh-hint">QR o Enter · {pax.length} escaneados</div>
       </div>
       {/* Flash debajo del input */}
-      {flash&&<div className={`fl fl-${flash.ok?"ok":"no"}`} style={{marginBottom:10}}><div className="fll">{flash.label}</div><div style={{fontWeight:600,marginTop:2}}>{flash.sub}</div>{flash.detail&&<div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)"}}>{flash.detail}</div>}{flash.reason&&<div style={{fontSize:13,color:"var(--rd)",marginTop:4}}>{flash.reason}</div>}</div>}
+      {flash&&<div className={`fl fl-${flash.ok?(flash.aviso?"warn":"ok"):"no"}`} style={{marginBottom:10}}><div className="fll">{flash.label}</div><div style={{fontWeight:600,marginTop:2}}>{flash.sub}</div>{flash.detail&&<div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)"}}>{flash.detail}</div>}{flash.reason&&<div style={{fontSize:13,color:"var(--rd)",marginTop:4}}>{flash.reason}</div>}{flash.aviso&&<div className="fl-aviso">{flash.aviso}</div>}</div>}
       {/* Vehículo compacto debajo del input */}
       {veh&&<div className={`vc ${veh.ok?"ok":"no"}`} style={{marginBottom:10}}>
         <div style={{fontSize:26,lineHeight:1}}>{VI[veh.data.tipo]||"🚗"}</div>
@@ -4757,6 +4771,8 @@ function Puesto({user,pid}){
           })}
         </div>
       </div>}
+      {/* Aviso fijo mientras el conductor (1º pasajero) no tenga Manejo en Montaña */}
+      {conductorSinManejo&&<div className="drv-warn">{AVISO_MANEJO}<div style={{fontSize:13,fontWeight:600,marginTop:3,color:"var(--tx)",letterSpacing:0}}>🚗 Conductor: {nombreDe(conductor)} · no bloquea el paso</div></div>}
       {/* Lista de pasajeros crece hacia abajo */}
       {pax.length>0&&<div style={{marginBottom:10}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
@@ -4774,7 +4790,9 @@ function Puesto({user,pid}){
               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                 <div style={{fontWeight:600,fontSize:14}}>{p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI: ${p.raw}`}</div>
                 {p.tieneComidaHoy&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(245,158,11,.15)",border:"1px solid rgba(245,158,11,.4)",color:"var(--acc)",borderRadius:3,fontFamily:"var(--fm)",fontWeight:600,textTransform:"uppercase",letterSpacing:".05em"}}>🍽 EN LISTA</span>}
+                {i===0&&conductor&&<span style={{fontSize:9,padding:"1px 6px",background:"rgba(59,130,246,.15)",border:"1px solid rgba(59,130,246,.4)",color:"#60A5FA",borderRadius:3,fontFamily:"var(--fm)",fontWeight:700,textTransform:"uppercase",letterSpacing:".05em"}}>🚗 Conductor</span>}
               </div>
+              {i===0&&conductorSinManejo&&<div style={{fontSize:12,fontWeight:800,color:"var(--acc)"}}>⚠️ No habilitado para manejo en montaña</div>}
               {p.person&&<div style={{fontSize:12,color:"var(--tx2)"}}>{p.person.empresa} · DNI {p.raw}</div>}
               {!p.ok&&<div style={{fontSize:12,color:"var(--rd)"}}>{p.reason}</div>}
               {p.pills&&p.pills.length>0&&<div style={{display:"flex",gap:3,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
@@ -4808,8 +4826,9 @@ function Puesto({user,pid}){
           {veh&&<div style={{fontFamily:"var(--fm)",fontSize:14,fontWeight:600,marginBottom:6}}>🚗 {veh.data.patente}{veh.data.descripcion&&!veh.data._noRegistrado?<span style={{fontSize:12,fontWeight:400,color:"var(--tx2)"}}> · {veh.data.descripcion}</span>:null}</div>}
           {pax.length===0
             ?<div style={{fontSize:12,color:"var(--tx2)"}}>Sin pasajeros</div>
-            :<div style={{maxHeight:160,overflowY:"auto"}}>{pax.map((p,i)=><div key={i} style={{fontSize:13,padding:"2px 0",color:p.ok?"var(--tx)":"var(--rd)"}}>· {p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI ${p.raw}`}{!p.ok?" — bloqueado":""}</div>)}</div>
+            :<div style={{maxHeight:160,overflowY:"auto"}}>{pax.map((p,i)=><div key={i} style={{fontSize:13,padding:"2px 0",color:p.ok?"var(--tx)":"var(--rd)"}}>· {p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI ${p.raw}`}{!p.ok?" — bloqueado":""}{i===0&&conductor?" (conductor)":""}</div>)}</div>
           }
+          {conductorSinManejo&&<div style={{marginTop:8,fontSize:13,fontWeight:800,color:"var(--acc)"}}>⚠️ El conductor ({nombreDe(conductor)}) no está habilitado para manejo en montaña.</div>}
         </div>
         <div className="dir-big" style={{gap:16}}>
           <button className="dir-big-btn in" style={{padding:"28px 16px",fontSize:24}} onClick={async()=>{
