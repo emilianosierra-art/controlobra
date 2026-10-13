@@ -387,7 +387,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev112";
+const APP_REV="Rev113";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -5505,6 +5505,28 @@ const joPresencia=(ev,dias)=>{
   });
   return out;
 };
+// Rev113 — de dónde se toma el parte (lo elige quien lo genera):
+//  · "p1": estuvo en el predio (fichó en algún puesto o seguía adentro) → joPresencia.
+//  · "p2": subió al chalet ese día = fichó en Puesto 2 (sube o baja). También cuenta una fichada en Puesto 3, porque
+//    para llegar ahí se pasa por Puesto 2 (cubre el caso de que en P2 no lo hayan escaneado). No arrastra días anteriores.
+const JO_FUENTES={
+  p1:{t:"Puesto 1 · en el predio",ic:"🚪",d:"Cuenta a quien estuvo en el predio: fichó en algún puesto, o ya estaba adentro desde antes (su última fichada no fue una salida por Puesto 1). Es el mismo criterio que el conteo EN PREDIO.",tot:"Total en el predio"},
+  p2:{t:"Puesto 2 · subió al chalet",ic:"⛰️",d:"Cuenta solo a quien pasó por Puesto 2 ese día (subiendo o bajando). Si en P2 no lo escanearon pero fichó en Puesto 3, también cuenta. Quien estuvo en el predio y no subió no se cuenta.",tot:"Total que subió"},
+};
+const joPresenciaP2=(ev,dias)=>{
+  const out={};
+  [...dias].sort().forEach(d=>{
+    const ini=new Date(d+"T00:00:00").getTime(),fin=new Date(cmdAddDays(d,1)+"T00:00:00").getTime();
+    const m=new Map();
+    ev.forEach(e=>{
+      if(e.t<ini||e.t>=fin||(e.puesto!=="Puesto 2"&&e.puesto!=="Puesto 3"))return;
+      const x=m.get(e.pid);
+      if(x)x.n++;else m.set(e.pid,{modo:"ficho",ev:e,n:1,ult:null});
+    });
+    out[d]=m;
+  });
+  return out;
+};
 // SheetJS se carga solo cuando alguien descarga un Excel.
 let _joXlsx=null;
 const joLoadXLSX=()=>{
@@ -5814,13 +5836,19 @@ function JoCalendario({mes,setMes,sel,onToggle,habil,hint,minMes,maxMes}){
   </div>;
 }
 
-function JoDetalleCelda({celda,d,res,presD,radarD,areas,user,onAsignado,onCerrar}){
+function JoDetalleCelda({celda,d,res,presD,presP1D,fuente,radarD,areas,user,onAsignado,onCerrar}){
   const sin=celda.aid==="_sin";
   const a=sin?null:d.areasById[celda.aid];
   const items=((sin?res.sinArea[celda.d]:(res.porArea[celda.aid]||{})[celda.d])||[]).slice().sort((x,y)=>joPorApe(x.p,y.p));
   const[busy,setBusy]=useState(null);
   const[verFaltan,setVerFaltan]=useState(false);
-  const faltan=radarD?[...radarD.prog].filter(pid=>!presD.has(pid)&&(sin?!d.areaDe[pid]:d.areaDe[pid]===celda.aid)).map(pid=>d.personasById[pid]).filter(Boolean).sort(joPorApe):null;
+  const esP2=fuente==="p2";
+  const deEsta=(pid)=>sin?!d.areaDe[pid]:d.areaDe[pid]===celda.aid;
+  const aNombres=(ids)=>ids.map(pid=>d.personasById[pid]).filter(Boolean).sort(joPorApe);
+  // P1: programados en el Radar que no ficharon. P2: estuvieron en el predio pero no pasaron por P2/P3 (no se cuentan).
+  const faltan=esP2
+    ?(presP1D?aNombres([...presP1D.keys()].filter(pid=>!presD.has(pid)&&deEsta(pid))):null)
+    :(radarD?aNombres([...radarD.prog].filter(pid=>!presD.has(pid)&&deEsta(pid))):null);
   const asignar=async(pid,aid)=>{if(!aid)return;setBusy(pid);const ok=await joAsignar([pid],aid,user);setBusy(null);if(ok)onAsignado();};
   return <div className="jo-wrap">
     <div className="jo-h" style={{justifyContent:"space-between"}}>
@@ -5828,9 +5856,9 @@ function JoDetalleCelda({celda,d,res,presD,radarD,areas,user,onAsignado,onCerrar
       <button className="bsm" onClick={onCerrar}>Cerrar</button>
     </div>
     {sin&&items.length>0&&<div style={{fontSize:12,color:"var(--tx2)",marginBottom:8}}>Estuvieron ese día pero no están en ninguna área, así que no entran en el Excel. Asignalas acá o desde "Áreas o subcontratos".</div>}
-    {(()=>{const n=items.filter(({p,x})=>joAvisoRadar(x,p.id,radarD)).length;return n>0?<div className="warn" style={{fontSize:12}}>⚠ {n} para revisar: el Radar no {n===1?"lo":"los"} tiene en obra ese día. Si se {n===1?"contó":"contaron"} por "ya estaba adentro", puede que se hayan ido sin fichar la salida por Puesto 1.</div>:null;})()}
+    {(()=>{const n=items.filter(({p,x})=>joAvisoRadar(x,p.id,radarD)).length;return n>0?<div className="warn" style={{fontSize:12}}>⚠ {n} para revisar: el Radar no {n===1?"lo":"los"} tiene en obra ese día.{esP2?"":` Si se ${n===1?"contó":"contaron"} por "ya estaba adentro", puede que se hayan ido sin fichar la salida por Puesto 1.`}</div>:null;})()}
     {items.length===0
-      ?<div style={{fontSize:13,color:"var(--tx3)",padding:"6px 2px"}}>Nadie {sin?"sin área":`de ${a?a.nombre:"esta área"}`} estuvo ese día.</div>
+      ?<div style={{fontSize:13,color:"var(--tx3)",padding:"6px 2px"}}>Nadie {sin?"sin área":`de ${a?a.nombre:"esta área"}`} {esP2?"pasó por Puesto 2":"estuvo"} ese día.</div>
       :<div className="tw" style={{maxHeight:420}}><table style={{minWidth:0}}>
         <thead><tr><th>Persona</th><th>DNI</th><th>Empresa en Personal</th><th>Cómo se contó</th>{sin&&<th>Asignar a</th>}</tr></thead>
         <tbody>{items.map(({p,x})=><tr key={p.id}>
@@ -5846,9 +5874,9 @@ function JoDetalleCelda({celda,d,res,presD,radarD,areas,user,onAsignado,onCerrar
         </tr>)}</tbody>
       </table></div>}
     {faltan&&faltan.length>0&&<div style={{marginTop:10}}>
-      <button className="bsm" onClick={()=>setVerFaltan(!verFaltan)}>{verFaltan?"▾":"▸"} En el Radar ese día pero sin fichadas: {faltan.length}</button>
+      <button className="bsm" onClick={()=>setVerFaltan(!verFaltan)}>{verFaltan?"▾":"▸"} {esP2?"Estuvieron en el predio pero no pasaron por Puesto 2":"En el Radar ese día pero sin fichadas"}: {faltan.length}</button>
       {verFaltan&&<div style={{fontSize:12,color:"var(--tx2)",marginTop:6,lineHeight:1.7}}>{faltan.map(p=>`${p.apellido}, ${p.nombre}`).join(" · ")}</div>}
-      <div style={{fontSize:11,color:"var(--tx3)",marginTop:4}}>No se cuentan: el Radar es lo programado y el parte cuenta lo fichado. Sirve para detectar si a alguien no lo escanearon.</div>
+      <div style={{fontSize:11,color:"var(--tx3)",marginTop:4}}>{esP2?"No se cuentan porque el parte está tomado de Puesto 2. Si alguno subió y no lo escanearon, contalo a mano.":"No se cuentan: el Radar es lo programado y el parte cuenta lo fichado. Sirve para detectar si a alguien no lo escanearon."}</div>
     </div>}
   </div>;
 }
@@ -5868,6 +5896,8 @@ function JoParteDiario({user}){
   const[ocultar0,setOcultar0]=useState(false);
   const[radar,setRadar]=useState({});    // dia → {prog:Set, franco:Set}
   const[bajando,setBajando]=useState(false);
+  const[fuente,setFuenteRaw]=useState(()=>{try{return localStorage.getItem("jo_fuente")==="p2"?"p2":"p1";}catch(e){return"p1";}});
+  const setFuente=(f)=>{setFuenteRaw(f);setCelda(null);try{localStorage.setItem("jo_fuente",f);}catch(e){}};
   const leerFichadas=useCallback(async(personas)=>{
     setLeyendo(true);setEvErr(false);
     const e=await joFetchEventos(personas).catch(()=>null);
@@ -5880,7 +5910,10 @@ function JoParteDiario({user}){
   const habil=(iso)=>iso>=minIso&&iso<=hoy;
   const diasMes=useMemo(()=>{const[y,m]=mes.split("-").map(Number);const n=new Date(y,m,0).getDate();const out=[];
     for(let i=1;i<=n;i++){const iso=`${mes}-${String(i).padStart(2,"0")}`;if(iso>=minIso&&iso<=hoy)out.push(iso);}return out;},[mes,minIso,hoy]);
-  const presMes=useMemo(()=>ev?joPresencia(ev,diasMes):null,[ev,diasMes]);
+  const presP1Mes=useMemo(()=>ev?joPresencia(ev,diasMes):null,[ev,diasMes]);
+  const presP2Mes=useMemo(()=>ev&&fuente==="p2"?joPresenciaP2(ev,diasMes):null,[ev,diasMes,fuente]);
+  const presMes=fuente==="p2"?presP2Mes:presP1Mes;
+  const F=JO_FUENTES[fuente];
   const diasSel=useMemo(()=>[...dias].sort(),[dias]);
   const res=useMemo(()=>{
     if(!presMes||!d)return null;
@@ -5955,7 +5988,7 @@ function JoParteDiario({user}){
         XLSX.utils.book_append_sheet(wb,w2,"Sin área");
       }
       const nom=(scope==="todas"?"todas las areas":scopeNombre).replace(/[\\/:*?"<>|]+/g," ").trim();
-      XLSX.writeFile(wb,`Parte diario ${nom} ${mes}.xlsx`);
+      XLSX.writeFile(wb,`Parte diario ${nom} ${mes}${fuente==="p2"?" (Puesto 2)":" (Puesto 1)"}.xlsx`);
     }catch(e){alert("No se pudo generar el Excel: "+((e&&e.message)||e));}
     setBajando(false);
   };
@@ -5976,24 +6009,29 @@ function JoParteDiario({user}){
           <button className="bsm" onClick={()=>setDias(diasMes)}>Todo el mes{mes===hoy.slice(0,7)?" (hasta hoy)":""}</button>
           <button className="bsm" onClick={()=>{setDias([]);setCelda(null);}} disabled={!dias.length}>Limpiar</button>
         </div>
-        <div style={{fontSize:11,color:"var(--tx3)",marginTop:8,lineHeight:1.5}}>Tocá los días para elegirlos (podés elegir varios). El número chico es cuántos estuvieron{scope==="todas"?" en total":" de esa área"}.</div>
+        <div style={{fontSize:11,color:"var(--tx3)",marginTop:8,lineHeight:1.5}}>Tocá los días para elegirlos (podés elegir varios). El número chico es cuántos {fuente==="p2"?"pasaron por Puesto 2":"estuvieron"}{scope==="todas"?" en total":" de esa área"}.</div>
       </div>
       <div className="jo-wrap" style={{flex:"1 1 340px"}}>
-        <div className="jo-h">2 · Área o subcontrato</div>
+        <div className="jo-h">2 · Tomar los datos de</div>
+        <div className="jo-tabs" style={{marginBottom:6}}>
+          {Object.entries(JO_FUENTES).map(([k,f])=><button key={k} className={`jo-tab${fuente===k?" on":""}`} onClick={()=>setFuente(k)} style={{textTransform:"none",fontSize:14}}>{f.ic} {f.t}</button>)}
+        </div>
+        <div style={{fontSize:12,color:"var(--tx2)",marginBottom:14,lineHeight:1.5}}>{F.d}</div>
+        <div className="jo-h">3 · Área o subcontrato</div>
         <select className="fi" style={{width:"100%",marginBottom:12}} value={scope} onChange={e=>{setScope(e.target.value);setCelda(null);}}>
           <option value="todas">— Todas las áreas y empresas —</option>
           {["empresa","area"].map(t=><optgroup key={t} label={JO_TIPOS[t]}>{areas.filter(a=>a.tipo===t).map(a=><option key={a.id} value={a.id}>{a.nombre}{a.fila?` (fila ${a.fila})`:""}</option>)}</optgroup>)}
         </select>
         {areas.length===0&&<div className="warn">Todavía no hay áreas: crealas en "Áreas o subcontratos".</div>}
         {scope!=="todas"&&scopeAreas[0]&&<div style={{fontSize:12,color:"var(--tx2)",marginBottom:10}}>📍 {joUbicTxt(scopeAreas[0])}</div>}
-        <div className="jo-h" style={{marginTop:6}}>3 · Descargar</div>
+        <div className="jo-h" style={{marginTop:6}}>4 · Descargar</div>
         <button className="badd" onClick={descargar} disabled={bajando||!res||!diasSel.length} style={{opacity:bajando||!res||!diasSel.length?.5:1}}>{bajando?"Generando…":`⬇️ Descargar Excel${diasSel.length?` (${diasSel.length} día${diasSel.length===1?"":"s"})`:""}`}</button>
         {!diasSel.length&&<div style={{fontSize:12,color:"var(--tx3)",marginTop:6}}>Elegí al menos un día.</div>}
         {sinFila.length>0&&<div className="warn" style={{marginTop:10,marginBottom:0}}>⚠ Sin ubicación en el Excel (no se vuelcan): {sinFila.map(a=>a.nombre).join(", ")}</div>}
         {dupTxt.length>0&&<div className="warn" style={{marginTop:10,marginBottom:0}}>⚠ Comparten fila y en el Excel se pisan: {dupTxt.join(" · ")}</div>}
         <div style={{fontSize:11,color:"var(--tx3)",marginTop:12,lineHeight:1.5}}>
           El Excel trae la hoja <strong>Parte diario</strong> con cada área en su fila (el nombre en su celda y la cantidad de cada día en su columna: día 1 en F … día 31 en AJ), la hoja <strong>Detalle</strong> con quiénes son{scope==="todas"?<> y la hoja <strong>Sin área</strong></>:""}.<br/>
-          Se cuenta a quien estuvo en el predio ese día: <strong>fichó en algún puesto</strong>, o <strong>ya estaba adentro</strong> desde antes (su última fichada no fue una salida por Puesto 1). Es el mismo criterio que el conteo EN PREDIO.
+          El nombre del archivo dice de qué puesto se tomaron los datos.
         </div>
       </div>
     </div>
@@ -6002,6 +6040,7 @@ function JoParteDiario({user}){
     {res&&diasSel.length>0&&<>
       <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginBottom:8}}>
         <div style={{fontFamily:"var(--fh)",fontSize:18,fontWeight:700,textTransform:"uppercase"}}>{scopeNombre}</div>
+        <span className="jo-sug" style={fuente==="p2"?{color:"#A78BFA",borderColor:"rgba(167,139,250,.5)"}:undefined}>{F.ic} {F.t}</span>
         <div style={{fontSize:12,color:"var(--tx3)"}}>Tocá un número para ver quiénes son.</div>
         {scope==="todas"&&<label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--tx2)",cursor:"pointer",marginLeft:"auto"}}><input type="checkbox" checked={ocultar0} onChange={e=>setOcultar0(e.target.checked)}/> Ocultar las que están en 0</label>}
       </div>
@@ -6020,12 +6059,12 @@ function JoParteDiario({user}){
               return <td key={dd} className={`v${n?"":" cero"}${on?" sel":""}`} onClick={()=>setCelda({aid:"_sin",d:dd})}>{n}</td>;})}
           </tr>}
           {scope==="todas"&&<tr className="tot">
-            <td className="c1">Total en el predio</td><td></td>
+            <td className="c1">{F.tot}</td><td></td>
             {diasSel.map(dd=><td key={dd} className="mn" style={{textAlign:"center"}}>{presMes&&presMes[dd]?[...presMes[dd].keys()].filter(pid=>d.personasById[pid]).length:0}</td>)}
           </tr>}
         </tbody>
       </table></div>
-      {celda&&presD&&<JoDetalleCelda key={celda.aid+celda.d} celda={celda} d={d} res={res} presD={presD} radarD={radar[celda.d]} areas={areas} user={user} onAsignado={recargarBase} onCerrar={()=>setCelda(null)}/>}
+      {celda&&presD&&<JoDetalleCelda key={celda.aid+celda.d+fuente} celda={celda} d={d} res={res} presD={presD} presP1D={presP1Mes?presP1Mes[celda.d]:null} fuente={fuente} radarD={radar[celda.d]} areas={areas} user={user} onAsignado={recargarBase} onCerrar={()=>setCelda(null)}/>}
     </>}
   </div>;
 }
