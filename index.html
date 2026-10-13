@@ -387,7 +387,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev111";
+const APP_REV="Rev112";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -2591,8 +2591,8 @@ function Usuarios({currentUser}){
   const[list,setList]=useState([]);const[loading,setLoading]=useState(true);
   const load=async()=>{setLoading(true);const{data}=await db.sel("usuarios",{f:[["activo","eq",true]],ord:"nombre.asc"});if(data)setList(data);setLoading(false);};
   useEffect(()=>{load();},[]);
-  const RC={admin:"t-e",sh:"t-v",cp:"t-a",puesto:"t-p",logistica:"t-p",cocina_campamento:"t-a",cocina_chalet:"t-a",admin_viandas:"t-e"};
-  const RL={admin:"Admin",sh:"S&H",cp:"Control Personal",puesto:"Puesto",logistica:"Logistica",cocina_campamento:"Cocina Campamento",cocina_chalet:"Cocina Chalet",admin_viandas:"Admin Viandas"};
+  const RC={admin:"t-e",sh:"t-v",cp:"t-a",puesto:"t-p",logistica:"t-p",cocina_campamento:"t-a",cocina_chalet:"t-a",admin_viandas:"t-e",sobrestante:"t-v"};
+  const RL={admin:"Admin",sh:"S&H",cp:"Control Personal",puesto:"Puesto",logistica:"Logistica",cocina_campamento:"Cocina Campamento",cocina_chalet:"Cocina Chalet",admin_viandas:"Admin Viandas",sobrestante:"Sobrestante"};
   return <div>
     <div className="ph2"><div className="ptit">Usuarios del <span>Sistema</span></div></div>
     <div style={{marginBottom:14,padding:"12px 16px",background:"rgba(245,158,11,.07)",border:"1px solid rgba(245,158,11,.25)",borderRadius:6,fontSize:13,color:"var(--tx2)"}}>Para crear o modificar usuarios, ingresa al <strong style={{color:"var(--tx)"}}>dashboard de Supabase → Authentication → Users</strong>.</div>
@@ -5026,8 +5026,11 @@ function Puesto({user,pid}){
 }
 
 // ─── TABLERO PÚBLICO ──────────────────────────────────────────────────────────
-function PublicDashboard({onBack}){
-  const[tab,setTab]=useState("chalet");
+// embedTab (Rev112): la misma vista pública dentro de la app logueada (rol sobrestante), mostrando solo esa solapa
+// ("chalet" / "consulta" / "movimientos"), sin la barra de arriba ni las solapas propias.
+function PublicDashboard({onBack,embedTab}){
+  const[tabSt,setTab]=useState("chalet");
+  const tab=embedTab||tabSt;
   const[search,setSearch]=useState("");
   const[searchResult,setSearchResult]=useState(null);
   const[searching,setSearching]=useState(false);
@@ -5158,7 +5161,8 @@ function PublicDashboard({onBack}){
   const sesList=movHoy.ses||[];
   const manList=movHoy.man||[];
 
-  return <div className="pub-wrap">
+  return <div className={embedTab?"":"pub-wrap"}>
+    {!embedTab&&<>
     <div className="pub-bar">
       <div className="brand">CONTROL<span>OBRA</span> <span style={{fontSize:13,fontWeight:400,color:"var(--tx2)",marginLeft:6,fontFamily:"var(--fb)"}}>vista publica</span> <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3}}>{APP_REV}</span></div>
       <div style={{display:"flex",alignItems:"center",gap:12}}>
@@ -5169,7 +5173,8 @@ function PublicDashboard({onBack}){
     <div className="pub-tabs">
       {[{k:"chalet",l:"Conteo de Personal"},{k:"consulta",l:"Habilitaciones Personal / Vehiculos"},{k:"movimientos",l:"Movimientos del dia"}].map(t=><button key={t.k} className={`pub-tab${tab===t.k?" on":""}`} onClick={()=>setTab(t.k)}>{t.l}</button>)}
     </div>
-    <div className="pub-main">
+    </>}
+    <div className="pub-main" style={embedTab?{padding:0,maxWidth:1100,margin:0}:undefined}>
       {tab==="chalet"&&<>
         {/* EN PREDIO — total de personas dentro (ingresaron por P1 y no salieron) */}
         <div style={{background:"linear-gradient(135deg,rgba(245,158,11,.14),rgba(245,158,11,.04))",border:"1px solid rgba(245,158,11,.4)",borderRadius:8,overflow:"hidden",marginBottom:12}}>
@@ -6075,7 +6080,7 @@ function App(){
 
   const login=async p=>{
     setUser(p);
-    setTab({puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi",admin_viandas:"vi"}[p.rol]||"per");
+    setTab({puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi",admin_viandas:"vi",sobrestante:"jop"}[p.rol]||"per");
     const{data}=await db.sel("proyectos",{f:[["activo","eq",true]]});
     if(data)setProyectos(data);
     setChecking(false);
@@ -6091,6 +6096,8 @@ function App(){
     cocina_campamento:[{k:"vi",l:"Viandas"}],
     cocina_chalet:    [{k:"vi",l:"Viandas"}],
     admin_viandas:    [{k:"vi",l:"Viandas"}],
+    // Rev112: lo mismo que la vista sin login (como solapas) + Reportes JO completo.
+    sobrestante:      [{k:"pc",l:"Conteo de personal"},{k:"ph",l:"Consulta habilitaciones"},{k:"pm",l:"Movimientos del día"},{k:"joa",l:"Áreas o subcontratos"},{k:"jop",l:"Parte diario"}],
     admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"},{k:"cvc",l:"Chalet"},{k:"joa",l:"Áreas o subcontratos"},{k:"jop",l:"Parte diario"},{k:"adm",l:"Usuarios"}],
   };
   // Agrupación visual de solapas (cada rol ve solo los grupos donde tiene alguna solapa)
@@ -6098,6 +6105,7 @@ function App(){
     {t:"Habilitaciones",    ks:["per","veh"]},
     {t:"Control de puestos",ks:["sc","reg"]},
     {t:"Gastronomía",       ks:["vi","cvc"]},
+    {t:"Movimientos de obra",ks:["pc","ph","pm"]},
     {t:"Reportes JO",       ks:["joa","jop"]},
     {t:"Administración",    ks:["adm"]},
   ];
@@ -6131,6 +6139,9 @@ function App(){
       {tab==="sc" &&<Puesto user={user} pid={pid}/>}
       {tab==="cvc"&&<ConteoViandasChalet user={user} proyectoId={pid}/>}
       {tab==="vi" &&<Comedor user={user} proyectoId={pid}/>}
+      {tab==="pc" &&<PublicDashboard embedTab="chalet"/>}
+      {tab==="ph" &&<PublicDashboard embedTab="consulta"/>}
+      {tab==="pm" &&<PublicDashboard embedTab="movimientos"/>}
       {tab==="joa"&&<CmdErrBoundary><JoAreas user={user}/></CmdErrBoundary>}
       {tab==="jop"&&<CmdErrBoundary><JoParteDiario user={user}/></CmdErrBoundary>}
       {tab==="adm"&&<Usuarios currentUser={user}/>}
