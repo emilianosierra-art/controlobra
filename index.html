@@ -336,6 +336,49 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .cmd-citem{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:10px 12px;cursor:pointer;text-align:left;color:var(--tx);font-family:var(--fh);}
 .cmd-citem:hover{border-color:var(--cmd-pri);}
 @media(max-width:700px){.cmd-mcards{grid-template-columns:1fr 1fr}.cmd-tabs{overflow-x:auto}.cmd-tab{white-space:nowrap;font-size:12px;padding:10px 8px}}
+/* Reportes JO (Rev111) */
+.jo-wrap{background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:14px 16px;margin-bottom:14px}
+.jo-h{font-family:var(--fh);font-size:14px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--tx2);margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.jo-list{display:flex;flex-direction:column;gap:6px}
+.jo-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:9px 12px;cursor:pointer;transition:border-color .15s}
+.jo-row:hover{border-color:var(--acc2)}
+.jo-nom{font-weight:600;flex:1;min-width:160px}
+.jo-cel{font-family:var(--fm);font-size:11px;color:var(--tx3);font-weight:400;margin-top:2px}
+.jo-n{font-family:var(--fh);font-size:22px;font-weight:800;min-width:34px;text-align:right;line-height:1}
+.jo-sug{font-size:11px;font-family:var(--fm);color:var(--acc);border:1px solid rgba(245,158,11,.4);border-radius:4px;padding:1px 7px;white-space:nowrap}
+.jo-en{font-size:11px;font-family:var(--fm);color:#60A5FA;border:1px solid rgba(96,165,250,.4);border-radius:4px;padding:1px 7px;white-space:nowrap}
+.jo-baja{font-size:10px;font-family:var(--fm);color:var(--rd);border:1px solid rgba(239,68,68,.4);border-radius:3px;padding:0 5px;margin-left:6px;text-transform:uppercase}
+.jo-chk{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:5px;cursor:pointer;border:1px solid transparent}
+.jo-chk:hover{background:var(--s2)}
+.jo-chk.on{background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.3)}
+.jo-chk input{width:auto;accent-color:var(--acc2);flex-shrink:0}
+.jo-scroll{max-height:300px;overflow-y:auto;border:1px solid var(--bd);border-radius:6px;padding:4px;background:var(--bg)}
+.jo-tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.jo-tab{background:var(--s2);border:1px solid var(--bd);color:var(--tx2);border-radius:4px;padding:6px 12px;font-family:var(--fh);font-size:13px;font-weight:700;text-transform:uppercase;cursor:pointer}
+.jo-tab.on{border-color:var(--acc);color:var(--acc)}
+.jo-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:360px}
+.jo-dow{font-family:var(--fm);font-size:10px;color:var(--tx3);text-align:center;padding:2px 0}
+.jo-day{background:var(--s2);border:1px solid var(--bd);color:var(--tx);border-radius:5px;padding:6px 0 4px;font-family:var(--fm);font-size:13px;cursor:pointer;text-align:center;line-height:1.2}
+.jo-day:hover:not(:disabled){border-color:var(--acc2)}
+.jo-day.on{background:var(--acc);border-color:var(--acc);color:#000;font-weight:700}
+.jo-day.hoy{box-shadow:inset 0 0 0 1px var(--acc2)}
+.jo-day:disabled{opacity:.25;cursor:not-allowed}
+.jo-dh{font-size:9px;color:var(--tx3);min-height:11px}
+.jo-day.on .jo-dh{color:#000;opacity:.65}
+.jo-mx{overflow-x:auto;border:1px solid var(--bd);border-radius:8px;background:var(--s1);margin-bottom:14px}
+.jo-mx table{min-width:0}
+.jo-mx th,.jo-mx td{padding:6px 9px}
+.jo-mx th{position:static;text-align:center}
+.jo-mx .c1{position:sticky;left:0;background:var(--s1);z-index:3;min-width:170px;max-width:240px;text-align:left}
+.jo-mx th.c1{background:var(--s2)}
+.jo-mx td.v{text-align:center;font-family:var(--fm);font-weight:600;cursor:pointer}
+.jo-mx td.v:hover{background:rgba(59,130,246,.14)}
+.jo-mx td.v.cero{color:var(--tx3);font-weight:400}
+.jo-mx td.v.sel{background:rgba(245,158,11,.2);box-shadow:inset 0 0 0 1px var(--acc)}
+.jo-mx tr.sin td{color:var(--acc)}
+.jo-mx tr.tot td{font-weight:700;border-top:2px solid var(--bd)}
+.jo-pre{background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:10px;font-family:var(--fm);font-size:11px;white-space:pre-wrap;color:var(--tx2);max-height:260px;overflow:auto}
+@media(max-width:700px){.jo-cal{max-width:none}.jo-mx .c1{min-width:120px}}
 </style>
 </head>
 <body>
@@ -344,7 +387,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev110";
+const APP_REV="Rev111";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -5289,6 +5332,699 @@ function PublicDashboard({onBack}){
 }
 
 // ─── LOGIN ────────────────────────────────────────────────────────────────────
+// ─── REPORTES JO (Rev111) ─────────────────────────────────────────────────────
+// Reportes de Jefatura de Obra (solo admin).
+//  · "Áreas o subcontratos": áreas propias de Obras y Sistemas y empresas subcontratistas, cada una con sus
+//    personas (una persona está en UNA sola área) y con la fila del Excel donde se vuelca su resultado.
+//  · "Parte diario": cuántas personas de cada área estuvieron cada día elegido, con descarga a Excel.
+// Tablas: obra.jo_areas (nombre, tipo empresa/area, fila, col_nombre, col_dia1, claves) y
+// obra.jo_area_personas (PK persona_id → area_id).
+// "Estuvo ese día" = fichó en algún puesto ese día, o ya estaba adentro del predio al empezar el día (su última
+// fichada anterior no fue una salida por Puesto 1). Es el mismo criterio que el conteo EN PREDIO.
+const JO_SQL=`CREATE TABLE IF NOT EXISTS obra.jo_areas (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  nombre text NOT NULL,
+  tipo text NOT NULL DEFAULT 'empresa' CHECK (tipo IN ('empresa','area')),
+  fila integer,
+  col_nombre text NOT NULL DEFAULT 'D',
+  col_dia1 text NOT NULL DEFAULT 'F',
+  claves text,
+  creado_por uuid,
+  creado_at timestamptz NOT NULL DEFAULT now(),
+  actualizado_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS obra.jo_area_personas (
+  persona_id uuid PRIMARY KEY REFERENCES obra.personas(id) ON DELETE CASCADE,
+  area_id uuid NOT NULL REFERENCES obra.jo_areas(id) ON DELETE CASCADE,
+  agregado_por uuid,
+  agregado_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS jo_area_personas_area_idx ON obra.jo_area_personas(area_id);
+GRANT SELECT, INSERT, UPDATE, DELETE ON obra.jo_areas TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON obra.jo_area_personas TO authenticated;`;
+const JO_TIPOS={empresa:"Empresas subcontratistas",area:"Áreas de Obras y Sistemas"};
+// Listado inicial (pedido del 13/10/2026): [nombre, tipo, fila del Excel, palabras para sugerir personas].
+// En todas: nombre en la columna D y día 1 en F … día 31 en AJ.
+const JO_SEED=[
+  ["ALUSA","empresa",11],["CRYGA","empresa",12],["INSUR","empresa",13],["O-TEK","empresa",14,"O-TEK, OTEK"],["BIOMAS","empresa",15],
+  ["RM","empresa",21,"RM, CONSTRUCCIONES RM"],["ELEMEC","empresa",22],["MONTAJES DEL SUR","empresa",23,"MONTAJES DEL SUR, DEL SUR MONTAJES"],
+  ["TDA","empresa",24],["SOLLA","empresa",25],["VALNA INGENIERÍA","empresa",26,"VALNA"],["PAGANO","empresa",27],["VIER ABINET","empresa",28],
+  ["DE STEFANO","empresa",29],["SAR","empresa",32],["LAGUNAS DEL RADAL","empresa",33,"LAGUNAS DEL RADAL, LAGUNAS DE RADAL"],
+  ["EL BULEVAR","empresa",34,"BULEVAR"],["CLEANLIF","empresa",35,"CLEANLIF, CLEANLIFE"],["SCHUCO","empresa",36],["KAUSSER","empresa",37],
+  ["TECMACO","empresa",38],["COOPETEL","empresa",39],["SMI","empresa",40],["CEBALLOS","empresa",41],["WSP","empresa",43],["DIZAR","empresa",44],
+  ["BEHA","empresa",45],["GRAFTON","empresa",46],
+  ["Coordinación de Obra","area",77],["Jefatura de Obra","area",78],["Sobrestantes","area",79],["S&H","area",80,"SYH, HYS"],["Ambiente","area",81],
+  ["Administración","area",82],["Compras y pañol","area",83],["Logística y mant.","area",84],["Intendencia","area",85],
+  ["Documentacion","area",86],["Gerencia","area",87],["Sistemas","area",88],["ASESOR Aludes","area",89],
+  ["ASESOR Avalancha","area",90,"ASESOR AVALANCHA, ASESOR AVALANCHAS"],["ASESOR Ambiente","area",91],["ASESOR Mendiburu","area",92,"MENDIBURU"],
+  ["Capataces","area",98,"CAPATAZ, CAPATACES"],["Producción","area",99],["Maquinistas","area",100,"MAQUINISTA, MAQUINISTAS"],
+  ["Sanitaristas","area",101,"SANITARISTA, SANITARISTAS"],["Pedreros","area",102,"PEDRERO, PEDREROS"],["Cons en Seco","area",103],
+  ["Seg e Higiene","area",104],["Pañol","area",105],["Carpintero","area",106,"CARPINTERO, MADERA"],["Mantenimiento","area",112],
+  ["Control Ingreso","area",113],["Choferes","area",114,"CHOFER, CHOFERES"],["Mecánicos","area",115,"MECANICO, MECANICOS"],
+];
+// Texto normalizado para comparar: mayúsculas, sin tildes, solo letras y números separados por un espacio.
+const joNorm=(s)=>String(s==null?"":s).normalize("NFD").replace(/[̀-ͯ]/g,"").toUpperCase().replace(/[^A-Z0-9]+/g," ").trim();
+// Empresa sin el prefijo "Obras y Sistemas" / "OyS" (si no, "Sistemas" coincidiría con todo el personal propio).
+const joCore=(emp)=>joNorm(emp).replace(/^(OBRAS Y SISTEMAS|OYS)( |$)/,"").trim();
+const joClaves=(a)=>String((a.claves&&a.claves.trim())?a.claves:a.nombre).split(",").map(joNorm).filter(Boolean);
+// El cargo solo se mira en el personal propio: un maquinista de ALUSA no es del área Maquinistas de O&S.
+const joEsOys=(emp)=>/^(OBRAS Y SISTEMAS|OYS)( |$)/.test(joNorm(emp));
+const joTexto=(p)=>" "+joCore(p.empresa)+" "+(joEsOys(p.empresa)?joNorm(p.cargo):"")+" ";
+// Busca palabras enteras: "RM" coincide con "CONSTRUCCIONES RM" pero no con "FIRMA".
+const joFiltra=(lista,txt)=>{const t=joNorm(txt).split(" ").filter(Boolean);if(!t.length)return lista;
+  return lista.filter(p=>{const s=" "+joNorm(`${p.nombre||""} ${p.apellido||""} ${p.dni||""} ${p.empresa||""}`)+" ";return t.every(w=>s.includes(w));});};
+const joColNum=(c)=>String(c||"").toUpperCase().split("").reduce((n,ch)=>n*26+(ch.charCodeAt(0)-64),0);
+const joNumCol=(n)=>{let s="";while(n>0){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;};
+const joColDia=(a,dia)=>joNumCol(joColNum(a.col_dia1||"F")+dia-1);
+const joCeldaNom=(a)=>a&&a.fila?`${a.col_nombre||"D"}${a.fila}`:"";
+const joUbicTxt=(a)=>a&&a.fila?`nombre en ${joCeldaNom(a)} · día 1 en ${joColDia(a,1)}${a.fila} … día 31 en ${joColDia(a,31)}${a.fila}`:"sin ubicación en el Excel";
+const joParseCelda=(s)=>{const m=String(s||"").trim().toUpperCase().match(/^([A-Z]{1,3})\s*(\d{1,5})$/);return m?{col:m[1],fila:parseInt(m[2],10)}:null;};
+const joRangos=(nums)=>{const v=[...new Set(nums)].filter(Boolean).sort((a,b)=>a-b);const out=[];
+  v.forEach(n=>{const u=out[out.length-1];if(u&&n===u[1]+1)u[1]=n;else out.push([n,n]);});
+  return out.map(([a,b])=>a===b?`${a}`:`${a}–${b}`).join(", ");};
+const JO_DSEM=["dom","lun","mar","mié","jue","vie","sáb"];
+const joDiaLbl=(iso)=>{const[y,m,d]=iso.split("-").map(Number);return `${JO_DSEM[new Date(y,m-1,d).getDay()]} ${String(d).padStart(2,"0")}/${String(m).padStart(2,"0")}`;};
+const joPorApe=(a,b)=>`${a.apellido||""} ${a.nombre||""}`.localeCompare(`${b.apellido||""} ${b.nombre||""}`,"es");
+const joHora=(t)=>{const x=new Date(t);return `${String(x.getHours()).padStart(2,"0")}:${String(x.getMinutes()).padStart(2,"0")}`;};
+const joFechaHora=(t)=>{const x=new Date(t);return `${String(x.getDate()).padStart(2,"0")}/${String(x.getMonth()+1).padStart(2,"0")} ${joHora(t)}`;};
+const joFichTxt=(e)=>`${String(e.puesto).replace("Puesto ","P")} ${dirVerbo(e.puesto,e.dir)}`;
+const joComoTxt=(x)=>x.modo==="ficho"
+  ?`fichó: ${joFichTxt(x.ev)} ${joHora(x.ev.t)}${x.n>1?` (${x.n} fichadas)`:""}`
+  :`ya estaba adentro (última fichada: ${joFichTxt(x.ult)} ${joFechaHora(x.ult.t)})`;
+// Aviso para revisar: quien se contó por "ya estaba adentro" pero el Radar no lo tiene en obra ese día
+// (puede haberse ido sin fichar la salida por Puesto 1).
+const joAvisoRadar=(x,pid,radarD)=>{
+  if(!radarD)return null;
+  if(radarD.franco.has(pid))return"en el Radar figura de franco";
+  if(x.modo==="adentro"&&!radarD.prog.has(pid))return"no figura en el Radar ese día";
+  return null;
+};
+
+const joFetchBase=async()=>{
+  const[a,m,p]=await Promise.all([
+    db.sel("jo_areas",{ord:"fila.asc.nullslast,nombre.asc",lim:2000}),
+    dbSelAll("jo_area_personas",{cols:"persona_id,area_id",ord:"persona_id.asc"}),
+    dbSelAll("personas",{cols:"id,dni,nombre,apellido,empresa,cargo,deleted_at",ord:"id.asc"}),
+  ]);
+  if(a.data===null||m.data===null)return{falta:true}; // tablas sin crear o sin GRANT
+  return{areas:a.data,miembros:m.data,personas:p.data||[]};
+};
+// Todo lo que se necesita de las áreas: quién está en cada una, quién no tiene área y las sugerencias por empresa.
+const joDerivar=(base)=>{
+  if(!base||base.falta)return null;
+  const areasById={},personasById={},areaDe={},porArea={},match={},sugeridasDe={};
+  base.areas.forEach(a=>{areasById[a.id]=a;});
+  base.personas.forEach(p=>{personasById[p.id]=p;});
+  base.miembros.forEach(m=>{if(!areasById[m.area_id])return;areaDe[m.persona_id]=m.area_id;
+    const p=personasById[m.persona_id];if(p)(porArea[m.area_id]=porArea[m.area_id]||[]).push(p);});
+  const activos=base.personas.filter(p=>!p.deleted_at);
+  const claves=base.areas.map(a=>({id:a.id,k:joClaves(a)}));
+  const sinArea=[];
+  activos.forEach(p=>{
+    if(areaDe[p.id])return;
+    sinArea.push(p);
+    const t=joTexto(p);
+    const ids=claves.filter(c=>c.k.some(k=>t.includes(" "+k+" "))).map(c=>c.id);
+    if(ids.length){match[p.id]=ids;ids.forEach(id=>(sugeridasDe[id]=sugeridasDe[id]||[]).push(p));}
+  });
+  Object.values(porArea).forEach(l=>l.sort(joPorApe));
+  Object.values(sugeridasDe).forEach(l=>l.sort(joPorApe));
+  sinArea.sort(joPorApe);
+  return{areasById,personasById,areaDe,porArea,activos,sinArea,match,sugeridasDe};
+};
+// Asigna personas a un área. Si ya estaban en otra, se mueven (una persona está en una sola área).
+const joAsignar=async(ids,areaId,user)=>{
+  if(!ids.length)return true;
+  const now=new Date().toISOString();
+  const{ok}=await db.ins("jo_area_personas",ids.map(pid=>({persona_id:pid,area_id:areaId,agregado_por:user.id,agregado_at:now})),true,"persona_id");
+  if(!ok)alert("No se pudo guardar. Revisá la conexión.");
+  return ok;
+};
+const joQuitar=async(ids)=>{
+  for(let i=0;i<ids.length;i+=50)await db.del("jo_area_personas",[["persona_id","in",`(${ids.slice(i,i+50).join(",")})`]]);
+};
+// Fichadas operativas (sesiones de los puestos + movimientos manuales) desde OPERATIVA_DESDE, como eventos por persona
+// ordenados por hora. Quien fichó sin estar registrado se cruza por DNI si después se dio de alta en Personal.
+const joFetchEventos=async(personas)=>{
+  const D=OPERATIVA_DESDE;
+  const[s,r,m]=await Promise.all([
+    dbSelAll("sesiones_acceso",{cols:"id,puesto,direccion,cerrada_at",f:[["cerrada_at","gte",D]],ord:"id.asc"}),
+    dbSelAll("registros_acceso",{cols:"id,persona_id,dni_raw,sesion_id",f:[["created_at","gte",D]],ord:"id.asc"}),
+    dbSelAll("movimientos_manuales",{cols:"id,persona_id,dni_raw,puesto,direccion,created_at",f:[["created_at","gte",D]],ord:"id.asc"}),
+  ]);
+  if(!s.data||!r.data||!m.data)return null;
+  const porDni={};
+  personas.forEach(p=>{const k=normDni(p.dni);if(k&&(!porDni[k]||!p.deleted_at))porDni[k]=p.id;});
+  const pidDe=(pid,dni)=>pid||(dni?porDni[normDni(dni)]:null)||null;
+  const ses={};s.data.forEach(x=>{ses[x.id]=x;});
+  const ev=[];
+  r.data.forEach(x=>{const se=ses[x.sesion_id],pid=pidDe(x.persona_id,x.dni_raw);if(se&&pid)ev.push({t:new Date(se.cerrada_at).getTime(),pid,puesto:se.puesto,dir:se.direccion});});
+  m.data.forEach(x=>{const pid=pidDe(x.persona_id,x.dni_raw);if(pid)ev.push({t:new Date(x.created_at).getTime(),pid,puesto:x.puesto,dir:x.direccion});});
+  ev.sort((a,b)=>a.t-b.t);
+  return ev;
+};
+// Para cada día (YYYY-MM-DD, hora local): Map persona_id → {modo:"ficho"|"adentro", ev (1ª fichada del día), n, ult}.
+const joPresencia=(ev,dias)=>{
+  const out={},last={};let i=0;
+  [...dias].sort().forEach(d=>{
+    const ini=new Date(d+"T00:00:00").getTime(),fin=new Date(cmdAddDays(d,1)+"T00:00:00").getTime();
+    while(i<ev.length&&ev[i].t<ini){last[ev[i].pid]=ev[i];i++;}
+    const m=new Map();
+    Object.keys(last).forEach(pid=>{const e=last[pid];if(!(e.puesto==="Puesto 1"&&e.dir==="salida"))m.set(pid,{modo:"adentro",ult:e,n:0});});
+    for(let j=i;j<ev.length&&ev[j].t<fin;j++){
+      const e=ev[j],x=m.get(e.pid);
+      if(x&&x.modo==="ficho")x.n++;
+      else m.set(e.pid,{modo:"ficho",ev:e,n:1,ult:x?x.ult:null});
+    }
+    out[d]=m;
+  });
+  return out;
+};
+// SheetJS se carga solo cuando alguien descarga un Excel.
+let _joXlsx=null;
+const joLoadXLSX=()=>{
+  if(window.XLSX)return Promise.resolve(window.XLSX);
+  if(!_joXlsx)_joXlsx=new Promise((res,rej)=>{
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    s.onload=()=>res(window.XLSX);
+    s.onerror=()=>{_joXlsx=null;rej(new Error("no se pudo cargar la librería de Excel (¿sin internet?)"));};
+    document.head.appendChild(s);
+  });
+  return _joXlsx;
+};
+
+function JoFaltaSql(){
+  const copiar=async()=>{try{await navigator.clipboard.writeText(JO_SQL);alert("SQL copiado");}catch(e){prompt("Copiá el SQL:",JO_SQL);}};
+  return <div className="jo-wrap">
+    <div className="jo-h" style={{color:"var(--acc)"}}>⚠️ Faltan las tablas de Reportes JO</div>
+    <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Hay que correr este SQL una sola vez en Supabase (SQL Editor → <strong>Run without RLS</strong>). Después recargá la página.</div>
+    <pre className="jo-pre">{JO_SQL}</pre>
+    <button className="bsm" style={{marginTop:8}} onClick={copiar}>📋 Copiar SQL</button>
+  </div>;
+}
+
+function JoPersonaChk({p,on,onToggle,extra}){
+  return <label className={`jo-chk${on?" on":""}`}>
+    <input type="checkbox" checked={on} onChange={onToggle}/>
+    <div className="av">{ini(`${p.nombre} ${p.apellido}`)}</div>
+    <div style={{flex:1,minWidth:0}}>
+      <div style={{fontWeight:500}}>{p.apellido}, {p.nombre}{p.deleted_at&&<span className="jo-baja">dado de baja</span>}</div>
+      <div style={{fontSize:11,color:"var(--tx2)"}}>{p.empresa||"—"} · DNI {p.dni}</div>
+    </div>
+    {extra}
+  </label>;
+}
+
+function JoAreaModal({area,areas,nPersonas,nombreInicial,user,onClose,onSaved,onDeleted}){
+  // Desde "Personas sin área" llega el nombre del grupo: si es personal propio ("OBRAS Y SISTEMAS - X") se propone área "X".
+  const iniOys=!area&&joEsOys(nombreInicial);
+  const nomIni=iniOys?(String(nombreInicial).replace(/^\s*(obras y sistemas|oys)\s*-?\s*/i,"").trim()||nombreInicial):(nombreInicial||"");
+  const nueva=!area;
+  const[nombre,setNombre]=useState(area?area.nombre:nomIni);
+  const[tipo,setTipo]=useState(area?area.tipo:(iniOys?"area":"empresa"));
+  const[celda,setCelda]=useState(area?joCeldaNom(area):"");
+  const[col1,setCol1]=useState(area?(area.col_dia1||"F"):"F");
+  const[claves,setClaves]=useState(area?(area.claves||""):nomIni);
+  const[busy,setBusy]=useState(false);
+  const pc=joParseCelda(celda);
+  const c1=String(col1||"").trim().toUpperCase();
+  const c1ok=/^[A-Z]{1,3}$/.test(c1);
+  const prev=pc&&c1ok?{fila:pc.fila,col_nombre:pc.col,col_dia1:c1}:null;
+  const otras=areas.filter(a=>!area||a.id!==area.id);
+  const choca=pc?otras.filter(a=>a.fila===pc.fila):[];
+  const falta=[!nombre.trim()&&"nombre",!pc&&"celda del nombre (ej. D47)",!c1ok&&"columna del día 1 (ej. F)"].filter(Boolean);
+  const guardar=async()=>{
+    if(falta.length)return;
+    if(choca.length&&!confirm(`La fila ${pc.fila} ya la usa ${choca.map(a=>a.nombre).join(", ")}. Si quedan en la misma fila, en el Excel se pisan. ¿Guardar igual?`))return;
+    setBusy(true);
+    const payload={nombre:nombre.trim(),tipo,fila:pc.fila,col_nombre:pc.col,col_dia1:c1,claves:claves.trim()||null,actualizado_at:new Date().toISOString()};
+    const r=nueva?await db.ins("jo_areas",{...payload,creado_por:user.id}):await db.upd("jo_areas",payload,[["id","eq",area.id]]);
+    setBusy(false);
+    if(!r.ok){alert("No se pudo guardar. Revisá la conexión.");return;}
+    const fila=Array.isArray(r.data)&&r.data[0]?r.data[0]:{...area,...payload};
+    onSaved(fila);
+  };
+  const eliminar=async()=>{
+    if(!confirm(`¿Eliminar "${area.nombre}"?${nPersonas?` Sus ${nPersonas} personas quedan sin área.`:""}`))return;
+    setBusy(true);await db.del("jo_areas",[["id","eq",area.id]]);setBusy(false);
+    onDeleted();
+  };
+  return <div className="mo"><div className="md md-lg">
+    <div className="mh"><div className="mt">{nueva?"Crear área o empresa":"Editar área o empresa"}</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div className="f"><label>Nombre (es lo que va al Excel) *</label><input value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Ej: ALUSA o Producción" autoFocus/></div>
+      <div className="f"><label>Tipo</label><select value={tipo} onChange={e=>setTipo(e.target.value)}><option value="empresa">Empresa subcontratista</option><option value="area">Área de Obras y Sistemas</option></select></div>
+      <div className="jo-wrap" style={{background:"var(--s2)"}}>
+        <div className="jo-h" style={{marginBottom:6}}>📍 Dónde se vuelca en el Excel del parte diario</div>
+        {nueva
+          ?<div style={{fontSize:12,color:"var(--tx2)",marginBottom:10}}>¿En qué fila del Excel va? Poné la celda donde va el nombre y la columna del día 1; los demás días siguen hacia la derecha.</div>
+          :<div style={{fontSize:12,color:"var(--tx2)",marginBottom:10}}>Hoy está configurado: <strong style={{color:"var(--tx)"}}>{joUbicTxt(area)}</strong>. Si hace falta, cambialo acá.</div>}
+        <div className="row2">
+          <div className="f"><label>Celda del nombre *</label><input value={celda} onChange={e=>setCelda(e.target.value.toUpperCase())} placeholder="Ej: D47"/></div>
+          <div className="f"><label>Columna del día 1 *</label><input value={col1} onChange={e=>setCol1(e.target.value.toUpperCase())} placeholder="F"/></div>
+        </div>
+        {prev
+          ?<div style={{fontSize:12,color:"var(--gr)",fontFamily:"var(--fm)"}}>→ {joUbicTxt(prev)}</div>
+          :<div style={{fontSize:12,color:"var(--tx3)"}}>La celda es letra + número (ej. D47) y la columna, solo letras (ej. F).</div>}
+        {choca.length>0&&<div className="warn" style={{marginTop:8,marginBottom:0}}>⚠ La fila {pc.fila} ya la usa {choca.map(a=>a.nombre).join(", ")}.</div>}
+        <div style={{fontSize:11,color:"var(--tx3)",marginTop:8}}>Filas ya usadas por otras áreas: {joRangos(otras.map(a=>a.fila))||"ninguna"}</div>
+      </div>
+      <div className="f"><label>Sugerir personas cuya empresa diga… (separar con comas)</label>
+        <input value={claves} onChange={e=>setClaves(e.target.value)} placeholder={nombre?`${nombre} (si lo dejás vacío se usa el nombre)`:"Ej: ALUSA, SUBCONTRATO ALUSA"}/>
+        <div style={{fontSize:11,color:"var(--tx3)",marginTop:4}}>Se compara con la empresa de cada persona en Personal, sin importar mayúsculas ni tildes. Si lo dejás vacío se usa el nombre.</div>
+      </div>
+      {falta.length>0&&<div style={{fontSize:12,color:"var(--tx3)"}}>Falta completar: {falta.join(", ")}</div>}
+    </div>
+    <div className="mf">
+      {!nueva&&<button className="bcanc" style={{color:"var(--rd)"}} onClick={eliminar} disabled={busy}>🗑 Eliminar</button>}
+      <button className="bcanc" onClick={onClose}>Cancelar</button>
+      <button className="bp" onClick={guardar} disabled={busy||falta.length>0}>{busy?"Guardando…":nueva?"Crear":"Guardar"}</button>
+    </div>
+  </div></div>;
+}
+
+function JoAreaDetalle({area,d,user,onClose,onChanged,onEditar}){
+  const miembros=d.porArea[area.id]||[];
+  const sug=d.sugeridasDe[area.id]||[];
+  const[q,setQ]=useState("");
+  const[quitar,setQuitar]=useState(()=>new Set());
+  const[tab,setTab]=useState(sug.length?"sug":"bus");
+  const[qb,setQb]=useState("");
+  const[marc,setMarc]=useState(()=>new Set());
+  const[busy,setBusy]=useState(false);
+  const tog=(set,setter,id)=>{const n=new Set(set);n.has(id)?n.delete(id):n.add(id);setter(n);};
+  const miembrosF=joFiltra(miembros,q);
+  const busq=qb.trim().length>=2?joFiltra(d.activos.filter(p=>d.areaDe[p.id]!==area.id),qb):[];
+  const lista=tab==="sug"?sug:busq;
+  const visibles=lista.slice(0,80);
+  const todasMarcadas=visibles.length>0&&visibles.every(p=>marc.has(p.id));
+  const marcarTodas=()=>{const n=new Set(marc);visibles.forEach(p=>todasMarcadas?n.delete(p.id):n.add(p.id));setMarc(n);};
+  const agregar=async()=>{
+    const ids=[...marc];if(!ids.length)return;
+    const mov=ids.filter(id=>d.areaDe[id]&&d.areaDe[id]!==area.id);
+    if(mov.length&&!confirm(`${mov.length} ${mov.length===1?"persona ya está":"personas ya están"} en otra área y se ${mov.length===1?"pasa":"pasan"} a ${area.nombre}:\n\n`+mov.slice(0,12).map(id=>{const p=d.personasById[id];return `· ${p.apellido}, ${p.nombre} (hoy en ${(d.areasById[d.areaDe[id]]||{}).nombre})`;}).join("\n")+(mov.length>12?`\n… y ${mov.length-12} más`:"")))return;
+    setBusy(true);const ok=await joAsignar(ids,area.id,user);setBusy(false);
+    if(ok){setMarc(new Set());onChanged();}
+  };
+  const sacar=async()=>{
+    const ids=[...quitar];if(!ids.length)return;
+    if(!confirm(`¿Sacar ${ids.length} ${ids.length===1?"persona":"personas"} de ${area.nombre}? Quedan sin área.`))return;
+    setBusy(true);await joQuitar(ids);setBusy(false);setQuitar(new Set());onChanged();
+  };
+  return <div className="mo"><div className="md md-lg" style={{maxWidth:760}}>
+    <div className="mh"><div className="mt">{area.nombre} <span style={{fontSize:12,color:"var(--tx3)",fontFamily:"var(--fm)",textTransform:"none",letterSpacing:0}}>· {area.tipo==="area"?"área de O&S":"subcontrato"}</span></div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:16,fontSize:12,color:"var(--tx2)"}}>
+        <span>📍 Excel: <strong style={{color:area.fila?"var(--tx)":"var(--acc)"}}>{joUbicTxt(area)}</strong></span>
+        <button className="bsm" onClick={onEditar}>✏️ Editar nombre / celda</button>
+      </div>
+
+      <div className="jo-h">Personas en {area.tipo==="area"?"el área":"la empresa"} <span style={{color:"var(--tx)"}}>({miembros.length})</span></div>
+      {miembros.length>8&&<input className="fi" style={{width:"100%",marginBottom:8}} placeholder="Filtrar por nombre, DNI o empresa..." value={q} onChange={e=>setQ(e.target.value)}/>}
+      {miembros.length===0
+        ?<div style={{fontSize:13,color:"var(--tx3)",marginBottom:14}}>Todavía no tiene personas. Agregalas abajo.</div>
+        :<div className="jo-scroll" style={{maxHeight:240,marginBottom:8}}>{miembrosF.map(p=><JoPersonaChk key={p.id} p={p} on={quitar.has(p.id)} onToggle={()=>tog(quitar,setQuitar,p.id)}/>)}</div>}
+      {quitar.size>0&&<button className="bsm bsm-r" style={{marginBottom:14,color:"var(--rd)",borderColor:"rgba(239,68,68,.4)"}} onClick={sacar} disabled={busy}>Sacar {quitar.size} tildada{quitar.size===1?"":"s"} del área</button>}
+
+      <div className="jo-h" style={{marginTop:10}}>Agregar personas</div>
+      <div className="jo-tabs">
+        <button className={`jo-tab${tab==="sug"?" on":""}`} onClick={()=>setTab("sug")}>💡 Sugeridas ({sug.length})</button>
+        <button className={`jo-tab${tab==="bus"?" on":""}`} onClick={()=>setTab("bus")}>🔎 Buscar en toda la base</button>
+      </div>
+      {tab==="sug"
+        ?<div style={{fontSize:12,color:"var(--tx2)",marginBottom:8}}>Personas <strong>sin área</strong> cuya empresa en Personal dice: <span style={{fontFamily:"var(--fm)",color:"var(--tx)"}}>{joClaves(area).join(" / ")}</span>. <a href="#" onClick={e=>{e.preventDefault();onEditar();}} style={{color:"var(--acc2)"}}>Cambiar palabras</a></div>
+        :<input className="fi" style={{width:"100%",marginBottom:8}} placeholder="Buscar nombre, DNI o empresa..." value={qb} onChange={e=>setQb(e.target.value)} autoFocus/>}
+      {tab==="bus"&&qb.trim().length<2
+        ?<div style={{fontSize:12,color:"var(--tx3)",padding:"6px 2px"}}>Escribí al menos 2 letras o números. Si la persona ya está en otra área, al agregarla se mueve a esta.</div>
+        :lista.length===0
+          ?<div style={{fontSize:13,color:"var(--tx3)",padding:"10px 2px"}}>{tab==="sug"?"No hay personas sin área que coincidan.":"Nadie coincide con la búsqueda."}</div>
+          :<>
+            <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+              <button className="bsm" onClick={marcarTodas}>{todasMarcadas?"Destildar":"Tildar"} {visibles.length===lista.length?"todas":`las ${visibles.length} de la lista`}</button>
+              {lista.length>visibles.length&&<span style={{fontSize:11,color:"var(--tx3)"}}>Se muestran {visibles.length} de {lista.length}: afiná la búsqueda.</span>}
+            </div>
+            <div className="jo-scroll">{visibles.map(p=>{
+              const otra=d.areaDe[p.id]&&d.areaDe[p.id]!==area.id?d.areasById[d.areaDe[p.id]]:null;
+              const tamb=tab==="sug"?(d.match[p.id]||[]).filter(id=>id!==area.id).map(id=>(d.areasById[id]||{}).nombre).filter(Boolean):[];
+              return <JoPersonaChk key={p.id} p={p} on={marc.has(p.id)} onToggle={()=>tog(marc,setMarc,p.id)}
+                extra={otra?<span className="jo-en" title="Al agregarla se mueve a esta área">en {otra.nombre}</span>:tamb.length?<span style={{fontSize:10,color:"var(--tx3)",maxWidth:160,textAlign:"right"}}>también coincide con {tamb.join(", ")}</span>:null}/>;
+            })}</div>
+          </>}
+    </div>
+    <div className="mf">
+      <button className="bcanc" onClick={onClose}>Cerrar</button>
+      <button className="bp" onClick={agregar} disabled={busy||marc.size===0}>{busy?"Guardando…":marc.size?`Agregar ${marc.size} tildada${marc.size===1?"":"s"}`:"Tildá personas para agregar"}</button>
+    </div>
+  </div></div>;
+}
+
+function JoSinAreaModal({d,areas,user,onClose,onChanged,onCrear}){
+  const[q,setQ]=useState("");
+  const[marc,setMarc]=useState(()=>new Set());
+  const[dest,setDest]=useState("");
+  const[busy,setBusy]=useState(false);
+  const lista=joFiltra(d.sinArea,q);
+  const grupos=useMemo(()=>{
+    const g={};lista.forEach(p=>{const k=(p.empresa||"").trim()||"(sin empresa)";(g[k]=g[k]||[]).push(p);});
+    return Object.entries(g).sort((a,b)=>b[1].length-a[1].length||a[0].localeCompare(b[0],"es"));
+  },[lista]);
+  const togP=(id)=>{const n=new Set(marc);n.has(id)?n.delete(id):n.add(id);setMarc(n);};
+  const togG=(ps)=>{const n=new Set(marc);const todas=ps.every(p=>n.has(p.id));ps.forEach(p=>todas?n.delete(p.id):n.add(p.id));setMarc(n);};
+  const asignar=async()=>{
+    if(!dest||!marc.size)return;
+    setBusy(true);const ok=await joAsignar([...marc],dest,user);setBusy(false);
+    if(ok){setMarc(new Set());onChanged();}
+  };
+  return <div className="mo"><div className="md md-lg" style={{maxWidth:780}}>
+    <div className="mh"><div className="mt">Personas sin área ({d.sinArea.length})</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div style={{fontSize:12,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Agrupadas por la empresa que figura en Personal. Tildá y elegí el área abajo, o creá una empresa nueva con el nombre del grupo. Quien no tenga área no entra en el Excel del parte diario.</div>
+      <input className="fi" style={{width:"100%",marginBottom:10}} placeholder="Buscar nombre, DNI o empresa..." value={q} onChange={e=>setQ(e.target.value)}/>
+      <div style={{maxHeight:"52vh",overflowY:"auto"}}>
+        {grupos.length===0&&<div style={{fontSize:13,color:"var(--tx3)",padding:12}}>{d.sinArea.length?"Nadie coincide con la búsqueda.":"🎉 Todas las personas activas tienen área."}</div>}
+        {grupos.map(([emp,ps])=><div key={emp} style={{marginBottom:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"6px 4px",borderBottom:"1px solid var(--bd)",marginBottom:4}}>
+            <strong style={{flex:1,minWidth:160}}>{emp} <span style={{color:"var(--tx3)",fontWeight:400}}>· {ps.length}</span></strong>
+            <button className="bsm" onClick={()=>togG(ps)}>{ps.every(p=>marc.has(p.id))?"Destildar":"Tildar"} grupo</button>
+            {emp!=="(sin empresa)"&&<button className="bsm" onClick={()=>onCrear(emp)}>+ Crear {joEsOys(emp)?"área":"empresa"} con este nombre</button>}
+          </div>
+          {ps.map(p=>{const m=(d.match[p.id]||[]).map(id=>(d.areasById[id]||{}).nombre).filter(Boolean);
+            return <JoPersonaChk key={p.id} p={p} on={marc.has(p.id)} onToggle={()=>togP(p.id)} extra={m.length?<span className="jo-sug" title="Coincide por empresa">💡 {m.slice(0,2).join(", ")}{m.length>2?"…":""}</span>:null}/>;})}
+        </div>)}
+      </div>
+    </div>
+    <div className="mf" style={{alignItems:"center",flexWrap:"wrap"}}>
+      <span style={{fontSize:13,color:"var(--tx2)"}}>{marc.size} tildada{marc.size===1?"":"s"} →</span>
+      <select className="fi" style={{flex:1,minWidth:180}} value={dest} onChange={e=>setDest(e.target.value)}>
+        <option value="">Elegí el área o empresa…</option>
+        {["empresa","area"].map(t=><optgroup key={t} label={JO_TIPOS[t]}>{areas.filter(a=>a.tipo===t).map(a=><option key={a.id} value={a.id}>{a.nombre}</option>)}</optgroup>)}
+      </select>
+      <button className="badd" onClick={asignar} disabled={busy||!dest||!marc.size} style={{opacity:busy||!dest||!marc.size?.5:1}}>{busy?"Guardando…":"Agregar"}</button>
+    </div>
+  </div></div>;
+}
+
+function JoAreas({user}){
+  const[base,setBase]=useState(null);
+  const[filtro,setFiltro]=useState("");
+  const[verId,setVerId]=useState(null);
+  const[editar,setEditar]=useState(null); // null | {area?, nombre?}
+  const[verSin,setVerSin]=useState(false);
+  const[sembrando,setSembrando]=useState(false);
+  const load=useCallback(async()=>{setBase(await joFetchBase());},[]);
+  useEffect(()=>{load();},[load]);
+  const d=useMemo(()=>joDerivar(base),[base]);
+  if(!base)return <Spin t="Cargando áreas…"/>;
+  if(base.falta)return <div><div className="ph2"><div className="ptit">Áreas <span>o subcontratos</span></div></div><JoFaltaSql/></div>;
+  const areas=base.areas;
+  const sembrar=async()=>{
+    if(!confirm(`Se cargan ${JO_SEED.length} áreas y empresas con su fila del Excel (nombre en D; día 1 en F … día 31 en AJ). Después se pueden editar. ¿Seguir?`))return;
+    setSembrando(true);
+    const{ok}=await db.ins("jo_areas",JO_SEED.map(([nombre,tipo,fila,claves])=>({nombre,tipo,fila,col_nombre:"D",col_dia1:"F",claves:claves||null,creado_por:user.id})));
+    setSembrando(false);
+    if(!ok)alert("No se pudo cargar el listado. Revisá la conexión.");
+    load();
+  };
+  const f=joNorm(filtro);
+  const vis=areas.filter(a=>!f||joNorm(a.nombre).includes(f));
+  const conSug=Object.keys(d.match).length;
+  const ver=verId?d.areasById[verId]:null;
+  return <div>
+    <div className="ph2"><div className="ptit">Áreas <span>o subcontratos</span></div><button className="badd" onClick={()=>setEditar({})}>+ Crear área o empresa</button></div>
+    {areas.length===0&&<div className="jo-wrap" style={{borderColor:"rgba(245,158,11,.4)"}}>
+      <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Todavía no hay áreas ni empresas. Podés cargar de una el listado inicial ({JO_SEED.length}: ALUSA en la fila 11 … Mecánicos en la 115) o crearlas una por una.</div>
+      <button className="badd" onClick={sembrar} disabled={sembrando}>{sembrando?"Cargando…":`📥 Cargar el listado inicial (${JO_SEED.length})`}</button>
+    </div>}
+    <div className="sg">
+      <div className="sc"><div className="sv">{areas.length}</div><div className="slb">Áreas y empresas</div></div>
+      <div className="sc"><div className="sv" style={{color:"var(--gr)"}}>{d.activos.length-d.sinArea.length}</div><div className="slb">Personas con área</div></div>
+      <div className="sc sc-btn" onClick={()=>setVerSin(true)} title="Ver y asignar a quienes no tienen área"><div className="sv" style={{color:d.sinArea.length?"var(--acc)":"var(--tx2)"}}>{d.sinArea.length}</div><div className="slb">Sin área · ver y asignar</div></div>
+      <div className="sc"><div className="sv" style={{color:conSug?"var(--acc)":"var(--tx2)"}}>{conSug}</div><div className="slb">💡 Sin área con sugerencia</div></div>
+    </div>
+    {areas.length>0&&<div className="fb"><input className="fi" placeholder="Buscar área o empresa..." value={filtro} onChange={e=>setFiltro(e.target.value)} style={{width:300}}/></div>}
+    {["empresa","area"].map(t=>{const l=vis.filter(a=>a.tipo===t);if(!l.length)return null;
+      return <div key={t} className="jo-wrap">
+        <div className="jo-h">{JO_TIPOS[t]} <span style={{color:"var(--tx3)"}}>· {l.length}</span></div>
+        <div className="jo-list">{l.map(a=>{const n=(d.porArea[a.id]||[]).length,s=(d.sugeridasDe[a.id]||[]).length;
+          return <div key={a.id} className="jo-row" onClick={()=>setVerId(a.id)}>
+            <div className="jo-nom">{a.nombre}<div className="jo-cel">{a.fila?`${joCeldaNom(a)} · día 1 en ${joColDia(a,1)}${a.fila} → día 31 en ${joColDia(a,31)}${a.fila}`:"⚠ sin ubicación en el Excel"}</div></div>
+            {s>0&&<span className="jo-sug">💡 {s} sugerida{s===1?"":"s"}</span>}
+            <div className="jo-n" style={{color:n?"var(--tx)":"var(--tx3)"}}>{n}</div><div style={{fontSize:11,color:"var(--tx3)",width:52}}>persona{n===1?"":"s"}</div>
+          </div>;})}</div>
+      </div>;})}
+    {vis.length===0&&areas.length>0&&<div style={{textAlign:"center",color:"var(--tx2)",padding:20}}>Ninguna área coincide con "{filtro}".</div>}
+    {ver&&<JoAreaDetalle key={ver.id} area={ver} d={d} user={user} onClose={()=>setVerId(null)} onChanged={load} onEditar={()=>setEditar({area:ver})}/>}
+    {verSin&&<JoSinAreaModal d={d} areas={areas} user={user} onClose={()=>setVerSin(false)} onChanged={load} onCrear={(nombre)=>{setVerSin(false);setEditar({nombre});}}/>}
+    {editar&&<JoAreaModal area={editar.area||null} nombreInicial={editar.nombre} areas={areas} nPersonas={editar.area?(d.porArea[editar.area.id]||[]).length:0} user={user}
+      onClose={()=>setEditar(null)}
+      onSaved={(a)=>{const eraNueva=!editar.area;setEditar(null);load().then(()=>{if(eraNueva&&a&&a.id)setVerId(a.id);});}}
+      onDeleted={()=>{setEditar(null);setVerId(null);load();}}/>}
+  </div>;
+}
+
+function JoCalendario({mes,setMes,sel,onToggle,habil,hint,minMes,maxMes}){
+  const[y,m]=mes.split("-").map(Number);
+  const n=new Date(y,m,0).getDate(),off=(new Date(y,m-1,1).getDay()+6)%7;
+  const nombreMes=new Date(y,m-1,1).toLocaleDateString("es-AR",{month:"long",year:"numeric"});
+  const mover=(k)=>{const dt=new Date(y,m-1+k,1);setMes(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`);};
+  const hoy=today();
+  return <div>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,maxWidth:360}}>
+      <button className="bsm" disabled={mes<=minMes} onClick={()=>mover(-1)} style={{opacity:mes<=minMes?.3:1}}>‹</button>
+      <div style={{flex:1,textAlign:"center",fontFamily:"var(--fh)",fontWeight:700,fontSize:17}}>{cap1(nombreMes)}</div>
+      <button className="bsm" disabled={mes>=maxMes} onClick={()=>mover(1)} style={{opacity:mes>=maxMes?.3:1}}>›</button>
+    </div>
+    <div className="jo-cal">
+      {["L","M","M","J","V","S","D"].map((x,i)=><div key={i} className="jo-dow">{x}</div>)}
+      {Array.from({length:off}).map((_,i)=><div key={"e"+i}/>)}
+      {Array.from({length:n}).map((_,i)=>{
+        const iso=`${mes}-${String(i+1).padStart(2,"0")}`,ok=habil(iso),h=ok?hint(iso):null;
+        return <button key={iso} className={`jo-day${sel.includes(iso)?" on":""}${iso===hoy?" hoy":""}`} disabled={!ok} onClick={()=>onToggle(iso)}
+          title={!ok?(iso>hoy?"Día futuro":"Antes del inicio de la operación"):(h!=null?`${h} presentes${iso===hoy?" (día en curso)":""}`:"")}>
+          <div>{i+1}</div><div className="jo-dh">{h!=null?h:""}</div>
+        </button>;
+      })}
+    </div>
+  </div>;
+}
+
+function JoDetalleCelda({celda,d,res,presD,radarD,areas,user,onAsignado,onCerrar}){
+  const sin=celda.aid==="_sin";
+  const a=sin?null:d.areasById[celda.aid];
+  const items=((sin?res.sinArea[celda.d]:(res.porArea[celda.aid]||{})[celda.d])||[]).slice().sort((x,y)=>joPorApe(x.p,y.p));
+  const[busy,setBusy]=useState(null);
+  const[verFaltan,setVerFaltan]=useState(false);
+  const faltan=radarD?[...radarD.prog].filter(pid=>!presD.has(pid)&&(sin?!d.areaDe[pid]:d.areaDe[pid]===celda.aid)).map(pid=>d.personasById[pid]).filter(Boolean).sort(joPorApe):null;
+  const asignar=async(pid,aid)=>{if(!aid)return;setBusy(pid);const ok=await joAsignar([pid],aid,user);setBusy(null);if(ok)onAsignado();};
+  return <div className="jo-wrap">
+    <div className="jo-h" style={{justifyContent:"space-between"}}>
+      <span>{sin?"⚠ Sin área asignada":(a?a.nombre:"—")} · {joDiaLbl(celda.d)} · <span style={{color:"var(--tx)"}}>{items.length} {items.length===1?"persona":"personas"}</span></span>
+      <button className="bsm" onClick={onCerrar}>Cerrar</button>
+    </div>
+    {sin&&items.length>0&&<div style={{fontSize:12,color:"var(--tx2)",marginBottom:8}}>Estuvieron ese día pero no están en ninguna área, así que no entran en el Excel. Asignalas acá o desde "Áreas o subcontratos".</div>}
+    {(()=>{const n=items.filter(({p,x})=>joAvisoRadar(x,p.id,radarD)).length;return n>0?<div className="warn" style={{fontSize:12}}>⚠ {n} para revisar: el Radar no {n===1?"lo":"los"} tiene en obra ese día. Si se {n===1?"contó":"contaron"} por "ya estaba adentro", puede que se hayan ido sin fichar la salida por Puesto 1.</div>:null;})()}
+    {items.length===0
+      ?<div style={{fontSize:13,color:"var(--tx3)",padding:"6px 2px"}}>Nadie {sin?"sin área":`de ${a?a.nombre:"esta área"}`} estuvo ese día.</div>
+      :<div className="tw" style={{maxHeight:420}}><table style={{minWidth:0}}>
+        <thead><tr><th>Persona</th><th>DNI</th><th>Empresa en Personal</th><th>Cómo se contó</th>{sin&&<th>Asignar a</th>}</tr></thead>
+        <tbody>{items.map(({p,x})=><tr key={p.id}>
+          <td style={{whiteSpace:"nowrap"}}>{p.apellido}, {p.nombre}{p.deleted_at&&<span className="jo-baja">baja</span>}</td>
+          <td className="mn">{p.dni}</td>
+          <td style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa||"—"}</td>
+          <td style={{fontSize:12,color:"var(--tx2)"}}>{joComoTxt(x)}{(()=>{const av=joAvisoRadar(x,p.id,radarD);return av?<span style={{color:"var(--acc)"}} title="Revisar: puede haberse ido sin fichar la salida por Puesto 1"> · ⚠ {av}</span>:null;})()}</td>
+          {sin&&<td><select className="fi" style={{padding:"4px 8px",fontSize:12,maxWidth:200}} value="" disabled={busy===p.id} onChange={e=>asignar(p.id,e.target.value)}>
+            <option value="">{busy===p.id?"Guardando…":"Asignar a…"}</option>
+            {(d.match[p.id]||[]).length>0&&<optgroup label="💡 Sugeridas">{d.match[p.id].map(id=><option key={id} value={id}>{(d.areasById[id]||{}).nombre}</option>)}</optgroup>}
+            {["empresa","area"].map(t=><optgroup key={t} label={JO_TIPOS[t]}>{areas.filter(ar=>ar.tipo===t).map(ar=><option key={ar.id} value={ar.id}>{ar.nombre}</option>)}</optgroup>)}
+          </select></td>}
+        </tr>)}</tbody>
+      </table></div>}
+    {faltan&&faltan.length>0&&<div style={{marginTop:10}}>
+      <button className="bsm" onClick={()=>setVerFaltan(!verFaltan)}>{verFaltan?"▾":"▸"} En el Radar ese día pero sin fichadas: {faltan.length}</button>
+      {verFaltan&&<div style={{fontSize:12,color:"var(--tx2)",marginTop:6,lineHeight:1.7}}>{faltan.map(p=>`${p.apellido}, ${p.nombre}`).join(" · ")}</div>}
+      <div style={{fontSize:11,color:"var(--tx3)",marginTop:4}}>No se cuentan: el Radar es lo programado y el parte cuenta lo fichado. Sirve para detectar si a alguien no lo escanearon.</div>
+    </div>}
+  </div>;
+}
+
+function JoParteDiario({user}){
+  const hoy=today();
+  const minIso=OPERATIVA_DESDE.slice(0,10);
+  const[base,setBase]=useState(null);
+  const[ev,setEv]=useState(null);
+  const[evErr,setEvErr]=useState(false);
+  const[evAt,setEvAt]=useState(null);
+  const[leyendo,setLeyendo]=useState(false);
+  const[scope,setScope]=useState("todas");
+  const[mes,setMesRaw]=useState(hoy.slice(0,7));
+  const[dias,setDias]=useState([]);
+  const[celda,setCelda]=useState(null); // {aid|"_sin", d}
+  const[ocultar0,setOcultar0]=useState(false);
+  const[radar,setRadar]=useState({});    // dia → {prog:Set, franco:Set}
+  const[bajando,setBajando]=useState(false);
+  const leerFichadas=useCallback(async(personas)=>{
+    setLeyendo(true);setEvErr(false);
+    const e=await joFetchEventos(personas).catch(()=>null);
+    if(e){setEv(e);setEvAt(Date.now());}else setEvErr(true);
+    setLeyendo(false);
+  },[]);
+  useEffect(()=>{(async()=>{const b=await joFetchBase();setBase(b);if(b&&!b.falta)leerFichadas(b.personas);})();},[leerFichadas]);
+  const recargarBase=async()=>{const b=await joFetchBase();if(b&&!b.falta)setBase(b);};
+  const d=useMemo(()=>joDerivar(base),[base]);
+  const habil=(iso)=>iso>=minIso&&iso<=hoy;
+  const diasMes=useMemo(()=>{const[y,m]=mes.split("-").map(Number);const n=new Date(y,m,0).getDate();const out=[];
+    for(let i=1;i<=n;i++){const iso=`${mes}-${String(i).padStart(2,"0")}`;if(iso>=minIso&&iso<=hoy)out.push(iso);}return out;},[mes,minIso,hoy]);
+  const presMes=useMemo(()=>ev?joPresencia(ev,diasMes):null,[ev,diasMes]);
+  const diasSel=useMemo(()=>[...dias].sort(),[dias]);
+  const res=useMemo(()=>{
+    if(!presMes||!d)return null;
+    const porArea={},sinArea={};
+    diasSel.forEach(dd=>{sinArea[dd]=[];const m=presMes[dd];if(!m)return;
+      m.forEach((x,pid)=>{const p=d.personasById[pid];if(!p)return;const it={p,x},aid=d.areaDe[pid];
+        if(aid){const pa=porArea[aid]||(porArea[aid]={});(pa[dd]||(pa[dd]=[])).push(it);}else sinArea[dd].push(it);});});
+    return{porArea,sinArea};
+  },[presMes,d,diasSel]);
+  // Radar de los días elegidos (para avisar quién estaba programado y no fichó). No cambia los números.
+  const diasKey=diasSel.join(",");
+  useEffect(()=>{
+    if(!d)return;
+    const falta=diasSel.filter(x=>!radar[x]);
+    if(!falta.length)return;
+    let vivo=true;
+    dbSelAll("viandas_calendario",{cols:"fecha,dni,letra",inFilter:["fecha",falta],ord:"fecha.asc,dni.asc"}).then(({data})=>{
+      if(!vivo||!data)return;
+      const porDni={};d.activos.forEach(p=>{porDni[normDni(p.dni)]=p.id;});
+      const nuevo={};falta.forEach(x=>{nuevo[x]={prog:new Set(),franco:new Set()};});
+      data.forEach(r=>{const pid=porDni[normDni(r.dni)];if(!pid||!nuevo[r.fecha])return;
+        if(r.letra==="F")nuevo[r.fecha].franco.add(pid);else if(r.letra)nuevo[r.fecha].prog.add(pid);});
+      setRadar(prev=>({...prev,...nuevo}));
+    });
+    return()=>{vivo=false;};
+  },[diasKey,d]);
+  if(!base)return <Spin t="Cargando…"/>;
+  if(base.falta)return <div><div className="ph2"><div className="ptit">Parte <span>diario</span></div></div><JoFaltaSql/></div>;
+  const areas=base.areas;
+  const scopeAreas=scope==="todas"?areas:areas.filter(a=>a.id===scope);
+  const setMes=(m)=>{setMesRaw(m);setDias([]);setCelda(null);};
+  const toggle=(iso)=>setDias(prev=>prev.includes(iso)?prev.filter(x=>x!==iso):[...prev,iso]);
+  const cuenta=(aid,dd)=>((res&&res.porArea[aid]||{})[dd]||[]).length;
+  const hint=(iso)=>{if(!presMes||!presMes[iso])return null;const m=presMes[iso];
+    if(scope==="todas")return m.size;let n=0;m.forEach((_,pid)=>{if(d.areaDe[pid]===scope)n++;});return n;};
+  const filas=scopeAreas.filter(a=>!ocultar0||diasSel.some(dd=>cuenta(a.id,dd)>0));
+  const sinFila=scopeAreas.filter(a=>!a.fila);
+  const dup={};scopeAreas.forEach(a=>{if(a.fila)(dup[a.fila]=dup[a.fila]||[]).push(a.nombre);});
+  const dupTxt=Object.entries(dup).filter(([_,l])=>l.length>1).map(([f,l])=>`fila ${f}: ${l.join(" y ")}`);
+  const scopeNombre=scope==="todas"?"Todas las áreas y empresas":((scopeAreas[0]||{}).nombre||"—");
+  const descargar=async()=>{
+    if(!res||!diasSel.length)return;
+    setBajando(true);
+    try{
+      const XLSX=await joLoadXLSX();
+      const wb=XLSX.utils.book_new();
+      // Hoja 1: cada área en su fila; nombre en su celda y la cantidad de cada día elegido en la columna de ese día.
+      const ws={};let maxR=0,maxC=0;
+      const put=(addr,cell)=>{ws[addr]=cell;const c=XLSX.utils.decode_cell(addr);if(c.r>maxR)maxR=c.r;if(c.c>maxC)maxC=c.c;};
+      scopeAreas.filter(a=>a.fila).forEach(a=>{
+        put(joCeldaNom(a),{t:"s",v:a.nombre});
+        diasSel.forEach(dd=>put(`${joColDia(a,parseInt(dd.slice(8),10))}${a.fila}`,{t:"n",v:cuenta(a.id,dd)}));
+      });
+      ws["!ref"]=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:maxR,c:maxC}});
+      const cols=[];for(let c=0;c<=maxC;c++)cols.push({wch:5});
+      scopeAreas.forEach(a=>{const c=joColNum(a.col_nombre||"D")-1;if(c>=0&&c<=maxC)cols[c]={wch:26};});
+      ws["!cols"]=cols;
+      XLSX.utils.book_append_sheet(wb,ws,"Parte diario");
+      // Hoja 2: quiénes son, para controlar.
+      const det=[["Fecha","Área / empresa","Fila","Apellido","Nombre","DNI","Empresa en Personal","Cómo se contó","Revisar (Radar)"]];
+      diasSel.forEach(dd=>scopeAreas.forEach(a=>((res.porArea[a.id]||{})[dd]||[]).slice().sort((x,y)=>joPorApe(x.p,y.p))
+        .forEach(({p,x})=>det.push([cmdFmtDate(dd),a.nombre,a.fila||"",p.apellido||"",p.nombre||"",p.dni||"",p.empresa||"",joComoTxt(x),joAvisoRadar(x,p.id,radar[dd])||""]))));
+      const wd=XLSX.utils.aoa_to_sheet(det);
+      wd["!cols"]=[{wch:11},{wch:24},{wch:6},{wch:18},{wch:18},{wch:12},{wch:30},{wch:56},{wch:30}];
+      XLSX.utils.book_append_sheet(wb,wd,"Detalle");
+      if(scope==="todas"){
+        const sa=[["Fecha","Apellido","Nombre","DNI","Empresa en Personal","Cómo se contó","Revisar (Radar)"]];
+        diasSel.forEach(dd=>(res.sinArea[dd]||[]).slice().sort((x,y)=>joPorApe(x.p,y.p))
+          .forEach(({p,x})=>sa.push([cmdFmtDate(dd),p.apellido||"",p.nombre||"",p.dni||"",p.empresa||"",joComoTxt(x),joAvisoRadar(x,p.id,radar[dd])||""])));
+        const w2=XLSX.utils.aoa_to_sheet(sa);
+        w2["!cols"]=[{wch:11},{wch:18},{wch:18},{wch:12},{wch:30},{wch:56},{wch:30}];
+        XLSX.utils.book_append_sheet(wb,w2,"Sin área");
+      }
+      const nom=(scope==="todas"?"todas las areas":scopeNombre).replace(/[\\/:*?"<>|]+/g," ").trim();
+      XLSX.writeFile(wb,`Parte diario ${nom} ${mes}.xlsx`);
+    }catch(e){alert("No se pudo generar el Excel: "+((e&&e.message)||e));}
+    setBajando(false);
+  };
+  const presD=celda&&presMes?(presMes[celda.d]||new Map()):null;
+  return <div>
+    <div className="ph2">
+      <div className="ptit">Parte <span>diario</span></div>
+      <div style={{display:"flex",gap:8,alignItems:"center",fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)"}}>
+        {leyendo?"⏳ leyendo fichadas…":evErr?<span style={{color:"var(--rd)"}}>⚠ no se pudieron leer las fichadas</span>:evAt?`fichadas leídas ${joHora(evAt)}`:""}
+        <button className="bsm" onClick={()=>leerFichadas(base.personas)} disabled={leyendo}>🔄 Actualizar</button>
+      </div>
+    </div>
+    <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"flex-start"}}>
+      <div className="jo-wrap" style={{flex:"0 1 400px"}}>
+        <div className="jo-h">1 · Días</div>
+        <JoCalendario mes={mes} setMes={setMes} sel={dias} onToggle={toggle} habil={habil} hint={hint} minMes={minIso.slice(0,7)} maxMes={hoy.slice(0,7)}/>
+        <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>
+          <button className="bsm" onClick={()=>setDias(diasMes)}>Todo el mes{mes===hoy.slice(0,7)?" (hasta hoy)":""}</button>
+          <button className="bsm" onClick={()=>{setDias([]);setCelda(null);}} disabled={!dias.length}>Limpiar</button>
+        </div>
+        <div style={{fontSize:11,color:"var(--tx3)",marginTop:8,lineHeight:1.5}}>Tocá los días para elegirlos (podés elegir varios). El número chico es cuántos estuvieron{scope==="todas"?" en total":" de esa área"}.</div>
+      </div>
+      <div className="jo-wrap" style={{flex:"1 1 340px"}}>
+        <div className="jo-h">2 · Área o subcontrato</div>
+        <select className="fi" style={{width:"100%",marginBottom:12}} value={scope} onChange={e=>{setScope(e.target.value);setCelda(null);}}>
+          <option value="todas">— Todas las áreas y empresas —</option>
+          {["empresa","area"].map(t=><optgroup key={t} label={JO_TIPOS[t]}>{areas.filter(a=>a.tipo===t).map(a=><option key={a.id} value={a.id}>{a.nombre}{a.fila?` (fila ${a.fila})`:""}</option>)}</optgroup>)}
+        </select>
+        {areas.length===0&&<div className="warn">Todavía no hay áreas: crealas en "Áreas o subcontratos".</div>}
+        {scope!=="todas"&&scopeAreas[0]&&<div style={{fontSize:12,color:"var(--tx2)",marginBottom:10}}>📍 {joUbicTxt(scopeAreas[0])}</div>}
+        <div className="jo-h" style={{marginTop:6}}>3 · Descargar</div>
+        <button className="badd" onClick={descargar} disabled={bajando||!res||!diasSel.length} style={{opacity:bajando||!res||!diasSel.length?.5:1}}>{bajando?"Generando…":`⬇️ Descargar Excel${diasSel.length?` (${diasSel.length} día${diasSel.length===1?"":"s"})`:""}`}</button>
+        {!diasSel.length&&<div style={{fontSize:12,color:"var(--tx3)",marginTop:6}}>Elegí al menos un día.</div>}
+        {sinFila.length>0&&<div className="warn" style={{marginTop:10,marginBottom:0}}>⚠ Sin ubicación en el Excel (no se vuelcan): {sinFila.map(a=>a.nombre).join(", ")}</div>}
+        {dupTxt.length>0&&<div className="warn" style={{marginTop:10,marginBottom:0}}>⚠ Comparten fila y en el Excel se pisan: {dupTxt.join(" · ")}</div>}
+        <div style={{fontSize:11,color:"var(--tx3)",marginTop:12,lineHeight:1.5}}>
+          El Excel trae la hoja <strong>Parte diario</strong> con cada área en su fila (el nombre en su celda y la cantidad de cada día en su columna: día 1 en F … día 31 en AJ), la hoja <strong>Detalle</strong> con quiénes son{scope==="todas"?<> y la hoja <strong>Sin área</strong></>:""}.<br/>
+          Se cuenta a quien estuvo en el predio ese día: <strong>fichó en algún puesto</strong>, o <strong>ya estaba adentro</strong> desde antes (su última fichada no fue una salida por Puesto 1). Es el mismo criterio que el conteo EN PREDIO.
+        </div>
+      </div>
+    </div>
+    {!ev&&!evErr&&<Spin t="Leyendo fichadas…"/>}
+    {evErr&&<div className="err">No se pudieron leer las fichadas. Revisá la conexión y tocá 🔄 Actualizar.</div>}
+    {res&&diasSel.length>0&&<>
+      <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginBottom:8}}>
+        <div style={{fontFamily:"var(--fh)",fontSize:18,fontWeight:700,textTransform:"uppercase"}}>{scopeNombre}</div>
+        <div style={{fontSize:12,color:"var(--tx3)"}}>Tocá un número para ver quiénes son.</div>
+        {scope==="todas"&&<label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--tx2)",cursor:"pointer",marginLeft:"auto"}}><input type="checkbox" checked={ocultar0} onChange={e=>setOcultar0(e.target.checked)}/> Ocultar las que están en 0</label>}
+      </div>
+      <div className="jo-mx"><table>
+        <thead><tr><th className="c1">Área / empresa</th><th>Fila</th>{diasSel.map(dd=><th key={dd}>{joDiaLbl(dd)}</th>)}</tr></thead>
+        <tbody>
+          {filas.map(a=><tr key={a.id}>
+            <td className="c1">{a.nombre}</td>
+            <td className="mn" style={{color:a.fila?"var(--tx3)":"var(--acc)",textAlign:"center"}}>{a.fila||"⚠"}</td>
+            {diasSel.map(dd=>{const n=cuenta(a.id,dd),on=celda&&celda.aid===a.id&&celda.d===dd;
+              return <td key={dd} className={`v${n?"":" cero"}${on?" sel":""}`} onClick={()=>setCelda({aid:a.id,d:dd})}>{n}</td>;})}
+          </tr>)}
+          {scope==="todas"&&<tr className="sin">
+            <td className="c1">⚠ Sin área asignada</td><td></td>
+            {diasSel.map(dd=>{const n=(res.sinArea[dd]||[]).length,on=celda&&celda.aid==="_sin"&&celda.d===dd;
+              return <td key={dd} className={`v${n?"":" cero"}${on?" sel":""}`} onClick={()=>setCelda({aid:"_sin",d:dd})}>{n}</td>;})}
+          </tr>}
+          {scope==="todas"&&<tr className="tot">
+            <td className="c1">Total en el predio</td><td></td>
+            {diasSel.map(dd=><td key={dd} className="mn" style={{textAlign:"center"}}>{presMes&&presMes[dd]?[...presMes[dd].keys()].filter(pid=>d.personasById[pid]).length:0}</td>)}
+          </tr>}
+        </tbody>
+      </table></div>
+      {celda&&presD&&<JoDetalleCelda key={celda.aid+celda.d} celda={celda} d={d} res={res} presD={presD} radarD={radar[celda.d]} areas={areas} user={user} onAsignado={recargarBase} onCerrar={()=>setCelda(null)}/>}
+    </>}
+  </div>;
+}
+
 function Login({onLogin,onPublic}){
   const[email,setEmail]=useState("");const[pw,setPw]=useState("");const[err,setErr]=useState("");const[loading,setLoading]=useState(false);
   const go=async()=>{
@@ -5355,13 +6091,14 @@ function App(){
     cocina_campamento:[{k:"vi",l:"Viandas"}],
     cocina_chalet:    [{k:"vi",l:"Viandas"}],
     admin_viandas:    [{k:"vi",l:"Viandas"}],
-    admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"},{k:"cvc",l:"Chalet"},{k:"adm",l:"Usuarios"}],
+    admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"},{k:"cvc",l:"Chalet"},{k:"joa",l:"Áreas o subcontratos"},{k:"jop",l:"Parte diario"},{k:"adm",l:"Usuarios"}],
   };
   // Agrupación visual de solapas (cada rol ve solo los grupos donde tiene alguna solapa)
   const NAV_GROUPS=[
     {t:"Habilitaciones",    ks:["per","veh"]},
     {t:"Control de puestos",ks:["sc","reg"]},
     {t:"Gastronomía",       ks:["vi","cvc"]},
+    {t:"Reportes JO",       ks:["joa","jop"]},
     {t:"Administración",    ks:["adm"]},
   ];
 
@@ -5394,6 +6131,8 @@ function App(){
       {tab==="sc" &&<Puesto user={user} pid={pid}/>}
       {tab==="cvc"&&<ConteoViandasChalet user={user} proyectoId={pid}/>}
       {tab==="vi" &&<Comedor user={user} proyectoId={pid}/>}
+      {tab==="joa"&&<CmdErrBoundary><JoAreas user={user}/></CmdErrBoundary>}
+      {tab==="jop"&&<CmdErrBoundary><JoParteDiario user={user}/></CmdErrBoundary>}
       {tab==="adm"&&<Usuarios currentUser={user}/>}
     </div>
   </div>;
