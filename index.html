@@ -4,6 +4,9 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>ControlObra</title>
+<!-- Rev117: ícono de la pestaña (QR en los colores de la app) -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230C0E14'/%3E%3Cg fill='none' stroke='%23F59E0B' stroke-width='2.2'%3E%3Crect x='5.1' y='5.1' width='8.8' height='8.8' rx='1.6'/%3E%3Crect x='18.1' y='5.1' width='8.8' height='8.8' rx='1.6'/%3E%3Crect x='5.1' y='18.1' width='8.8' height='8.8' rx='1.6'/%3E%3C/g%3E%3Cg fill='%23F59E0B'%3E%3Crect x='8' y='8' width='3' height='3' rx='.5'/%3E%3Crect x='21' y='8' width='3' height='3' rx='.5'/%3E%3Crect x='8' y='21' width='3' height='3' rx='.5'/%3E%3Crect x='18' y='18' width='3' height='3' rx='.5'/%3E%3Crect x='24' y='18' width='3' height='3' rx='.5'/%3E%3Crect x='21' y='21' width='3' height='3' rx='.5'/%3E%3Crect x='18' y='24' width='3' height='3' rx='.5'/%3E%3Crect x='24' y='24' width='3' height='3' rx='.5'/%3E%3C/g%3E%3C/svg%3E"/>
+<meta name="theme-color" content="#0C0E14"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
@@ -397,7 +400,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev116";
+const APP_REV="Rev117";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
