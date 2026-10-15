@@ -378,6 +378,16 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .jo-mx tr.sin td{color:var(--acc)}
 .jo-mx tr.tot td{font-weight:700;border-top:2px solid var(--bd)}
 .jo-pre{background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:10px;font-family:var(--fm);font-size:11px;white-space:pre-wrap;color:var(--tx2);max-height:260px;overflow:auto}
+/* Rev114 */
+.jo-sub{display:flex;gap:4px;border-bottom:1px solid var(--bd);margin:-8px 0 18px;overflow-x:auto}
+.jo-subb{background:none;border:none;border-bottom:3px solid transparent;color:var(--tx2);padding:8px 14px;font-family:var(--fh);font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;white-space:nowrap}
+.jo-subb:hover{color:var(--tx)}.jo-subb.on{color:var(--acc);border-bottom-color:var(--acc)}
+.jo-fp{font-family:var(--fm);font-size:11px;font-weight:700;border-radius:4px;padding:1px 7px;border:1px solid;cursor:pointer;background:none;white-space:nowrap}
+.jo-fp.p1{color:var(--acc);border-color:rgba(245,158,11,.5)}.jo-fp.p2{color:#A78BFA;border-color:rgba(167,139,250,.55)}
+button.jo-fp:hover{filter:brightness(1.3)}
+.jo-aviso{background:rgba(245,158,11,.12);border-bottom:1px solid rgba(245,158,11,.4);color:var(--acc);padding:7px 20px;font-size:13px;display:flex;align-items:center;gap:10px;cursor:pointer;flex-wrap:wrap}
+.jo-chip{display:inline-flex;align-items:center;gap:4px;background:var(--s2);border:1px solid var(--bd);border-radius:12px;padding:2px 4px 2px 10px;font-size:12px}
+.jo-chip button{background:none;border:none;color:var(--tx3);cursor:pointer;font-size:14px;line-height:1;padding:0 4px}.jo-chip button:hover{color:var(--rd)}
 @media(max-width:700px){.jo-cal{max-width:none}.jo-mx .c1{min-width:120px}}
 </style>
 </head>
@@ -387,7 +397,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev113";
+const APP_REV="Rev114";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -2181,7 +2191,7 @@ function VehModal({v,onClose,onSave}){
 }
 
 // ─── REGISTROS ────────────────────────────────────────────────────────────────
-function SesionDetalle({ses,onClose,onInverted}){
+function SesionDetalle({ses,onClose,onInverted,soloVer}){
   const[regs,setRegs]=useState([]);
   const[pers,setPers]=useState([]);
   const[veh,setVeh]=useState(null);
@@ -2220,7 +2230,7 @@ function SesionDetalle({ses,onClose,onInverted}){
         <button className="mc" onClick={onClose}>x</button>
       </div>
     </div>
-    <div style={{padding:"10px 24px",borderBottom:"1px solid var(--bd)",background:"rgba(245,158,11,.05)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+    {!soloVer&&<div style={{padding:"10px 24px",borderBottom:"1px solid var(--bd)",background:"rgba(245,158,11,.05)",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
       <span style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>¿El operario marcó mal el sentido?</span>
       <button disabled={inverting} onClick={async()=>{
         const nueva=ses.direccion==="entrada"?"salida":"entrada";
@@ -2242,7 +2252,7 @@ function SesionDetalle({ses,onClose,onInverted}){
       }} style={{background:"rgba(245,158,11,.15)",border:"1px solid var(--acc)",color:"var(--acc)",borderRadius:4,padding:"5px 12px",cursor:"pointer",fontFamily:"var(--fh)",fontSize:12,fontWeight:700,textTransform:"uppercase"}}>
         ↔ {inverting?"Invirtiendo...":`Pasar a ${ses.direccion==="entrada"?"SALIDA":"ENTRADA"}`}
       </button>
-    </div>
+    </div>}
     <div className="mb">
       {veh&&<div style={{marginBottom:14,padding:"10px 14px",background:"var(--s2)",borderRadius:4,display:"flex",gap:12,alignItems:"center"}}>
         <span style={{fontSize:22}}>{VI[veh.tipo]||"🚗"}</span>
@@ -2316,6 +2326,8 @@ function Registros({defaultPuesto,user}){
   const[edit,setEdit]=useState(null); // {tipo, id, currentTs, contexto}
   // Rev91: solo admin + puesto (P1/P2/P3) pueden editar fecha/hora
   const canEdit=!!user&&(user.rol==="admin"||user.rol==="puesto");
+  // Rev114: el sobrestante entra a Registros solo para mirar (sin invertir ni editar).
+  const soloVer=!!user&&user.rol==="sobrestante";
 
   const onHabSaved=(newHab)=>{
     setHabs(prev=>{
@@ -2356,24 +2368,38 @@ function Registros({defaultPuesto,user}){
       const rm={};
       (regs||[]).forEach(r=>{if(!rm[r.sesion_id])rm[r.sesion_id]=[];rm[r.sesion_id].push(r);});
       setRegsMap(rm);
-      // Load personas for names
-      const pids=[...new Set((regs||[]).filter(r=>r.persona_id).map(r=>r.persona_id))];
-      if(pids.length){
-        const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido"});
-        const pm={};(pers||[]).forEach(p=>{pm[p.id]=p;});setPersonas(pm);
-      }
+    }
+    // Personas (con DNI y empresa, para poder buscar por empresa). También las usan los movimientos manuales.
+    if(sesData.length||manData.length){
+      const{data:pers}=await dbSelAll("personas",{cols:"id,nombre,apellido,dni,empresa",ord:"id.asc"});
+      if(pers){const pm={};pers.forEach(p=>{pm[p.id]=p;});setPersonas(pm);}
     }
     setLoading(false);
   };
   useEffect(()=>{load();const i=setInterval(load,30000);return()=>clearInterval(i);},[fp,fFecha]);
 
-  const sesFiltered=list.filter(s=>(!fd||s.direccion===fd)&&(!search||(vehiculos[s.vehiculo_id]?.patente||"").toLowerCase().includes(search.toLowerCase())||(regsMap[s.id]||[]).some(r=>personas[r.persona_id]&&(`${personas[r.persona_id].nombre} ${personas[r.persona_id].apellido}`).toLowerCase().includes(search.toLowerCase()))));
-  const manFiltered=manual.filter(m=>(!fd||m.direccion===fd)&&(!search||m.nombre_raw?.toLowerCase().includes(search.toLowerCase())||m.dni_raw?.includes(search)));
+  // Rev114: la búsqueda mira patente, nombre, apellido, DNI y empresa (sin importar tildes ni mayúsculas).
+  const qT=joNorm(search).split(" ").filter(Boolean);
+  const pMatch=(p)=>!!p&&qT.every(w=>(" "+joNorm(`${p.nombre} ${p.apellido} ${p.dni} ${p.empresa||""}`)+" ").includes(w));
+  const regMatch=(r)=>pMatch(personas[r.persona_id])||(!!r.dni_raw&&qT.every(w=>joNorm(r.dni_raw).includes(w)));
+  const sesMatch=(s)=>!qT.length||(qT.every(w=>joNorm(vehiculos[s.vehiculo_id]?.patente||"").includes(w)))||(regsMap[s.id]||[]).some(regMatch);
+  const manMatch=(m)=>!qT.length||pMatch(personas[m.persona_id])||qT.every(w=>joNorm(`${m.nombre_raw||""} ${m.dni_raw||""}`).includes(w));
+  const sesFiltered=list.filter(s=>(!fd||s.direccion===fd)&&sesMatch(s));
+  const manFiltered=manual.filter(m=>(!fd||m.direccion===fd)&&manMatch(m));
+  // Personas que coinciden con la búsqueda y tienen movimientos ese día (ej: buscar "alusa" muestra a toda su gente).
+  const coinc=(()=>{
+    if(!qT.length||search.trim().length<2)return[];
+    const c={};
+    list.forEach(s=>{if(fd&&s.direccion!==fd)return;(regsMap[s.id]||[]).forEach(r=>{if(r.persona_id&&pMatch(personas[r.persona_id]))c[r.persona_id]=(c[r.persona_id]||0)+1;});});
+    manual.forEach(m=>{if(fd&&m.direccion!==fd)return;if(m.persona_id&&pMatch(personas[m.persona_id]))c[m.persona_id]=(c[m.persona_id]||0)+1;});
+    return Object.entries(c).map(([pid,n])=>({p:personas[pid],n})).sort((a,b)=>joPorApe(a.p,b.p));
+  })();
   const showSes=fTipo===""||fTipo==="vehiculo";
   const showMan=fTipo===""||fTipo==="manual";
 
   const getPaxLabel=(sesId)=>{
-    const regs=(regsMap[sesId]||[]).filter(r=>r.resultado==="aprobado");
+    // Con búsqueda activa, primero los que coinciden.
+    const regs=(regsMap[sesId]||[]).filter(r=>r.resultado==="aprobado").sort((a,b)=>qT.length?(regMatch(b)?1:0)-(regMatch(a)?1:0):0);
     if(!regs.length)return"sin pasajeros";
     const names=regs.map(r=>{const p=personas[r.persona_id];return p?`${p.nombre} ${p.apellido}`:r.dni_raw;});
     const max=2;
@@ -2390,12 +2416,16 @@ function Registros({defaultPuesto,user}){
       <div className="sc"><div className="sv" style={{color:"var(--rd)"}}>{list.reduce((a,s)=>a+(s.total_rechazados||0),0)}</div><div className="slb">Denegados</div></div>
     </div>
     <div className="fb" style={{flexWrap:"wrap",gap:8}}>
-      <input className="fi" placeholder="Buscar patente o persona..." value={search} onChange={e=>setSearch(e.target.value)} style={{width:220}}/>
+      <input className="fi" placeholder="Buscar patente, persona, DNI o empresa..." value={search} onChange={e=>setSearch(e.target.value)} style={{width:280}}/>
       <input className="fi" type="date" value={fFecha} onChange={e=>setFFecha(e.target.value)}/>
       <select className="fi" value={fp} onChange={e=>setFp(e.target.value)}><option value="">Todos los puestos</option><option>Puesto 1</option><option>Puesto 2</option><option>Puesto 3</option></select>
       <select className="fi" value={fd} onChange={e=>setFd(e.target.value)}><option value="">Entrada y salida</option><option value="entrada">Entrada</option><option value="salida">Salida</option></select>
       <select className="fi" value={fTipo} onChange={e=>setFTipo(e.target.value)}><option value="">Todo</option><option value="vehiculo">Con vehiculo</option><option value="manual">Manuales</option></select>
     </div>
+    {!loading&&coinc.length>0&&<div className="jo-wrap" style={{padding:"10px 12px"}}>
+      <div style={{fontSize:12,color:"var(--tx2)",marginBottom:6}}>{coinc.length} persona{coinc.length===1?"":"s"} con movimientos {fFecha?"ese día":""} coinciden con "{search.trim()}". Tocá una para ver solo sus movimientos:</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:5,maxHeight:150,overflowY:"auto"}}>{coinc.slice(0,80).map(({p,n})=><button key={p.id} className="bsm" onClick={()=>setSearch(String(p.dni))} title={`DNI ${p.dni}`}>{p.apellido}, {p.nombre} <span style={{color:"var(--tx3)"}}>· {p.empresa||"—"} · {n}</span></button>)}</div>
+    </div>}
     {loading?<Spin/>:<>
       {showSes&&sesFiltered.length>0&&<>
         <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Ingresos con vehiculo — {sesFiltered.length}</div>
@@ -2429,7 +2459,7 @@ function Registros({defaultPuesto,user}){
             <td style={{fontWeight:500}}>{m.nombre_raw||<span style={{color:"var(--tx2)"}}>Sin identificar</span>}</td>
             <td className="mn" style={{color:"var(--tx2)"}}>{m.dni_raw||"—"}</td>
             <td>
-              <button onClick={async()=>{
+              {!soloVer&&<button onClick={async()=>{
                 const nueva=m.direccion==="entrada"?"salida":"entrada";
                 if(!confirm(`Invertir? Quedará como ${nueva.toUpperCase()} (estaba ${m.direccion.toUpperCase()}).`))return;
                 const r=await db.upd("movimientos_manuales",{direccion:nueva},[["id","eq",m.id]]);
@@ -2443,7 +2473,7 @@ function Registros({defaultPuesto,user}){
                   return;
                 }
                 load();
-              }} className="bsm" style={{fontSize:11,padding:"3px 8px",color:"var(--acc)",borderColor:"rgba(245,158,11,.3)"}}>↔ invertir</button>
+              }} className="bsm" style={{fontSize:11,padding:"3px 8px",color:"var(--acc)",borderColor:"rgba(245,158,11,.3)"}}>↔ invertir</button>}
               {canEdit&&<button className="bsm" style={{fontSize:11,padding:"3px 8px",color:"var(--acc2)",borderColor:"rgba(59,130,246,.3)",marginLeft:5}} onClick={()=>setEdit({tipo:"manual",id:m.id,currentTs:m.created_at,contexto:(m.nombre_raw||"Sin identificar")+" · "+m.puesto+" · "+m.direccion})}>🕐 editar</button>}
             </td>
           </tr>)}</tbody>
@@ -2451,7 +2481,7 @@ function Registros({defaultPuesto,user}){
       </>}
       {sesFiltered.length===0&&manFiltered.length===0&&<div style={{textAlign:"center",color:"var(--tx2)",padding:40}}>Sin registros para los filtros seleccionados</div>}
     </>}
-    {detalle&&<SesionDetalle ses={detalle} onClose={()=>setDetalle(null)} onInverted={()=>{setDetalle(null);load();}}/>}
+    {detalle&&<SesionDetalle ses={detalle} soloVer={soloVer} onClose={()=>setDetalle(null)} onInverted={()=>{setDetalle(null);load();}}/>}
     {edit&&<EditarFichadaModal {...edit} onClose={()=>setEdit(null)} onSaved={load}/>}
     {user&&user.rol==="admin"&&<SyncSheetPanel/>}
   </div>;
@@ -5366,7 +5396,8 @@ CREATE TABLE IF NOT EXISTS obra.jo_area_personas (
 );
 CREATE INDEX IF NOT EXISTS jo_area_personas_area_idx ON obra.jo_area_personas(area_id);
 GRANT SELECT, INSERT, UPDATE, DELETE ON obra.jo_areas TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON obra.jo_area_personas TO authenticated;`;
+GRANT SELECT, INSERT, UPDATE, DELETE ON obra.jo_area_personas TO authenticated;
+ALTER TABLE obra.jo_areas ADD COLUMN IF NOT EXISTS fuente text NOT NULL DEFAULT 'p1' CHECK (fuente IN ('p1','p2'));`;
 const JO_TIPOS={empresa:"Empresas subcontratistas",area:"Áreas de Obras y Sistemas"};
 // Listado inicial (pedido del 13/10/2026): [nombre, tipo, fila del Excel, palabras para sugerir personas].
 // En todas: nombre en la columna D y día 1 en F … día 31 en AJ.
@@ -5896,8 +5927,12 @@ function JoParteDiario({user}){
   const[ocultar0,setOcultar0]=useState(false);
   const[radar,setRadar]=useState({});    // dia → {prog:Set, franco:Set}
   const[bajando,setBajando]=useState(false);
-  const[fuente,setFuenteRaw]=useState(()=>{try{return localStorage.getItem("jo_fuente")==="p2"?"p2":"p1";}catch(e){return"p1";}});
-  const setFuente=(f)=>{setFuenteRaw(f);setCelda(null);try{localStorage.setItem("jo_fuente",f);}catch(e){}};
+  // Rev114: cada área se cuenta desde su propio puesto (jo_areas.fuente = "p1" | "p2"), así un mismo parte mezcla
+  // empresas tomadas de Puesto 1 y otras de Puesto 2. fuenteLocal = lo cambiado en esta sesión (también sirve si
+  // todavía no se corrió el SQL de la columna: funciona igual, pero no queda guardado).
+  const[fuenteLocal,setFuenteLocal]=useState({});
+  const[verFuentes,setVerFuentes]=useState(false);
+  const[avisoSql,setAvisoSql]=useState(false);
   const leerFichadas=useCallback(async(personas)=>{
     setLeyendo(true);setEvErr(false);
     const e=await joFetchEventos(personas).catch(()=>null);
@@ -5911,18 +5946,28 @@ function JoParteDiario({user}){
   const diasMes=useMemo(()=>{const[y,m]=mes.split("-").map(Number);const n=new Date(y,m,0).getDate();const out=[];
     for(let i=1;i<=n;i++){const iso=`${mes}-${String(i).padStart(2,"0")}`;if(iso>=minIso&&iso<=hoy)out.push(iso);}return out;},[mes,minIso,hoy]);
   const presP1Mes=useMemo(()=>ev?joPresencia(ev,diasMes):null,[ev,diasMes]);
-  const presP2Mes=useMemo(()=>ev&&fuente==="p2"?joPresenciaP2(ev,diasMes):null,[ev,diasMes,fuente]);
-  const presMes=fuente==="p2"?presP2Mes:presP1Mes;
-  const F=JO_FUENTES[fuente];
+  const presP2Mes=useMemo(()=>ev?joPresenciaP2(ev,diasMes):null,[ev,diasMes]);
+  // Puesto de cada área. "Sin área" siempre por Puesto 1 (es el universo de quienes estuvieron).
+  const fuenteDe=useCallback((aid)=>{if(!aid||aid==="_sin")return"p1";const a=d&&d.areasById[aid];return fuenteLocal[aid]||(a&&a.fuente)||"p1";},[d,fuenteLocal]);
   const diasSel=useMemo(()=>[...dias].sort(),[dias]);
   const res=useMemo(()=>{
-    if(!presMes||!d)return null;
+    if(!presP1Mes||!presP2Mes||!d)return null;
     const porArea={},sinArea={};
-    diasSel.forEach(dd=>{sinArea[dd]=[];const m=presMes[dd];if(!m)return;
-      m.forEach((x,pid)=>{const p=d.personasById[pid];if(!p)return;const it={p,x},aid=d.areaDe[pid];
-        if(aid){const pa=porArea[aid]||(porArea[aid]={});(pa[dd]||(pa[dd]=[])).push(it);}else sinArea[dd].push(it);});});
+    diasSel.forEach(dd=>{
+      sinArea[dd]=[];
+      [["p1",presP1Mes[dd]],["p2",presP2Mes[dd]]].forEach(([f,m])=>{
+        if(!m)return;
+        m.forEach((x,pid)=>{
+          const p=d.personasById[pid];if(!p)return;
+          const aid=d.areaDe[pid];
+          if(!aid){if(f==="p1")sinArea[dd].push({p,x});return;}
+          if(fuenteDe(aid)!==f)return;
+          const pa=porArea[aid]||(porArea[aid]={});(pa[dd]||(pa[dd]=[])).push({p,x});
+        });
+      });
+    });
     return{porArea,sinArea};
-  },[presMes,d,diasSel]);
+  },[presP1Mes,presP2Mes,d,diasSel,fuenteDe]);
   // Radar de los días elegidos (para avisar quién estaba programado y no fichó). No cambia los números.
   const diasKey=diasSel.join(",");
   useEffect(()=>{
@@ -5941,19 +5986,42 @@ function JoParteDiario({user}){
     return()=>{vivo=false;};
   },[diasKey,d]);
   if(!base)return <Spin t="Cargando…"/>;
-  if(base.falta)return <div><div className="ph2"><div className="ptit">Parte <span>diario</span></div></div><JoFaltaSql/></div>;
+  if(base.falta)return <div><div className="ph2"><div className="ptit">Generar <span>parte diario</span></div></div><JoFaltaSql/></div>;
   const areas=base.areas;
+  const colOk=areas.length===0||areas.some(a=>Object.prototype.hasOwnProperty.call(a,"fuente"));
+  const setFuentes=async(ids,f)=>{
+    if(!ids.length)return;
+    setFuenteLocal(prev=>{const n={...prev};ids.forEach(id=>{n[id]=f;});return n;});
+    setCelda(null);
+    if(!colOk){setAvisoSql(true);return;}
+    let ok=true;
+    for(let i=0;i<ids.length;i+=50){const r=await db.upd("jo_areas",{fuente:f},[["id","in",`(${ids.slice(i,i+50).join(",")})`]]);if(!r.ok)ok=false;}
+    if(!ok)setAvisoSql(true);
+  };
   const scopeAreas=scope==="todas"?areas:areas.filter(a=>a.id===scope);
+  const nP2=areas.filter(a=>fuenteDe(a.id)==="p2").length,nP1=areas.length-nP2;
   const setMes=(m)=>{setMesRaw(m);setDias([]);setCelda(null);};
   const toggle=(iso)=>setDias(prev=>prev.includes(iso)?prev.filter(x=>x!==iso):[...prev,iso]);
   const cuenta=(aid,dd)=>((res&&res.porArea[aid]||{})[dd]||[]).length;
-  const hint=(iso)=>{if(!presMes||!presMes[iso])return null;const m=presMes[iso];
-    if(scope==="todas")return m.size;let n=0;m.forEach((_,pid)=>{if(d.areaDe[pid]===scope)n++;});return n;};
+  const hint=(iso)=>{
+    const m1=presP1Mes&&presP1Mes[iso],m2=presP2Mes&&presP2Mes[iso];if(!m1||!m2)return null;
+    let n=0;
+    if(scope==="todas"){
+      m1.forEach((_,pid)=>{if(!d.personasById[pid])return;const aid=d.areaDe[pid];if(!aid||fuenteDe(aid)==="p1")n++;});
+      m2.forEach((_,pid)=>{const aid=d.areaDe[pid];if(aid&&fuenteDe(aid)==="p2")n++;});
+      return n;
+    }
+    (fuenteDe(scope)==="p2"?m2:m1).forEach((_,pid)=>{if(d.areaDe[pid]===scope)n++;});
+    return n;
+  };
+  const totalDia=(dd)=>areas.reduce((s,a)=>s+cuenta(a.id,dd),0)+((res&&res.sinArea[dd])||[]).length;
   const filas=scopeAreas.filter(a=>!ocultar0||diasSel.some(dd=>cuenta(a.id,dd)>0));
   const sinFila=scopeAreas.filter(a=>!a.fila);
   const dup={};scopeAreas.forEach(a=>{if(a.fila)(dup[a.fila]=dup[a.fila]||[]).push(a.nombre);});
   const dupTxt=Object.entries(dup).filter(([_,l])=>l.length>1).map(([f,l])=>`fila ${f}: ${l.join(" y ")}`);
   const scopeNombre=scope==="todas"?"Todas las áreas y empresas":((scopeAreas[0]||{}).nombre||"—");
+  const fScope=new Set(scopeAreas.map(a=>fuenteDe(a.id)));
+  const fpLbl=(f)=>f==="p2"?"P2":"P1";
   const descargar=async()=>{
     if(!res||!diasSel.length)return;
     setBajando(true);
@@ -5973,11 +6041,11 @@ function JoParteDiario({user}){
       ws["!cols"]=cols;
       XLSX.utils.book_append_sheet(wb,ws,"Parte diario");
       // Hoja 2: quiénes son, para controlar.
-      const det=[["Fecha","Área / empresa","Fila","Apellido","Nombre","DNI","Empresa en Personal","Cómo se contó","Revisar (Radar)"]];
+      const det=[["Fecha","Área / empresa","Fila","Puesto","Apellido","Nombre","DNI","Empresa en Personal","Cómo se contó","Revisar (Radar)"]];
       diasSel.forEach(dd=>scopeAreas.forEach(a=>((res.porArea[a.id]||{})[dd]||[]).slice().sort((x,y)=>joPorApe(x.p,y.p))
-        .forEach(({p,x})=>det.push([cmdFmtDate(dd),a.nombre,a.fila||"",p.apellido||"",p.nombre||"",p.dni||"",p.empresa||"",joComoTxt(x),joAvisoRadar(x,p.id,radar[dd])||""]))));
+        .forEach(({p,x})=>det.push([cmdFmtDate(dd),a.nombre,a.fila||"",fpLbl(fuenteDe(a.id)),p.apellido||"",p.nombre||"",p.dni||"",p.empresa||"",joComoTxt(x),joAvisoRadar(x,p.id,radar[dd])||""]))));
       const wd=XLSX.utils.aoa_to_sheet(det);
-      wd["!cols"]=[{wch:11},{wch:24},{wch:6},{wch:18},{wch:18},{wch:12},{wch:30},{wch:56},{wch:30}];
+      wd["!cols"]=[{wch:11},{wch:24},{wch:6},{wch:7},{wch:18},{wch:18},{wch:12},{wch:30},{wch:56},{wch:30}];
       XLSX.utils.book_append_sheet(wb,wd,"Detalle");
       if(scope==="todas"){
         const sa=[["Fecha","Apellido","Nombre","DNI","Empresa en Personal","Cómo se contó","Revisar (Radar)"]];
@@ -5988,14 +6056,18 @@ function JoParteDiario({user}){
         XLSX.utils.book_append_sheet(wb,w2,"Sin área");
       }
       const nom=(scope==="todas"?"todas las areas":scopeNombre).replace(/[\\/:*?"<>|]+/g," ").trim();
-      XLSX.writeFile(wb,`Parte diario ${nom} ${mes}${fuente==="p2"?" (Puesto 2)":" (Puesto 1)"}.xlsx`);
+      const suf=fScope.size>1?" (Puesto 1 y 2)":(fScope.has("p2")?" (Puesto 2)":" (Puesto 1)");
+      XLSX.writeFile(wb,`Parte diario ${nom} ${mes}${suf}.xlsx`);
     }catch(e){alert("No se pudo generar el Excel: "+((e&&e.message)||e));}
     setBajando(false);
   };
-  const presD=celda&&presMes?(presMes[celda.d]||new Map()):null;
+  const fC=celda?fuenteDe(celda.aid):"p1";
+  const presD=celda&&presP1Mes&&presP2Mes?((fC==="p2"?presP2Mes:presP1Mes)[celda.d]||new Map()):null;
+  const FP=({aid})=>{const f=fuenteDe(aid);
+    return <button className={`jo-fp ${f}`} onClick={e=>{e.stopPropagation();setFuentes([aid],f==="p1"?"p2":"p1");}} title={`${JO_FUENTES[f].t}. Tocá para pasarla a ${f==="p1"?"Puesto 2":"Puesto 1"}.`}>{fpLbl(f)}</button>;};
   return <div>
     <div className="ph2">
-      <div className="ptit">Parte <span>diario</span></div>
+      <div className="ptit">Generar <span>parte diario</span></div>
       <div style={{display:"flex",gap:8,alignItems:"center",fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)"}}>
         {leyendo?"⏳ leyendo fichadas…":evErr?<span style={{color:"var(--rd)"}}>⚠ no se pudieron leer las fichadas</span>:evAt?`fichadas leídas ${joHora(evAt)}`:""}
         <button className="bsm" onClick={()=>leerFichadas(base.personas)} disabled={leyendo}>🔄 Actualizar</button>
@@ -6009,29 +6081,43 @@ function JoParteDiario({user}){
           <button className="bsm" onClick={()=>setDias(diasMes)}>Todo el mes{mes===hoy.slice(0,7)?" (hasta hoy)":""}</button>
           <button className="bsm" onClick={()=>{setDias([]);setCelda(null);}} disabled={!dias.length}>Limpiar</button>
         </div>
-        <div style={{fontSize:11,color:"var(--tx3)",marginTop:8,lineHeight:1.5}}>Tocá los días para elegirlos (podés elegir varios). El número chico es cuántos {fuente==="p2"?"pasaron por Puesto 2":"estuvieron"}{scope==="todas"?" en total":" de esa área"}.</div>
+        <div style={{fontSize:11,color:"var(--tx3)",marginTop:8,lineHeight:1.5}}>Tocá los días para elegirlos (podés elegir varios). El número chico es cuántos se cuentan ese día{scope==="todas"?" en total":" en esa área"}, cada área según su puesto.</div>
       </div>
       <div className="jo-wrap" style={{flex:"1 1 340px"}}>
-        <div className="jo-h">2 · Tomar los datos de</div>
-        <div className="jo-tabs" style={{marginBottom:6}}>
-          {Object.entries(JO_FUENTES).map(([k,f])=><button key={k} className={`jo-tab${fuente===k?" on":""}`} onClick={()=>setFuente(k)} style={{textTransform:"none",fontSize:14}}>{f.ic} {f.t}</button>)}
-        </div>
-        <div style={{fontSize:12,color:"var(--tx2)",marginBottom:14,lineHeight:1.5}}>{F.d}</div>
-        <div className="jo-h">3 · Área o subcontrato</div>
+        <div className="jo-h">2 · Área o subcontrato</div>
         <select className="fi" style={{width:"100%",marginBottom:12}} value={scope} onChange={e=>{setScope(e.target.value);setCelda(null);}}>
           <option value="todas">— Todas las áreas y empresas —</option>
           {["empresa","area"].map(t=><optgroup key={t} label={JO_TIPOS[t]}>{areas.filter(a=>a.tipo===t).map(a=><option key={a.id} value={a.id}>{a.nombre}{a.fila?` (fila ${a.fila})`:""}</option>)}</optgroup>)}
         </select>
         {areas.length===0&&<div className="warn">Todavía no hay áreas: crealas en "Áreas o subcontratos".</div>}
         {scope!=="todas"&&scopeAreas[0]&&<div style={{fontSize:12,color:"var(--tx2)",marginBottom:10}}>📍 {joUbicTxt(scopeAreas[0])}</div>}
+        <div className="jo-h" style={{marginTop:6}}>3 · De qué puesto se toma</div>
+        {scope!=="todas"&&scopeAreas[0]
+          ?<div className="jo-tabs" style={{marginBottom:6}}>
+            {Object.entries(JO_FUENTES).map(([k,f])=><button key={k} className={`jo-tab${fuenteDe(scope)===k?" on":""}`} onClick={()=>setFuentes([scope],k)} style={{textTransform:"none",fontSize:14}}>{f.ic} {f.t}</button>)}
+          </div>
+          :<>
+            <div style={{fontSize:13,marginBottom:8,lineHeight:1.9}}>
+              <span className="jo-fp p1" style={{cursor:"default"}}>P1</span> {nP1} {nP1===1?"área":"áreas"} por Puesto 1 · en el predio<br/>
+              <span className="jo-fp p2" style={{cursor:"default"}}>P2</span> {nP2} {nP2===1?"área":"áreas"} por Puesto 2 · subió al chalet
+            </div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+              <button className="bsm" onClick={()=>setVerFuentes(true)} disabled={!areas.length}>Elegir por grupo…</button>
+              <button className="bsm" onClick={()=>{if(confirm(`¿Pasar las ${areas.length} áreas a Puesto 1?`))setFuentes(areas.map(a=>a.id),"p1");}} disabled={!areas.length}>Todas por Puesto 1</button>
+              <button className="bsm" onClick={()=>{if(confirm(`¿Pasar las ${areas.length} áreas a Puesto 2?`))setFuentes(areas.map(a=>a.id),"p2");}} disabled={!areas.length}>Todas por Puesto 2</button>
+            </div>
+          </>}
+        <div style={{fontSize:11,color:"var(--tx3)",marginBottom:12,lineHeight:1.5}}>
+          <strong>P1</strong>: estuvo en el predio (fichó o seguía adentro). <strong>P2</strong>: pasó por Puesto 2 ese día (o fichó en Puesto 3). Lo que elijas queda guardado para la próxima; en la tabla podés cambiar un área tocando su P1/P2. "Sin área" siempre se cuenta por Puesto 1.
+        </div>
+        {avisoSql&&<div className="warn" style={{fontSize:12}}>⚠ El cambio se aplica a este parte, pero <strong>no quedó guardado</strong> para la próxima. Un admin tiene que correr una vez en Supabase:<pre className="jo-pre" style={{marginTop:6}}>{JO_SQL_FUENTE}</pre></div>}
         <div className="jo-h" style={{marginTop:6}}>4 · Descargar</div>
         <button className="badd" onClick={descargar} disabled={bajando||!res||!diasSel.length} style={{opacity:bajando||!res||!diasSel.length?.5:1}}>{bajando?"Generando…":`⬇️ Descargar Excel${diasSel.length?` (${diasSel.length} día${diasSel.length===1?"":"s"})`:""}`}</button>
         {!diasSel.length&&<div style={{fontSize:12,color:"var(--tx3)",marginTop:6}}>Elegí al menos un día.</div>}
         {sinFila.length>0&&<div className="warn" style={{marginTop:10,marginBottom:0}}>⚠ Sin ubicación en el Excel (no se vuelcan): {sinFila.map(a=>a.nombre).join(", ")}</div>}
         {dupTxt.length>0&&<div className="warn" style={{marginTop:10,marginBottom:0}}>⚠ Comparten fila y en el Excel se pisan: {dupTxt.join(" · ")}</div>}
         <div style={{fontSize:11,color:"var(--tx3)",marginTop:12,lineHeight:1.5}}>
-          El Excel trae la hoja <strong>Parte diario</strong> con cada área en su fila (el nombre en su celda y la cantidad de cada día en su columna: día 1 en F … día 31 en AJ), la hoja <strong>Detalle</strong> con quiénes son{scope==="todas"?<> y la hoja <strong>Sin área</strong></>:""}.<br/>
-          El nombre del archivo dice de qué puesto se tomaron los datos.
+          El Excel trae la hoja <strong>Parte diario</strong> con cada área en su fila (el nombre en su celda y la cantidad de cada día en su columna: día 1 en F … día 31 en AJ), la hoja <strong>Detalle</strong> con quiénes son y de qué puesto se tomó cada área{scope==="todas"?<> y la hoja <strong>Sin área</strong></>:""}.
         </div>
       </div>
     </div>
@@ -6040,33 +6126,418 @@ function JoParteDiario({user}){
     {res&&diasSel.length>0&&<>
       <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",marginBottom:8}}>
         <div style={{fontFamily:"var(--fh)",fontSize:18,fontWeight:700,textTransform:"uppercase"}}>{scopeNombre}</div>
-        <span className="jo-sug" style={fuente==="p2"?{color:"#A78BFA",borderColor:"rgba(167,139,250,.5)"}:undefined}>{F.ic} {F.t}</span>
+        {scope!=="todas"
+          ?<span className={`jo-fp ${fuenteDe(scope)}`} style={{cursor:"default"}}>{JO_FUENTES[fuenteDe(scope)].t}</span>
+          :<span style={{fontSize:12,color:"var(--tx2)"}}>{nP1} por P1 · {nP2} por P2</span>}
         <div style={{fontSize:12,color:"var(--tx3)"}}>Tocá un número para ver quiénes son.</div>
         {scope==="todas"&&<label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--tx2)",cursor:"pointer",marginLeft:"auto"}}><input type="checkbox" checked={ocultar0} onChange={e=>setOcultar0(e.target.checked)}/> Ocultar las que están en 0</label>}
       </div>
       <div className="jo-mx"><table>
-        <thead><tr><th className="c1">Área / empresa</th><th>Fila</th>{diasSel.map(dd=><th key={dd}>{joDiaLbl(dd)}</th>)}</tr></thead>
+        <thead><tr><th className="c1">Área / empresa</th><th>Fila</th><th title="De qué puesto se toma">Puesto</th>{diasSel.map(dd=><th key={dd}>{joDiaLbl(dd)}</th>)}</tr></thead>
         <tbody>
           {filas.map(a=><tr key={a.id}>
             <td className="c1">{a.nombre}</td>
             <td className="mn" style={{color:a.fila?"var(--tx3)":"var(--acc)",textAlign:"center"}}>{a.fila||"⚠"}</td>
+            <td style={{textAlign:"center"}}><FP aid={a.id}/></td>
             {diasSel.map(dd=>{const n=cuenta(a.id,dd),on=celda&&celda.aid===a.id&&celda.d===dd;
               return <td key={dd} className={`v${n?"":" cero"}${on?" sel":""}`} onClick={()=>setCelda({aid:a.id,d:dd})}>{n}</td>;})}
           </tr>)}
           {scope==="todas"&&<tr className="sin">
-            <td className="c1">⚠ Sin área asignada</td><td></td>
+            <td className="c1">⚠ Sin área asignada</td><td></td><td style={{textAlign:"center"}}><span className="jo-fp p1" style={{cursor:"default"}}>P1</span></td>
             {diasSel.map(dd=>{const n=(res.sinArea[dd]||[]).length,on=celda&&celda.aid==="_sin"&&celda.d===dd;
               return <td key={dd} className={`v${n?"":" cero"}${on?" sel":""}`} onClick={()=>setCelda({aid:"_sin",d:dd})}>{n}</td>;})}
           </tr>}
           {scope==="todas"&&<tr className="tot">
-            <td className="c1">{F.tot}</td><td></td>
-            {diasSel.map(dd=><td key={dd} className="mn" style={{textAlign:"center"}}>{presMes&&presMes[dd]?[...presMes[dd].keys()].filter(pid=>d.personasById[pid]).length:0}</td>)}
+            <td className="c1">Total del parte</td><td></td><td></td>
+            {diasSel.map(dd=><td key={dd} className="mn" style={{textAlign:"center"}}>{totalDia(dd)}</td>)}
           </tr>}
         </tbody>
       </table></div>
-      {celda&&presD&&<JoDetalleCelda key={celda.aid+celda.d+fuente} celda={celda} d={d} res={res} presD={presD} presP1D={presP1Mes?presP1Mes[celda.d]:null} fuente={fuente} radarD={radar[celda.d]} areas={areas} user={user} onAsignado={recargarBase} onCerrar={()=>setCelda(null)}/>}
+      {celda&&presD&&<JoDetalleCelda key={celda.aid+celda.d+fC} celda={celda} d={d} res={res} presD={presD} presP1D={presP1Mes?presP1Mes[celda.d]:null} fuente={fC} radarD={radar[celda.d]} areas={areas} user={user} onAsignado={recargarBase} onCerrar={()=>setCelda(null)}/>}
+    </>}
+    {verFuentes&&<JoFuentesModal areas={areas} fuenteDe={fuenteDe} onAplicar={setFuentes} onClose={()=>setVerFuentes(false)}/>}
+  </div>;
+}
+
+const JO_SQL_FUENTE=`ALTER TABLE obra.jo_areas ADD COLUMN IF NOT EXISTS fuente text NOT NULL DEFAULT 'p1' CHECK (fuente IN ('p1','p2'));`;
+
+// Elegir de qué puesto se cuenta cada área, por grupos: se tilda un grupo y se le asigna P1 o P2.
+function JoFuentesModal({areas,fuenteDe,onAplicar,onClose}){
+  const[q,setQ]=useState("");
+  const[marc,setMarc]=useState(()=>new Set());
+  const vis=areas.filter(a=>!q.trim()||joNorm(a.nombre).includes(joNorm(q)));
+  const todas=vis.length>0&&vis.every(a=>marc.has(a.id));
+  const tog=(id)=>{const n=new Set(marc);n.has(id)?n.delete(id):n.add(id);setMarc(n);};
+  const togTodas=()=>{const n=new Set(marc);vis.forEach(a=>todas?n.delete(a.id):n.add(a.id));setMarc(n);};
+  const aplicar=(f)=>{onAplicar([...marc],f);setMarc(new Set());};
+  return <div className="mo"><div className="md md-lg">
+    <div className="mh"><div className="mt">De qué puesto se toma cada área</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div style={{fontSize:12,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Tildá un grupo de áreas o empresas y elegí abajo de qué puesto se cuentan. Después tildá otro grupo y elegí el otro puesto. Queda guardado para los próximos partes.</div>
+      <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+        <input className="fi" style={{flex:1,minWidth:180}} placeholder="Filtrar áreas..." value={q} onChange={e=>setQ(e.target.value)}/>
+        <button className="bsm" onClick={togTodas}>{todas?"Destildar":"Tildar"} {q.trim()?"las filtradas":"todas"}</button>
+      </div>
+      <div className="jo-scroll" style={{maxHeight:"46vh"}}>
+        {["empresa","area"].map(t=>{const l=vis.filter(a=>a.tipo===t);if(!l.length)return null;return <div key={t}>
+          <div style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",textTransform:"uppercase",letterSpacing:".08em",padding:"8px 10px 4px"}}>{JO_TIPOS[t]}</div>
+          {l.map(a=>{const f=fuenteDe(a.id);return <label key={a.id} className={`jo-chk${marc.has(a.id)?" on":""}`}>
+            <input type="checkbox" checked={marc.has(a.id)} onChange={()=>tog(a.id)}/>
+            <span style={{flex:1}}>{a.nombre}</span>
+            <span className={`jo-fp ${f}`} style={{cursor:"inherit"}}>{f==="p2"?"P2":"P1"}</span>
+          </label>;})}
+        </div>;})}
+      </div>
+    </div>
+    <div className="mf" style={{flexWrap:"wrap",alignItems:"center"}}>
+      <span style={{fontSize:13,color:"var(--tx2)"}}>{marc.size} tildada{marc.size===1?"":"s"} →</span>
+      <button className="bsm" style={{padding:"8px 12px",color:"var(--acc)",borderColor:"rgba(245,158,11,.5)",opacity:marc.size?1:.4}} disabled={!marc.size} onClick={()=>aplicar("p1")}>🚪 Puesto 1 · en el predio</button>
+      <button className="bsm" style={{padding:"8px 12px",color:"#A78BFA",borderColor:"rgba(167,139,250,.55)",opacity:marc.size?1:.4}} disabled={!marc.size} onClick={()=>aplicar("p2")}>⛰️ Puesto 2 · subió al chalet</button>
+      <button className="bcanc" style={{marginLeft:"auto"}} onClick={onClose}>Listo</button>
+    </div>
+  </div></div>;
+}
+
+// Rev114: "Parte diario" es un subreporte de Reportes JO con dos partes: Áreas o subcontratos y Generar parte diario.
+function JoParteDiarioSec({user}){
+  const[sub,setSub]=useState(()=>{try{return localStorage.getItem("jo_sub")==="areas"?"areas":"gen";}catch(e){return"gen";}});
+  const ir=(k)=>{setSub(k);try{localStorage.setItem("jo_sub",k);}catch(e){}};
+  return <div>
+    <div className="jo-sub">{[["areas","Áreas o subcontratos"],["gen","Generar parte diario"]].map(([k,l])=><button key={k} className={`jo-subb${sub===k?" on":""}`} onClick={()=>ir(k)}>{l}</button>)}</div>
+    {sub==="areas"?<JoAreas user={user}/>:<JoParteDiario user={user}/>}
+  </div>;
+}
+
+// ─── Horas de personal (Rev114) ───────────────────────────────────────────────
+// Para pagar horas a personal de subcontratos: se eligen personas, un puesto y un período.
+//  · Puesto 2 / Puesto 3: horas entre cada entrada y la salida siguiente por ese puesto (P2: subió→bajó; P3: entró
+//    al chalet→salió). El tramo cuenta en el día de la entrada. Entrada sin salida, salida sin entrada o tramos de
+//    más de 18 h NO se suman y quedan como aviso para revisar.
+//  · Puesto 1: días en obra (no horas: hay gente que duerme en el campamento), con el criterio del parte diario.
+const JO_PUESTOS_H={
+  p1:{t:"Puesto 1",s:"días en obra",d:"Cuenta los días que cada persona estuvo en el predio (fichó o seguía adentro), con la primera entrada y la última salida por Puesto 1 de cada día."},
+  p2:{t:"Puesto 2",s:"horas arriba",d:"Suma las horas entre que subió (entrada por Puesto 2) y bajó (salida por Puesto 2)."},
+  p3:{t:"Puesto 3",s:"horas en el chalet",d:"Suma las horas entre que entró al chalet y salió (Puesto 3)."},
+};
+const JO_MAX_TRAMO_H=18;
+const joFmtH=(ms)=>{const m=Math.round(ms/60000);return `${Math.floor(m/60)}:${String(m%60).padStart(2,"0")}`;};
+const joDecH=(ms)=>(Math.round(ms/36000)/100).toFixed(2).replace(".",",");
+const joRangoDias=(a,b)=>{const r=[];for(let x=a;x<=b;x=cmdAddDays(x,1))r.push(x);return r;};
+const joCalcHoras=(ev,pids,puesto,desde,hasta)=>{
+  const ini=new Date(desde+"T00:00:00").getTime(),fin=new Date(cmdAddDays(hasta,1)+"T00:00:00").getTime();
+  const enR=(t)=>t>=ini&&t<fin;
+  const porP={};pids.forEach(id=>{porP[id]=[];});
+  ev.forEach(e=>{if(e.puesto===puesto&&porP[e.pid])porP[e.pid].push(e);});
+  const out={};
+  pids.forEach(pid=>{
+    const dias={};let total=0,nAv=0,pend=null;
+    const D=(t)=>{const k=cmdIsoDate(new Date(t));return dias[k]||(dias[k]={tramos:[],ms:0,avisos:[]});};
+    const aviso=(t,txt)=>{D(t).avisos.push(txt);nAv++;};
+    porP[pid].forEach(e=>{
+      if(e.dir==="entrada"){
+        if(pend&&enR(pend.t))aviso(pend.t,`entró ${joHora(pend.t)} y no tiene salida registrada: no se suma`);
+        pend=e;
+      }else if(pend){
+        const ms=e.t-pend.t;
+        if(enR(pend.t)){
+          if(ms>JO_MAX_TRAMO_H*3600000)aviso(pend.t,`${joHora(pend.t)} → ${joFechaHora(e.t)}: más de ${JO_MAX_TRAMO_H} h, revisar: no se suma`);
+          else{const x=D(pend.t);x.tramos.push({a:pend.t,b:e.t,ms});x.ms+=ms;total+=ms;}
+        }
+        pend=null;
+      }else if(enR(e.t))aviso(e.t,`salió ${joHora(e.t)} sin entrada registrada: no se suma`);
+    });
+    if(pend&&enR(pend.t))aviso(pend.t,`entró ${joHora(pend.t)} y no tiene salida registrada${cmdIsoDate(new Date(pend.t))===today()?" (puede seguir adentro)":""}: no se suma`);
+    out[pid]={dias,total,nAv,nDias:Object.values(dias).filter(x=>x.tramos.length).length};
+  });
+  return out;
+};
+const joCalcDiasP1=(ev,pids,desde,hasta)=>{
+  const dias=joRangoDias(desde,hasta);
+  const pres=joPresencia(ev,dias);
+  const set=new Set(pids),p1={};
+  ev.forEach(e=>{
+    if(e.puesto!=="Puesto 1"||!set.has(e.pid))return;
+    const d=cmdIsoDate(new Date(e.t));if(d<desde||d>hasta)return;
+    const k=e.pid+"|"+d,x=p1[k]||(p1[k]={ent:null,sal:null,ult:null});
+    if(e.dir==="entrada"){if(!x.ent)x.ent=e.t;}else x.sal=e.t;
+    x.ult=e.dir;
+  });
+  const out={};
+  pids.forEach(pid=>{
+    const ds={};let n=0;
+    dias.forEach(d=>{const x=pres[d]&&pres[d].get(pid);if(!x)return;n++;ds[d]={modo:x.modo,...(p1[pid+"|"+d]||{})};});
+    out[pid]={dias:ds,total:n,nAv:0,nDias:n};
+  });
+  return out;
+};
+const joTxtDiaP1=(x)=>{
+  const ent=x.ent?`entró ${joHora(x.ent)}`:(x.modo==="adentro"?"ya estaba adentro":"sin fichada en P1 (fichó en otro puesto)");
+  const sal=!x.sal?"siguió adentro":(x.ult==="entrada"?`salió ${joHora(x.sal)} y volvió a entrar`:`salió ${joHora(x.sal)}`);
+  return `${ent} · ${sal}`;
+};
+const joTxtTramos=(x)=>x.tramos.map(tr=>`${joHora(tr.a)} → ${cmdIsoDate(new Date(tr.b))===cmdIsoDate(new Date(tr.a))?joHora(tr.b):joFechaHora(tr.b)} (${joFmtH(tr.ms)})`).join(" · ");
+const joImprimirHoras=({puesto,desde,hasta,filas,user})=>{
+  const w=window.open('','_blank');
+  if(!w){alert('El navegador bloqueó la ventana para imprimir. Permití las ventanas emergentes de esta página y probá de nuevo.');return;}
+  const P=JO_PUESTOS_H[puesto],esP1=puesto==="p1",E=certEsc;
+  const tot=filas.reduce((s,f)=>s+f.r.total,0);
+  let h='<!doctype html><html><head><meta charset="utf-8"><title>'+(esP1?'Días en obra':'Horas de personal')+' '+cmdFmtDate(desde)+' al '+cmdFmtDate(hasta)+'</title><style>'
+    +'body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;font-size:12px}h1{font-size:18px;margin:0 0 4px}h2{font-size:13px;margin:18px 0 6px;page-break-after:avoid}'
+    +'table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:4px 7px;text-align:left;vertical-align:top}th{background:#eee}.n{text-align:right;white-space:nowrap}'
+    +'.tot td{font-weight:bold;background:#f2f2f2}.av{color:#9a6700}.muted{color:#666;font-size:11px}.per{page-break-inside:avoid}'
+    +'@media print{body{margin:10mm}}</style></head><body>';
+  h+='<h1>'+(esP1?'Días en obra — Puesto 1':'Horas de personal — '+P.t+' ('+P.s+')')+'</h1>';
+  h+='<div class="muted">Período: '+cmdFmtDate(desde)+' al '+cmdFmtDate(hasta)+' · '+filas.length+' persona'+(filas.length===1?'':'s')+' · Generado '+E(joFechaHora(Date.now()))+(user&&user.nombre?' por '+E(user.nombre):'')+'</div>';
+  h+='<div class="muted" style="margin-top:4px">'+E(P.d)+(esP1?'':' Entradas sin salida, salidas sin entrada y tramos de más de '+JO_MAX_TRAMO_H+' h no se suman: figuran como aviso.')+'</div>';
+  h+='<h2>Resumen</h2><table><thead><tr><th>Persona</th><th>DNI</th><th>Empresa</th>'+(esP1?'<th class="n">Días</th>':'<th class="n">Días con horas</th><th class="n">Horas (h:mm)</th><th class="n">Horas (decimal)</th><th class="n">Avisos</th>')+'</tr></thead><tbody>';
+  filas.forEach(({p,r})=>{h+='<tr><td>'+E(p.apellido+', '+p.nombre)+'</td><td>'+E(p.dni)+'</td><td>'+E(p.empresa||'')+'</td>'+(esP1?'<td class="n">'+r.total+'</td>':'<td class="n">'+r.nDias+'</td><td class="n">'+joFmtH(r.total)+'</td><td class="n">'+joDecH(r.total)+'</td><td class="n">'+(r.nAv||'')+'</td>')+'</tr>';});
+  h+='<tr class="tot"><td colspan="3">Total</td>'+(esP1?'<td class="n">'+tot+'</td>':'<td></td><td class="n">'+joFmtH(tot)+'</td><td class="n">'+joDecH(tot)+'</td><td class="n">'+(filas.reduce((s,f)=>s+f.r.nAv,0)||'')+'</td>')+'</tr></tbody></table>';
+  h+='<h2>Detalle por persona</h2>';
+  filas.forEach(({p,r})=>{
+    const ds=Object.keys(r.dias).sort();
+    h+='<div class="per"><h2>'+E(p.apellido+', '+p.nombre)+' <span class="muted">· '+E(p.empresa||'')+' · DNI '+E(p.dni)+' · '+(esP1?r.total+' día'+(r.total===1?'':'s'):joFmtH(r.total)+' h')+'</span></h2>';
+    if(!ds.length){h+='<div class="muted">Sin registros en el período.</div></div>';return;}
+    h+='<table><thead><tr><th style="width:90px">Fecha</th><th>'+(esP1?'Detalle':'Tramos')+'</th>'+(esP1?'':'<th class="n" style="width:70px">Horas</th>')+'</tr></thead><tbody>';
+    ds.forEach(dd=>{const x=r.dias[dd];
+      h+='<tr><td>'+E(joDiaLbl(dd))+'</td><td>'+(esP1?E(joTxtDiaP1(x)):E(joTxtTramos(x))+(x.avisos.length?(x.tramos.length?'<br>':'')+'<span class="av">⚠ '+x.avisos.map(E).join('<br>⚠ ')+'</span>':''))+'</td>'+(esP1?'':'<td class="n">'+(x.ms?joFmtH(x.ms):'—')+'</td>')+'</tr>';});
+    h+='</tbody></table></div>';
+  });
+  h+='</body></html>';
+  w.document.write(h);w.document.close();w.focus();setTimeout(()=>{try{w.print();}catch(e){}},400);
+};
+
+function JoHoras({user}){
+  const hoy=today(),minIso=OPERATIVA_DESDE.slice(0,10);
+  const iniMes=(iso)=>{const x=iso.slice(0,8)+"01";return x<minIso?minIso:x;};
+  const[base,setBase]=useState(null);
+  const[ev,setEv]=useState(null);
+  const[evErr,setEvErr]=useState(false);
+  const[evAt,setEvAt]=useState(null);
+  const[leyendo,setLeyendo]=useState(false);
+  const[q,setQ]=useState("");
+  const[sel,setSel]=useState(()=>new Set());
+  const[puesto,setPuesto]=useState("p2");
+  const[desde,setDesde]=useState(iniMes(hoy));
+  const[hasta,setHasta]=useState(hoy);
+  const[abierto,setAbierto]=useState(null);
+  const[ocultar0,setOcultar0]=useState(true); // ocultar a quienes no tienen registros en el período (tabla y PDF)
+  const leer=useCallback(async(personas)=>{
+    setLeyendo(true);setEvErr(false);
+    const e=await joFetchEventos(personas).catch(()=>null);
+    if(e){setEv(e);setEvAt(Date.now());}else setEvErr(true);
+    setLeyendo(false);
+  },[]);
+  useEffect(()=>{(async()=>{
+    let b=await joFetchBase();
+    if(!b||b.falta){const{data}=await dbSelAll("personas",{cols:"id,dni,nombre,apellido,empresa,cargo,deleted_at",ord:"id.asc"});b={areas:[],miembros:[],personas:data||[]};}
+    setBase(b);leer(b.personas);
+  })();},[leer]);
+  const d=useMemo(()=>base?joDerivar(base):null,[base]);
+  const rangoOk=!!(desde&&hasta&&desde<=hasta&&desde>=minIso&&hasta<=hoy);
+  const calc=useMemo(()=>{
+    if(!ev||!rangoOk||!sel.size)return null;
+    const ids=[...sel];
+    return puesto==="p1"?joCalcDiasP1(ev,ids,desde,hasta):joCalcHoras(ev,ids,puesto==="p2"?"Puesto 2":"Puesto 3",desde,hasta);
+  },[ev,sel,puesto,desde,hasta,rangoOk]);
+  if(!d)return <Spin t="Cargando…"/>;
+  const res=q.trim().length>=2?joFiltra(d.activos,q):[];
+  const vis=res.slice(0,150);
+  const todasVis=vis.length>0&&vis.every(p=>sel.has(p.id));
+  const tog=(id)=>{const n=new Set(sel);n.has(id)?n.delete(id):n.add(id);setSel(n);};
+  const togVis=()=>{const n=new Set(sel);vis.forEach(p=>todasVis?n.delete(p.id):n.add(p.id));setSel(n);};
+  const sumarArea=(aid)=>{if(!aid)return;const n=new Set(sel);(d.porArea[aid]||[]).filter(p=>!p.deleted_at).forEach(p=>n.add(p.id));setSel(n);};
+  const selP=[...sel].map(id=>d.personasById[id]).filter(Boolean).sort(joPorApe);
+  const filas=calc?selP.map(p=>({p,r:calc[p.id]})).filter(x=>x.r&&(!ocultar0||x.r.total>0||x.r.nAv>0)).sort((a,b)=>(a.p.empresa||"").localeCompare(b.p.empresa||"","es")||joPorApe(a.p,b.p)):[];
+  const esP1=puesto==="p1";
+  const tot=filas.reduce((s,f)=>s+f.r.total,0),totAv=filas.reduce((s,f)=>s+f.r.nAv,0);
+  const periodo=(k)=>{
+    if(k==="mes"){setDesde(iniMes(hoy));setHasta(hoy);}
+    if(k==="ant"){const[y,m]=hoy.split("-").map(Number);const a=cmdIsoDate(new Date(y,m-2,1)),b=cmdIsoDate(new Date(y,m-1,0));setDesde(a<minIso?minIso:a);setHasta(b);}
+    if(k==="7"){const a=cmdAddDays(hoy,-6);setDesde(a<minIso?minIso:a);setHasta(hoy);}
+  };
+  return <div>
+    <div className="ph2">
+      <div className="ptit">Horas de <span>personal</span></div>
+      <div style={{display:"flex",gap:8,alignItems:"center",fontSize:11,color:"var(--tx2)",fontFamily:"var(--fm)"}}>
+        {leyendo?"⏳ leyendo fichadas…":evErr?<span style={{color:"var(--rd)"}}>⚠ no se pudieron leer las fichadas</span>:evAt?`fichadas leídas ${joHora(evAt)}`:""}
+        <button className="bsm" onClick={()=>leer(base.personas)} disabled={leyendo}>🔄 Actualizar</button>
+      </div>
+    </div>
+    <div style={{display:"flex",gap:14,flexWrap:"wrap",alignItems:"flex-start"}}>
+      <div className="jo-wrap" style={{flex:"1 1 420px"}}>
+        <div className="jo-h">1 · Personal <span style={{color:"var(--tx)"}}>({sel.size} elegid{sel.size===1?"a":"as"})</span></div>
+        <input className="fi" style={{width:"100%",marginBottom:8}} placeholder="Buscar por empresa, nombre o DNI (ej: ALUSA)" value={q} onChange={e=>setQ(e.target.value)}/>
+        {q.trim().length<2
+          ?<div style={{fontSize:12,color:"var(--tx3)",marginBottom:8}}>Escribí una empresa y aparece toda su gente para tildar.</div>
+          :res.length===0
+            ?<div style={{fontSize:12,color:"var(--tx3)",marginBottom:8}}>Nadie coincide con la búsqueda.</div>
+            :<>
+              <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+                <button className="bsm" onClick={togVis}>{todasVis?"Destildar":"Tildar"} {vis.length===res.length?`las ${res.length}`:`las ${vis.length} de la lista`}</button>
+                {res.length>vis.length&&<span style={{fontSize:11,color:"var(--tx3)"}}>Se muestran {vis.length} de {res.length}.</span>}
+              </div>
+              <div className="jo-scroll" style={{maxHeight:240,marginBottom:8}}>{vis.map(p=><JoPersonaChk key={p.id} p={p} on={sel.has(p.id)} onToggle={()=>tog(p.id)}/>)}</div>
+            </>}
+        {base.areas.length>0&&<select className="fi" style={{width:"100%",marginBottom:8}} value="" onChange={e=>sumarArea(e.target.value)}>
+          <option value="">… o sumar toda la gente de un área o subcontrato</option>
+          {["empresa","area"].map(t=><optgroup key={t} label={JO_TIPOS[t]}>{base.areas.filter(a=>a.tipo===t).map(a=><option key={a.id} value={a.id}>{a.nombre} ({(d.porArea[a.id]||[]).filter(p=>!p.deleted_at).length})</option>)}</optgroup>)}
+        </select>}
+        {selP.length>0&&<>
+          <div style={{display:"flex",alignItems:"center",gap:8,margin:"6px 0"}}><span style={{fontSize:12,color:"var(--tx2)"}}>Elegidas:</span><button className="bsm" onClick={()=>setSel(new Set())}>Quitar todas</button></div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:5,maxHeight:130,overflowY:"auto"}}>{selP.map(p=><span key={p.id} className="jo-chip">{p.apellido}, {p.nombre}<button onClick={()=>tog(p.id)} title="Quitar">×</button></span>)}</div>
+        </>}
+      </div>
+      <div className="jo-wrap" style={{flex:"1 1 320px"}}>
+        <div className="jo-h">2 · Puesto de control</div>
+        <div className="jo-tabs">{Object.entries(JO_PUESTOS_H).map(([k,P])=><button key={k} className={`jo-tab${puesto===k?" on":""}`} onClick={()=>{setPuesto(k);setAbierto(null);}} style={{textTransform:"none",fontSize:14}}>{P.t} · {P.s}</button>)}</div>
+        <div style={{fontSize:12,color:"var(--tx2)",marginBottom:14,lineHeight:1.5}}>{JO_PUESTOS_H[puesto].d}</div>
+        <div className="jo-h">3 · Período</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:6}}>
+          <input className="fi" type="date" value={desde} min={minIso} max={hoy} onChange={e=>setDesde(e.target.value)}/>
+          <span style={{color:"var(--tx3)"}}>al</span>
+          <input className="fi" type="date" value={hasta} min={minIso} max={hoy} onChange={e=>setHasta(e.target.value)}/>
+        </div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:6}}>
+          <button className="bsm" onClick={()=>periodo("mes")}>Este mes</button>
+          <button className="bsm" onClick={()=>periodo("ant")}>Mes anterior</button>
+          <button className="bsm" onClick={()=>periodo("7")}>Últimos 7 días</button>
+        </div>
+        {!rangoOk&&<div className="warn" style={{fontSize:12}}>Revisá las fechas: "desde" tiene que ser anterior a "hasta", entre el {cmdFmtDate(minIso)} y hoy.</div>}
+        <div className="jo-h" style={{marginTop:12}}>4 · Descargar</div>
+        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--tx2)",cursor:"pointer",marginBottom:8}}><input type="checkbox" checked={ocultar0} onChange={e=>setOcultar0(e.target.checked)}/> Ocultar a quienes no tienen registros en el período</label>
+        <button className="badd" disabled={!filas.length} style={{opacity:filas.length?1:.5}} onClick={()=>joImprimirHoras({puesto,desde,hasta,filas,user})}>📄 Descargar PDF</button>
+        <div style={{fontSize:11,color:"var(--tx3)",marginTop:6,lineHeight:1.5}}>Se abre la vista para imprimir: elegí "Guardar como PDF". Trae el resumen con totales y el detalle día por día de cada persona.</div>
+      </div>
+    </div>
+    {!ev&&!evErr&&<Spin t="Leyendo fichadas…"/>}
+    {evErr&&<div className="err">No se pudieron leer las fichadas. Revisá la conexión y tocá 🔄 Actualizar.</div>}
+    {ev&&rangoOk&&sel.size===0&&<div style={{textAlign:"center",color:"var(--tx3)",padding:24}}>Elegí personas arriba para ver {esP1?"los días":"las horas"}.</div>}
+    {calc&&sel.size>0&&filas.length===0&&<div style={{textAlign:"center",color:"var(--tx3)",padding:24}}>Ninguna de las {sel.size} personas elegidas tiene registros en {JO_PUESTOS_H[puesto].t} entre el {cmdFmtDate(desde)} y el {cmdFmtDate(hasta)}.</div>}
+    {filas.length>0&&<>
+      <div style={{display:"flex",alignItems:"baseline",gap:12,flexWrap:"wrap",marginBottom:8}}>
+        <div style={{fontFamily:"var(--fh)",fontSize:18,fontWeight:700,textTransform:"uppercase"}}>{JO_PUESTOS_H[puesto].t} · {JO_PUESTOS_H[puesto].s}</div>
+        <div style={{fontSize:12,color:"var(--tx2)"}}>{cmdFmtDate(desde)} al {cmdFmtDate(hasta)} · tocá una persona para ver el detalle</div>
+      </div>
+      {totAv>0&&<div className="warn" style={{fontSize:12}}>⚠ {totAv} aviso{totAv===1?"":"s"} para revisar (entradas sin salida, salidas sin entrada o tramos muy largos). No se suman: están en el detalle de cada persona.</div>}
+      <div className="tw" style={{maxHeight:"none"}}><table style={{minWidth:0}}>
+        <thead><tr><th>Persona</th><th>Empresa</th><th>DNI</th>{esP1?<th style={{textAlign:"right"}}>Días</th>:<><th style={{textAlign:"right"}}>Días con horas</th><th style={{textAlign:"right"}}>Horas</th><th style={{textAlign:"right"}}>Decimal</th><th style={{textAlign:"right"}}>Avisos</th></>}</tr></thead>
+        <tbody>
+          {filas.map(({p,r})=>{const ab=abierto===p.id,ds=Object.keys(r.dias).sort();return <React.Fragment key={p.id}>
+            <tr style={{cursor:"pointer"}} onClick={()=>setAbierto(ab?null:p.id)}>
+              <td style={{whiteSpace:"nowrap"}}>{ab?"▾":"▸"} {p.apellido}, {p.nombre}</td>
+              <td style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa||"—"}</td>
+              <td className="mn">{p.dni}</td>
+              {esP1?<td className="mn" style={{textAlign:"right",fontWeight:700}}>{r.total}</td>:<>
+                <td className="mn" style={{textAlign:"right"}}>{r.nDias}</td>
+                <td className="mn" style={{textAlign:"right",fontWeight:700}}>{joFmtH(r.total)}</td>
+                <td className="mn" style={{textAlign:"right"}}>{joDecH(r.total)}</td>
+                <td className="mn" style={{textAlign:"right",color:r.nAv?"var(--acc)":"var(--tx3)"}}>{r.nAv||"—"}</td>
+              </>}
+            </tr>
+            {ab&&<tr><td colSpan={esP1?4:7} style={{background:"var(--bg)",padding:"8px 14px"}}>
+              {ds.length===0?<div style={{fontSize:12,color:"var(--tx3)"}}>Sin registros en el período.</div>:
+                ds.map(dd=>{const x=r.dias[dd];return <div key={dd} style={{display:"flex",gap:10,fontSize:12,padding:"3px 0",borderBottom:"1px solid rgba(42,47,66,.5)"}}>
+                  <span className="mn" style={{width:80,flexShrink:0,color:"var(--tx2)"}}>{joDiaLbl(dd)}</span>
+                  <span style={{flex:1}}>{esP1?joTxtDiaP1(x):<>{joTxtTramos(x)}{x.avisos.map((a,i)=><div key={i} style={{color:"var(--acc)"}}>⚠ {a}</div>)}</>}</span>
+                  {!esP1&&<span className="mn" style={{width:50,textAlign:"right"}}>{x.ms?joFmtH(x.ms):"—"}</span>}
+                </div>;})}
+            </td></tr>}
+          </React.Fragment>;})}
+          <tr className="tot"><td colSpan={3} style={{fontWeight:700,borderTop:"2px solid var(--bd)"}}>Total ({filas.length} persona{filas.length===1?"":"s"})</td>
+            {esP1?<td className="mn" style={{textAlign:"right",fontWeight:700,borderTop:"2px solid var(--bd)"}}>{tot}</td>:<>
+              <td style={{borderTop:"2px solid var(--bd)"}}></td>
+              <td className="mn" style={{textAlign:"right",fontWeight:700,borderTop:"2px solid var(--bd)"}}>{joFmtH(tot)}</td>
+              <td className="mn" style={{textAlign:"right",borderTop:"2px solid var(--bd)"}}>{joDecH(tot)}</td>
+              <td className="mn" style={{textAlign:"right",borderTop:"2px solid var(--bd)",color:totAv?"var(--acc)":"var(--tx3)"}}>{totAv||"—"}</td>
+            </>}
+          </tr>
+        </tbody>
+      </table></div>
     </>}
   </div>;
+}
+
+// ─── Aviso a sobrestantes (Rev114) ────────────────────────────────────────────
+// Si alguien entra por Puesto 1 y no está en ningún área o subcontrato, al sobrestante le aparece un aviso para
+// asignarlo (si no, no entra en el parte diario). Mira las entradas por P1 de los últimos 3 días, cada 2 minutos.
+// La ventana emergente se abre sola una vez por persona (se recuerda en este navegador); el banner queda hasta asignarla.
+function JoIngresoSinAreaModal({lista,d,areas,user,onClose,onAsignado}){
+  const[items]=useState(lista);
+  const[busy,setBusy]=useState(null);
+  const[hechos,setHechos]=useState({});
+  const asignar=async(pid,aid)=>{
+    if(!aid)return;setBusy(pid);
+    const ok=await joAsignar([pid],aid,user);setBusy(null);
+    if(ok){setHechos(h=>({...h,[pid]:(d.areasById[aid]||{}).nombre}));onAsignado();}
+  };
+  return <div className="mo"><div className="md md-lg">
+    <div className="mh"><div className="mt">Ingresaron a obra sin área</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div style={{fontSize:13,color:"var(--tx2)",marginBottom:12,lineHeight:1.5}}>{items.length===1?"Esta persona entró":"Estas personas entraron"} por Puesto 1 y no {items.length===1?"está":"están"} en ningún área o subcontrato, así que no {items.length===1?"aparece":"aparecen"} en el parte diario. ¿A qué área {items.length===1?"la":"las"} agregás?</div>
+      {items.map(({p,t})=>{const hecho=hechos[p.id],sug=(d.match[p.id]||[]);return <div key={p.id} className="jo-row" style={{cursor:"default",marginBottom:6}}>
+        <div style={{flex:1,minWidth:200}}>
+          <div style={{fontWeight:600}}>{p.apellido}, {p.nombre}</div>
+          <div style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa||"sin empresa"} · DNI {p.dni} · ingresó {joFechaHora(t)}</div>
+        </div>
+        {hecho?<span style={{color:"var(--gr)",fontSize:13}}>✓ agregado a {hecho}</span>
+          :<select className="fi" style={{maxWidth:250,padding:"6px 8px",fontSize:13}} value="" disabled={busy===p.id} onChange={e=>asignar(p.id,e.target.value)}>
+            <option value="">{busy===p.id?"Guardando…":"Agregar a…"}</option>
+            {sug.length>0&&<optgroup label="💡 Sugeridas">{sug.map(id=><option key={id} value={id}>{(d.areasById[id]||{}).nombre}</option>)}</optgroup>}
+            {["empresa","area"].map(tp=><optgroup key={tp} label={JO_TIPOS[tp]}>{areas.filter(a=>a.tipo===tp).map(a=><option key={a.id} value={a.id}>{a.nombre}</option>)}</optgroup>)}
+          </select>}
+      </div>;})}
+    </div>
+    <div className="mf"><button className="bcanc" style={{marginLeft:"auto"}} onClick={onClose}>{Object.keys(hechos).length>=items.length?"Listo":"Después"}</button></div>
+  </div></div>;
+}
+function JoAvisoSinArea({user}){
+  const[pend,setPend]=useState([]);
+  const[ctx,setCtx]=useState(null);
+  const[ver,setVer]=useState(null);
+  const pers=useRef({at:0,list:[]});
+  const check=useCallback(async()=>{
+    try{
+      const desde=cmdAddDays(today(),-2)+"T00:00:00";
+      if(Date.now()-pers.current.at>10*60000){
+        const{data}=await dbSelAll("personas",{cols:"id,dni,nombre,apellido,empresa,cargo,deleted_at",ord:"id.asc"});
+        if(data)pers.current={at:Date.now(),list:data};
+      }
+      const[a,m,s,mm]=await Promise.all([
+        db.sel("jo_areas",{ord:"fila.asc.nullslast,nombre.asc",lim:2000}),
+        dbSelAll("jo_area_personas",{cols:"persona_id,area_id",ord:"persona_id.asc"}),
+        db.sel("sesiones_acceso",{cols:"id,cerrada_at",f:[["puesto","eq","Puesto 1"],["direccion","eq","entrada"],["cerrada_at","gte",desde]],lim:3000}),
+        db.sel("movimientos_manuales",{cols:"persona_id,dni_raw,created_at",f:[["puesto","eq","Puesto 1"],["direccion","eq","entrada"],["created_at","gte",desde]],lim:3000}),
+      ]);
+      if(!a.data||!m.data||!s.data||!mm.data||!a.data.length)return;
+      let regs=[];const ids=s.data.map(x=>x.id);
+      for(let i=0;i<ids.length;i+=80){
+        const{data}=await db.sel("registros_acceso",{cols:"persona_id,dni_raw,sesion_id",inFilter:["sesion_id",ids.slice(i,i+80)]});
+        if(!data)return;regs=regs.concat(data);
+      }
+      const tSes={};s.data.forEach(x=>{tSes[x.id]=new Date(x.cerrada_at).getTime();});
+      const porDni={};pers.current.list.forEach(p=>{const k=normDni(p.dni);if(k&&(!porDni[k]||!p.deleted_at))porDni[k]=p.id;});
+      const ult={};const nota=(pid,t)=>{if(pid&&t&&(!ult[pid]||t>ult[pid]))ult[pid]=t;};
+      regs.forEach(r=>nota(r.persona_id||(r.dni_raw?porDni[normDni(r.dni_raw)]:null),tSes[r.sesion_id]));
+      mm.data.forEach(x=>nota(x.persona_id||(x.dni_raw?porDni[normDni(x.dni_raw)]:null),new Date(x.created_at).getTime()));
+      const dd=joDerivar({areas:a.data,miembros:m.data,personas:pers.current.list});
+      const lista=Object.keys(ult).map(pid=>({p:dd.personasById[pid],t:ult[pid]})).filter(x=>x.p&&!x.p.deleted_at&&!dd.areaDe[x.p.id]).sort((x,y)=>y.t-x.t);
+      setCtx({d:dd,areas:a.data});setPend(lista);
+      let av={};try{av=JSON.parse(localStorage.getItem("jo_avisados")||"{}")||{};}catch(e){}
+      const lim=cmdAddDays(today(),-7);Object.keys(av).forEach(k=>{if(av[k]<lim)delete av[k];});
+      const nuevos=lista.filter(x=>!av[x.p.id]);
+      nuevos.forEach(x=>{av[x.p.id]=today();});
+      try{localStorage.setItem("jo_avisados",JSON.stringify(av));}catch(e){}
+      if(nuevos.length)setVer(v=>v||lista);
+    }catch(e){}
+  },[]);
+  useEffect(()=>{check();const i=setInterval(check,120000);return()=>clearInterval(i);},[check]);
+  return <>
+    {pend.length>0&&<div className="jo-aviso" onClick={()=>setVer(pend)}>
+      <span>⚠ {pend.length===1?`Ingresó ${pend[0].p.nombre} ${pend[0].p.apellido} y no está`:`${pend.length} personas ingresaron por Puesto 1 y no están`} en ningún área del parte diario.</span>
+      <button className="bsm" style={{marginLeft:"auto",flexShrink:0}}>Asignar área</button>
+    </div>}
+    {ver&&ctx&&<JoIngresoSinAreaModal lista={ver} d={ctx.d} areas={ctx.areas} user={user} onClose={()=>setVer(null)} onAsignado={check}/>}
+  </>;
 }
 
 function Login({onLogin,onPublic}){
@@ -6117,9 +6588,24 @@ function App(){
     else setChecking(false);
   },[]);
 
+  // Rev114: Escape cierra la ventana abierta de más arriba (todas tienen la "x" .mc; las de Viandas cierran tocando el fondo).
+  useEffect(()=>{
+    const onKey=(e)=>{
+      if(e.key!=="Escape")return;
+      const ovs=document.querySelectorAll(".mo, .cmd-modov");
+      if(!ovs.length)return;
+      const top=ovs[ovs.length-1];
+      if(top.classList.contains("cmd-modov")){top.click();return;}
+      const b=top.querySelector(".mc");
+      if(b)b.click();
+    };
+    document.addEventListener("keydown",onKey);
+    return()=>document.removeEventListener("keydown",onKey);
+  },[]);
+
   const login=async p=>{
     setUser(p);
-    setTab({puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi",admin_viandas:"vi",sobrestante:"jop"}[p.rol]||"per");
+    setTab({puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi",admin_viandas:"vi",sobrestante:"jpd"}[p.rol]||"per");
     const{data}=await db.sel("proyectos",{f:[["activo","eq",true]]});
     if(data)setProyectos(data);
     setChecking(false);
@@ -6135,9 +6621,9 @@ function App(){
     cocina_campamento:[{k:"vi",l:"Viandas"}],
     cocina_chalet:    [{k:"vi",l:"Viandas"}],
     admin_viandas:    [{k:"vi",l:"Viandas"}],
-    // Rev112: lo mismo que la vista sin login (como solapas) + Reportes JO completo.
-    sobrestante:      [{k:"pc",l:"Conteo de personal"},{k:"ph",l:"Consulta habilitaciones"},{k:"pm",l:"Movimientos del día"},{k:"joa",l:"Áreas o subcontratos"},{k:"jop",l:"Parte diario"}],
-    admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"},{k:"cvc",l:"Chalet"},{k:"joa",l:"Áreas o subcontratos"},{k:"jop",l:"Parte diario"},{k:"adm",l:"Usuarios"}],
+    // Rev112: lo mismo que la vista sin login (como solapas) + Reportes JO completo. Rev114: + Registros (solo ver).
+    sobrestante:      [{k:"reg",l:"Registros"},{k:"pc",l:"Conteo de personal"},{k:"ph",l:"Consulta habilitaciones"},{k:"pm",l:"Movimientos del día"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"}],
+    admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"},{k:"cvc",l:"Chalet"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"},{k:"adm",l:"Usuarios"}],
   };
   // Agrupación visual de solapas (cada rol ve solo los grupos donde tiene alguna solapa)
   const NAV_GROUPS=[
@@ -6145,7 +6631,7 @@ function App(){
     {t:"Control de puestos",ks:["sc","reg"]},
     {t:"Gastronomía",       ks:["vi","cvc"]},
     {t:"Movimientos de obra",ks:["pc","ph","pm"]},
-    {t:"Reportes JO",       ks:["joa","jop"]},
+    {t:"Reportes JO",       ks:["jpd","jhs"]},
     {t:"Administración",    ks:["adm"]},
   ];
 
@@ -6163,6 +6649,7 @@ function App(){
       </div>
     </div>
     {pid&&<div style={{background:"var(--s2)",borderBottom:"1px solid var(--bd)",padding:"5px 12px",display:"flex",alignItems:"center",gap:8,overflowX:"auto"}}><ChaletMini proyectoId={pid} user={user}/></div>}
+    {user.rol==="sobrestante"&&<CmdErrBoundary><JoAvisoSinArea user={user}/></CmdErrBoundary>}
     {tabs.length>1&&<div className="nav grp">{NAV_GROUPS.map(g=>{
       const gt=tabs.filter(t=>g.ks.includes(t.k));
       if(!gt.length)return null;
@@ -6181,8 +6668,8 @@ function App(){
       {tab==="pc" &&<PublicDashboard embedTab="chalet"/>}
       {tab==="ph" &&<PublicDashboard embedTab="consulta"/>}
       {tab==="pm" &&<PublicDashboard embedTab="movimientos"/>}
-      {tab==="joa"&&<CmdErrBoundary><JoAreas user={user}/></CmdErrBoundary>}
-      {tab==="jop"&&<CmdErrBoundary><JoParteDiario user={user}/></CmdErrBoundary>}
+      {tab==="jpd"&&<CmdErrBoundary><JoParteDiarioSec user={user}/></CmdErrBoundary>}
+      {tab==="jhs"&&<CmdErrBoundary><JoHoras user={user}/></CmdErrBoundary>}
       {tab==="adm"&&<Usuarios currentUser={user}/>}
     </div>
   </div>;
