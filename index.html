@@ -397,7 +397,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev114";
+const APP_REV="Rev115";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -555,6 +555,9 @@ const dirInfo=(puesto,dir)=>(PUESTO_DIR[puesto]||PUESTO_DIR["Puesto 1"])[dir==="
 const dirVerbo=(puesto,dir)=>dirInfo(puesto,dir).v;   // "entra" / "sale" / "sube" / "baja"
 const dirPasado=(puesto,dir)=>dirInfo(puesto,dir).p;  // "entró" / "salió" / "subió" / "bajó"
 const cap1=(s)=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
+// Rev115: "jefe_obra" tiene las mismas opciones que "sobrestante"; solo cambia cómo se muestra el rol.
+const esSobrestante=(u)=>!!u&&(u.rol==="sobrestante"||u.rol==="jefe_obra");
+const ROL_LBL={jefe_obra:"Jefe de Obra"};
 const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
 const fmtD=d=>d?d.split("-").reverse().join("/"):"";
 const fmtTs=ts=>new Date(ts).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
@@ -822,16 +825,16 @@ function ChaletMini({proyectoId,user}){
     await load();
   };
   const listData={plc:data.plc,plm:data.plm,vlc:data.vlc,vlm:data.vlm,plp:data.plp};
-  const listTitles={plc:"Personas en Chalet",plm:"Personas en Camino",vlc:"Vehiculos en Chalet",vlm:"Vehiculos en Camino",plp:"Personas en el Predio"};
+  const listTitles={plc:"Personas en Chalet",plm:"Personas en Camino",vlc:"Vehiculos en Chalet",vlm:"Vehiculos en Camino",plp:"Personas en predio (campamento+camino+chalet)"};
   // Píldora TOTAL (más grande, color distintivo): personas en el predio.
-  const TotalPill=({n,label,color,listKey})=><div title="Total de personas dentro del predio (basado en Puesto 1, con fallback si aparecen en P2/P3)" style={{display:"flex",alignItems:"center",gap:5,background:"rgba(0,0,0,.4)",border:`1.5px solid ${color}66`,borderRadius:5,padding:"3px 8px",cursor:"pointer"}} onClick={()=>setShowList(listKey)}>
-    <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",letterSpacing:.5}}>{label}</span>
+  const TotalPill=({n,label,sub,color,listKey})=><div title="Total de personas dentro del predio: campamento + camino + chalet (basado en Puesto 1, con fallback si aparecen en P2/P3)" style={{display:"flex",alignItems:"center",gap:5,background:"rgba(0,0,0,.4)",border:`1.5px solid ${color}66`,borderRadius:5,padding:"3px 8px",cursor:"pointer"}} onClick={()=>setShowList(listKey)}>
+    <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",letterSpacing:.5}}>{label}{sub&&<span style={{textTransform:"none",letterSpacing:0}}> {sub}</span>}</span>
     <span style={{fontFamily:"var(--fh)",fontSize:16,fontWeight:900,color,lineHeight:1}}>{n}</span>
     <span style={{fontSize:9,color,opacity:.7}}>▾</span>
   </div>;
   return <>
     <div style={{display:"flex",alignItems:"center",gap:6}}>
-      <TotalPill n={data.ep} label="EN PREDIO" color="#F59E0B" listKey="plp"/>
+      <TotalPill n={data.ep} label="EN PREDIO" sub="(campamento+camino+chalet)" color="#F59E0B" listKey="plp"/>
       <span style={{color:"var(--tx3)",fontSize:16,opacity:.35,margin:"0 2px"}}>│</span>
       <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginRight:1}}>CAM</span>
       <Pill n={data.pm} label="pers" color="#60A5FA" listKey="plm"/>
@@ -1483,7 +1486,7 @@ function PersonaDetalleModal({persona,proyectoId,onClose}){
   },[persona.id]);
 
   const ubColor=ubicacion==="chalet"?"#A78BFA":ubicacion==="camino"?"#60A5FA":ubicacion==="predio"?"#F59E0B":"var(--tx2)";
-  const ubLabel=ubicacion==="chalet"?"En Chalet":ubicacion==="camino"?"En Camino (P2→P3)":ubicacion==="predio"?"En Predio":"Fuera de la obra";
+  const ubLabel=ubicacion==="chalet"?"En Chalet":ubicacion==="camino"?"En Camino (P2→P3)":ubicacion==="predio"?"En predio (campamento o caminos)":"Fuera de la obra";
   const ubIcon=ubicacion==="chalet"?"🏔️":ubicacion==="camino"?"🚗":ubicacion==="predio"?"🏕️":"—";
 
   return <div className="mo"><div className="md">
@@ -2327,7 +2330,7 @@ function Registros({defaultPuesto,user}){
   // Rev91: solo admin + puesto (P1/P2/P3) pueden editar fecha/hora
   const canEdit=!!user&&(user.rol==="admin"||user.rol==="puesto");
   // Rev114: el sobrestante entra a Registros solo para mirar (sin invertir ni editar).
-  const soloVer=!!user&&user.rol==="sobrestante";
+  const soloVer=esSobrestante(user);
 
   const onHabSaved=(newHab)=>{
     setHabs(prev=>{
@@ -2621,8 +2624,8 @@ function Usuarios({currentUser}){
   const[list,setList]=useState([]);const[loading,setLoading]=useState(true);
   const load=async()=>{setLoading(true);const{data}=await db.sel("usuarios",{f:[["activo","eq",true]],ord:"nombre.asc"});if(data)setList(data);setLoading(false);};
   useEffect(()=>{load();},[]);
-  const RC={admin:"t-e",sh:"t-v",cp:"t-a",puesto:"t-p",logistica:"t-p",cocina_campamento:"t-a",cocina_chalet:"t-a",admin_viandas:"t-e",sobrestante:"t-v"};
-  const RL={admin:"Admin",sh:"S&H",cp:"Control Personal",puesto:"Puesto",logistica:"Logistica",cocina_campamento:"Cocina Campamento",cocina_chalet:"Cocina Chalet",admin_viandas:"Admin Viandas",sobrestante:"Sobrestante"};
+  const RC={admin:"t-e",sh:"t-v",cp:"t-a",puesto:"t-p",logistica:"t-p",cocina_campamento:"t-a",cocina_chalet:"t-a",admin_viandas:"t-e",sobrestante:"t-v",jefe_obra:"t-v"};
+  const RL={admin:"Admin",sh:"S&H",cp:"Control Personal",puesto:"Puesto",logistica:"Logistica",cocina_campamento:"Cocina Campamento",cocina_chalet:"Cocina Chalet",admin_viandas:"Admin Viandas",sobrestante:"Sobrestante",jefe_obra:"Jefe de Obra"};
   return <div>
     <div className="ph2"><div className="ptit">Usuarios del <span>Sistema</span></div></div>
     <div style={{marginBottom:14,padding:"12px 16px",background:"rgba(245,158,11,.07)",border:"1px solid rgba(245,158,11,.25)",borderRadius:6,fontSize:13,color:"var(--tx2)"}}>Para crear o modificar usuarios, ingresa al <strong style={{color:"var(--tx)"}}>dashboard de Supabase → Authentication → Users</strong>.</div>
@@ -2677,7 +2680,7 @@ function ConteoViandasChaletAddModal({user,proyectoId,existentes,onClose,onAdded
     .filter(p=>todaLaBase||(enPredio&&(enPredio.has(p.id)||enPredio.has(p.dni))))
     .filter(p=>!q||`${p.nombre} ${p.apellido} ${p.dni}`.toLowerCase().includes(q))
     .sort((a,b)=>orden[lugar(a)]-orden[lugar(b)]);
-  const LUGAR_TAG={chalet:{t:"en chalet",c:"#A78BFA"},camino:{t:"en camino",c:"#60A5FA"},predio:{t:"en predio",c:"var(--tx2)"}};
+  const LUGAR_TAG={chalet:{t:"en chalet",c:"#A78BFA"},camino:{t:"en camino",c:"#60A5FA"},predio:{t:"en predio (campamento o caminos)",c:"var(--tx2)"}};
   const add=async(persona)=>{
     setSaving(persona.id);
     const todayStr=today();
@@ -5208,7 +5211,7 @@ function PublicDashboard({onBack,embedTab}){
       {tab==="chalet"&&<>
         {/* EN PREDIO — total de personas dentro (ingresaron por P1 y no salieron) */}
         <div style={{background:"linear-gradient(135deg,rgba(245,158,11,.14),rgba(245,158,11,.04))",border:"1px solid rgba(245,158,11,.4)",borderRadius:8,overflow:"hidden",marginBottom:12}}>
-          <div style={{padding:"10px 18px",borderBottom:"1px solid rgba(245,158,11,.2)",fontFamily:"var(--fh)",fontSize:13,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:"#F59E0B"}}>En Predio — total dentro</div>
+          <div style={{padding:"10px 18px",borderBottom:"1px solid rgba(245,158,11,.2)",fontFamily:"var(--fh)",fontSize:13,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:"#F59E0B"}}>En predio <span style={{textTransform:"none"}}>(campamento+camino+chalet)</span> — total dentro</div>
           <div style={{padding:"16px 20px",display:"flex",alignItems:"center",gap:14}}>
             <div style={{fontFamily:"var(--fh)",fontSize:52,fontWeight:900,color:"#F59E0B",lineHeight:1}}>{pubChalet.persChalet===null?"-":pubChalet.persPredio}</div>
             <div style={{flex:1}}>
@@ -5262,7 +5265,7 @@ function PublicDashboard({onBack,embedTab}){
         {pubShowList&&<ListaFiltrada
           items={{persPredio:pubChalet.persListPredio,persChalet:pubChalet.persListChalet,persCamino:pubChalet.persListCamino,vehChalet:pubChalet.vehListChalet,vehCamino:pubChalet.vehListCamino}[pubShowList]}
           tipo={pubShowList.startsWith("pers")?"persona":"vehiculo"}
-          titulo={{persPredio:"Personas en el Predio",persChalet:"Personas en Chalet",persCamino:"Personas en Camino",vehChalet:"Vehiculos en Chalet",vehCamino:"Vehiculos en Camino"}[pubShowList]}
+          titulo={{persPredio:"Personas en predio (campamento+camino+chalet)",persChalet:"Personas en Chalet",persCamino:"Personas en Camino",vehChalet:"Vehiculos en Chalet",vehCamino:"Vehiculos en Camino"}[pubShowList]}
           onClose={()=>setPubShowList(null)}
         />}
       </>}
@@ -6605,7 +6608,7 @@ function App(){
 
   const login=async p=>{
     setUser(p);
-    setTab({puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi",admin_viandas:"vi",sobrestante:"jpd"}[p.rol]||"per");
+    setTab({puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi",admin_viandas:"vi",sobrestante:"jpd",jefe_obra:"jpd"}[p.rol]||"per");
     const{data}=await db.sel("proyectos",{f:[["activo","eq",true]]});
     if(data)setProyectos(data);
     setChecking(false);
@@ -6613,6 +6616,7 @@ function App(){
   const logout=async()=>{await authApi.signOut();setUser(null);setTab(null);setProyectos([]);};
 
   // "cvc" = Conteo Viandas Chalet (el conteo viejo, renombrado). "vi" = Viandas (módulo comedor nuevo).
+  const TABS_SOB=[{k:"reg",l:"Registros"},{k:"pc",l:"Conteo de personal"},{k:"ph",l:"Consulta habilitaciones"},{k:"pm",l:"Movimientos del día"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"}];
   const TABS={
     puesto:           [{k:"sc",l:"Escanear"},{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
     sh:               [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
@@ -6622,7 +6626,8 @@ function App(){
     cocina_chalet:    [{k:"vi",l:"Viandas"}],
     admin_viandas:    [{k:"vi",l:"Viandas"}],
     // Rev112: lo mismo que la vista sin login (como solapas) + Reportes JO completo. Rev114: + Registros (solo ver).
-    sobrestante:      [{k:"reg",l:"Registros"},{k:"pc",l:"Conteo de personal"},{k:"ph",l:"Consulta habilitaciones"},{k:"pm",l:"Movimientos del día"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"}],
+    sobrestante:      TABS_SOB,
+    jefe_obra:        TABS_SOB,
     admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"},{k:"cvc",l:"Chalet"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"},{k:"adm",l:"Usuarios"}],
   };
   // Agrupación visual de solapas (cada rol ve solo los grupos donde tiene alguna solapa)
@@ -6644,12 +6649,12 @@ function App(){
       <div className="brand">CONTROL<span>OBRA</span> <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3}}>{APP_REV}</span></div>
       <div className="tr" style={{gap:8,flexWrap:"nowrap"}}>
         <span style={{fontSize:12,color:"var(--tx2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:80}}>{user.nombre}</span>
-        <span className="rol" style={{flexShrink:0}}>{user.rol==="puesto"?user.puesto_nombre||"Puesto":user.rol.toUpperCase()}</span>
+        <span className="rol" style={{flexShrink:0}}>{user.rol==="puesto"?user.puesto_nombre||"Puesto":(ROL_LBL[user.rol]||user.rol).toUpperCase()}</span>
         <button className="btn-out" onClick={logout} style={{flexShrink:0}}>Salir</button>
       </div>
     </div>
     {pid&&<div style={{background:"var(--s2)",borderBottom:"1px solid var(--bd)",padding:"5px 12px",display:"flex",alignItems:"center",gap:8,overflowX:"auto"}}><ChaletMini proyectoId={pid} user={user}/></div>}
-    {user.rol==="sobrestante"&&<CmdErrBoundary><JoAvisoSinArea user={user}/></CmdErrBoundary>}
+    {esSobrestante(user)&&<CmdErrBoundary><JoAvisoSinArea user={user}/></CmdErrBoundary>}
     {tabs.length>1&&<div className="nav grp">{NAV_GROUPS.map(g=>{
       const gt=tabs.filter(t=>g.ks.includes(t.k));
       if(!gt.length)return null;
