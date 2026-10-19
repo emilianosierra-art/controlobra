@@ -400,7 +400,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev117";
+const APP_REV="Rev118";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -3436,7 +3436,128 @@ function CmdResumenSemanal({onVerDia,inicio,setInicio}){
     </>}
   </div>;
 }
-function CmdReporte({personas,despachos,fecha,onVerDia,resInicio,setResInicio}){
+// ─── Quiénes no retiraron (Rev118, solo admin) ───────────────────────────────
+// Cruza lo programado en el Radar (viandas_calendario) con lo despachado (viandas_despachos) en un período y lista a
+// quienes tenían comidas programadas y no las retiraron. Orden: primero el que más almuerzos dejó de retirar (se
+// puede ordenar por otra comida tocando su columna). Lo despachado cuenta por fecha + DNI + comida, venga del puesto
+// que venga (Campamento, Chalet, carga atrasada).
+const CMD_NR_ORDEN=['almuerzo','cena','desayuno','merienda'];
+function CmdNoRetiraron(){
+  const hoy=cmdIsoDate(new Date()),ayer=cmdAddDays(hoy,-1);
+  const[desde,setDesde]=useState(cmdAddDays(ayer,-6));
+  const[hasta,setHasta]=useState(ayer);
+  const[datos,setDatos]=useState(null); // {filas} | {err:true}
+  const[cargando,setCargando]=useState(false);
+  const[q,setQ]=useState('');
+  const[orden,setOrden]=useState('almuerzo');
+  const[soloOrden,setSoloOrden]=useState(true);
+  const[abierto,setAbierto]=useState(null);
+  const rangoOk=!!(desde&&hasta&&desde<=hasta&&hasta<=hoy&&cmdAddDays(desde,62)>=hasta);
+  useEffect(()=>{
+    if(!rangoOk)return;
+    let vivo=true;setCargando(true);setAbierto(null);
+    (async()=>{
+      const[{data:cal},{data:desp},{data:pers}]=await Promise.all([
+        dbSelAll("viandas_calendario",{cols:"fecha,dni,desayuno,almuerzo,merienda,cena",f:[["fecha","gte",desde],["fecha","lte",hasta]],ord:"fecha.asc,dni.asc"}),
+        dbSelAll("viandas_despachos",{cols:"id,fecha,dni,comida",f:[["fecha","gte",desde],["fecha","lte",hasta]],ord:"id.asc"}),
+        dbSelAll("personas",{cols:"id,dni,nombre,apellido,empresa,deleted_at",ord:"id.asc"}),
+      ]);
+      if(!vivo)return;
+      if(!cal||!desp){setDatos({err:true});setCargando(false);return;}
+      const pm={};(pers||[]).forEach(p=>{const k=normDni(p.dni);if(k&&(!pm[k]||!p.deleted_at))pm[k]=p;});
+      const ret=new Set(desp.map(d=>d.fecha+'|'+normDni(d.dni)+'|'+d.comida));
+      const por={};
+      cal.forEach(r=>{
+        const k=normDni(r.dni);
+        CMD_COMIDAS.forEach(c=>{
+          if(!r[c.key])return;
+          const x=por[k]||(por[k]={dni:r.dni,p:pm[k]||null,prog:{},falta:{},dias:{}});
+          x.prog[c.key]=(x.prog[c.key]||0)+1;
+          const ok=ret.has(r.fecha+'|'+k+'|'+c.key);
+          (x.dias[r.fecha]||(x.dias[r.fecha]={}))[c.key]=ok;
+          if(!ok)x.falta[c.key]=(x.falta[c.key]||0)+1;
+        });
+      });
+      setDatos({filas:Object.values(por)});setCargando(false);
+    })().catch(()=>{if(vivo){setDatos({err:true});setCargando(false);}});
+    return()=>{vivo=false;};
+  },[desde,hasta,rangoOk]);
+  const F=(x,k)=>x.falta[k]||0,P=(x,k)=>x.prog[k]||0;
+  const tot=(x)=>CMD_COMIDAS.reduce((s,c)=>s+F(x,c.key),0);
+  const nom=(x)=>x.p?`${x.p.apellido}, ${x.p.nombre}`:'(no está en Personal)';
+  const cOrden=CMD_COMIDAS.find(c=>c.key===orden);
+  let filas=(datos&&datos.filas)||[];
+  const nProg=filas.filter(x=>P(x,orden)>0).length;
+  if(q.trim())filas=filas.filter(x=>joNorm(`${nom(x)} ${x.dni} ${x.p?x.p.empresa||'':''}`).includes(joNorm(q)));
+  filas=filas.filter(x=>soloOrden?F(x,orden)>0:tot(x)>0)
+    .sort((a,b)=>F(b,orden)-F(a,orden)||(P(a,orden)-F(a,orden))-(P(b,orden)-F(b,orden))||tot(b)-tot(a)||nom(a).localeCompare(nom(b),'es'));
+  const periodo=(n)=>{setHasta(ayer);setDesde(cmdAddDays(ayer,-(n-1)));};
+  const excel=async()=>{
+    try{
+      const XLSX=await joLoadXLSX();
+      const enc=['Apellido','Nombre','DNI','Empresa'];
+      CMD_NR_ORDEN.forEach(k=>{const c=CMD_COMIDAS.find(x=>x.key===k);enc.push(c.label+' no retirados',c.label+' programados');});
+      enc.push('Total no retiradas','Días sin '+cOrden.label.toLowerCase());
+      const rows=[enc];
+      filas.forEach(x=>{
+        const r=[x.p?x.p.apellido:'',x.p?x.p.nombre:'(no está en Personal)',x.dni,x.p?x.p.empresa||'':''];
+        CMD_NR_ORDEN.forEach(k=>r.push(F(x,k),P(x,k)));
+        r.push(tot(x),Object.keys(x.dias).sort().filter(d=>x.dias[d][orden]===false).map(d=>cmdFmtDate(d).slice(0,5)).join(', '));
+        rows.push(r);
+      });
+      const ws=XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols']=[{wch:18},{wch:18},{wch:11},{wch:26},...CMD_NR_ORDEN.flatMap(()=>[{wch:9},{wch:9}]),{wch:9},{wch:40}];
+      const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'No retiraron');
+      XLSX.writeFile(wb,`No retiraron ${cOrden.label.toLowerCase()} ${desde} al ${hasta}.xlsx`);
+    }catch(e){alert('No se pudo generar el Excel: '+((e&&e.message)||e));}
+  };
+  return <div className="cmd-rep">
+    <h3>🚫 Quiénes no retiraron <span style={{fontSize:10,color:'var(--tx3)',textTransform:'none',letterSpacing:0,fontWeight:400}}>· solo admin</span></h3>
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
+      <input className="fi" type="date" value={desde} max={hoy} onChange={e=>setDesde(e.target.value)}/>
+      <span style={{color:'var(--tx3)'}}>al</span>
+      <input className="fi" type="date" value={hasta} max={hoy} onChange={e=>setHasta(e.target.value)}/>
+      <button className="cmd-btn" onClick={()=>periodo(7)}>Últimos 7 días</button>
+      <button className="cmd-btn" onClick={()=>periodo(14)}>Últimos 14</button>
+      <button className="cmd-btn" onClick={()=>periodo(30)}>Últimos 30</button>
+    </div>
+    {!rangoOk&&<div className="cmd-aviso">Revisá las fechas: "desde" antes de "hasta", hasta hoy como máximo y no más de 2 meses.</div>}
+    {rangoOk&&hasta===hoy&&<div className="cmd-aviso">Incluye hoy, que está en curso: las comidas que todavía no se sirvieron figuran como no retiradas.</div>}
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
+      <input className="fi" style={{flex:1,minWidth:200}} placeholder="Filtrar por nombre, DNI o empresa..." value={q} onChange={e=>setQ(e.target.value)}/>
+      <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--tx2)',cursor:'pointer'}}><input type="checkbox" checked={soloOrden} onChange={e=>setSoloOrden(e.target.checked)}/> Solo quienes dejaron de retirar {cOrden.label.toLowerCase()}</label>
+      <button className="cmd-btn" onClick={excel} disabled={!filas.length}>⬇️ Excel</button>
+    </div>
+    {cargando?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Cargando…</div>
+      :datos&&datos.err?<div className="cmd-aviso">No se pudieron leer los datos. Revisá la conexión.</div>
+      :datos&&<>
+        <div style={{fontSize:12,color:'var(--tx2)',marginBottom:8}}>
+          Del {cmdFmtDate(desde)} al {cmdFmtDate(hasta)}: <b>{nProg}</b> personas tenían {cOrden.label.toLowerCase()} programado y <b style={{color:'var(--cmd-err)'}}>{(datos.filas||[]).filter(x=>F(x,orden)>0).length}</b> dejaron de retirar al menos uno. Cada celda dice <b>no retiradas / programadas</b>. Tocá una columna para ordenar por esa comida y una persona para ver los días.
+        </div>
+        {filas.length===0?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Nadie para mostrar con estos filtros.</div>:
+        <div className="cmd-tblw" style={{maxHeight:520,overflowY:'auto'}}><table>
+          <thead><tr><th>Persona</th><th>Empresa</th>
+            {CMD_NR_ORDEN.map(k=>{const c=CMD_COMIDAS.find(x=>x.key===k);return <th key={k} className="n" style={{cursor:'pointer',color:orden===k?'var(--cmd-pri)':undefined}} onClick={()=>setOrden(k)} title={'Ordenar por '+c.label.toLowerCase()+' no retirados'}>{c.em} {c.short}{orden===k?' ▼':''}</th>;})}
+            <th className="n">Total</th></tr></thead>
+          <tbody>{filas.map(x=>{const ab=abierto===x.dni;return <React.Fragment key={x.dni}>
+            <tr style={{cursor:'pointer'}} onClick={()=>setAbierto(ab?null:x.dni)}>
+              <td>{ab?'▾':'▸'} {nom(x)}<div style={{fontSize:10,color:'var(--tx3)'}}>DNI {x.dni}</div></td>
+              <td style={{fontSize:11,color:'var(--tx2)'}}>{x.p?x.p.empresa||'—':'—'}</td>
+              {CMD_NR_ORDEN.map(k=>{const f=F(x,k),p=P(x,k);return <td key={k} className="n" style={{color:!p?'var(--tx3)':f?(f===p?'var(--cmd-err)':'var(--cmd-dieta)'):'var(--cmd-ok)'}}>{p?<><b>{f}</b>/{p}</>:'—'}</td>;})}
+              <td className="n"><b>{tot(x)}</b></td>
+            </tr>
+            {ab&&<tr><td colSpan={7} style={{background:'var(--bg)'}}>
+              {Object.keys(x.dias).sort().map(d=><div key={d} style={{display:'flex',gap:10,fontSize:11,padding:'2px 0'}}>
+                <span style={{width:80,color:'var(--tx2)',fontFamily:'var(--fm)'}}>{joDiaLbl(d)}</span>
+                <span>{CMD_NR_ORDEN.filter(k=>x.dias[d][k]!==undefined).map(k=>{const c=CMD_COMIDAS.find(z=>z.key===k);const ok=x.dias[d][k];return <span key={k} style={{marginRight:10,color:ok?'var(--cmd-ok)':'var(--cmd-err)'}}>{ok?'✓':'✗'} {c.short}</span>;})}</span>
+              </div>)}
+            </td></tr>}
+          </React.Fragment>;})}</tbody>
+        </table></div>}
+      </>}
+  </div>;
+}
+function CmdReporte({personas,despachos,fecha,onVerDia,resInicio,setResInicio,isAdmin}){
   // Programada = del Radar; las comidas agregadas en el día van en su propia columna
   const prog=(p,k)=>p.comidas.includes(k)&&!(p.extras||[]).includes(k);
   const porComida=useMemo(()=>CMD_COMIDAS.map(c=>({
@@ -3484,6 +3605,7 @@ function CmdReporte({personas,despachos,fecha,onVerDia,resInicio,setResInicio}){
         </tr>)}</tbody>
       </table></div>
     </div>}
+    {isAdmin&&<CmdErrBoundary><CmdNoRetiraron/></CmdErrBoundary>}
     <div className="cmd-rep">
       <h3>Últimos despachos del día</h3>
       {despachos.length===0?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Sin despachos aún.</div>:
@@ -4348,7 +4470,7 @@ function Comedor({user,proyectoId}){
           :<CmdEscanear personas={personasDia} despachos={despachosDia} dieta={dieta} platos={platos} onTogglePlato={togglePlato} prefix={prefix} togglePref={togglePref} onDispatch={addDespacho} onUndispatch={removeDespacho} preloadPersona={picked} clearPreload={()=>setPicked(null)} fecha={fecha} isReadOnly={isReadOnly} onAgregarComida={agregarComida} onAgregarPersona={setAgregando}/>
       )}
       {subtab==='listado'&&<CmdListado personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} dieta={dieta} chaletSet={chaletSet} platos={platos} onTogglePlato={togglePlato} isAdmin={canEditDieta} onOpenDieta={setDietaEditing} onPick={puedeEscanear?onPickFromList:null} onDispatch={addDespacho} onUndispatch={removeDespacho} canDispatch={!!userPuesto||isAdmin} isReadOnly={isReadOnly} onAgregarComida={agregarComida} onAgregarPersona={setAgregando}/>}
-      {subtab==='reporte'&&<CmdReporte personas={personasDia} despachos={despachosDia} fecha={fecha} onVerDia={verDia} resInicio={resInicio} setResInicio={setResInicio}/>}
+      {subtab==='reporte'&&<CmdReporte personas={personasDia} despachos={despachosDia} fecha={fecha} onVerDia={verDia} resInicio={resInicio} setResInicio={setResInicio} isAdmin={isAdmin}/>}
       {subtab==='pedido'&&verPedidos&&<CmdErrBoundary><CmdPedidoSemanal user={user} canEdit={isAdmin} showToast={showToast}/></CmdErrBoundary>}
       {subtab==='cert'&&verPedidos&&<CmdErrBoundary><CmdCertificados user={user} canEdit={isAdmin} showToast={showToast}/></CmdErrBoundary>}
     </>}
