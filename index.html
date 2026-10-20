@@ -400,7 +400,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev118";
+const APP_REV="Rev120";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -689,8 +689,28 @@ function Clock(){
 }
 
 // ─── LISTA CON FILTRO EMPRESA ────────────────────────────────────────────────
-function ListaFiltrada({items,tipo,titulo,onClose,onRemove}){
-  const empresas=[...new Set(items.map(x=>x.empresa||"Sin empresa").filter(Boolean))].sort();
+// Rev120: empresa "agrupada" para los filtros de las listas de conteo (predio, camino, chalet), así no aparecen
+// variantes de la misma empresa como si fueran distintas. Une mayúsculas/tildes/espacios, los sufijos SRL/SA y lo que va
+// después de " - " (ej. "DIEGER - CAMIONERO" → DIEGER). El personal propio queda en dos grupos: OBRAS Y SISTEMAS - JERÁRQUICOS
+// (jerárquicos, con o sin tilde, y gerencia) y OBRAS Y SISTEMAS (todo el resto: producción, choferes, mantenimiento…).
+// En cada persona se sigue mostrando la empresa tal como figura en Personal.
+const EMP_ALIAS={"LAGUNAS DE RADAL":"LAGUNAS DEL RADAL","CLEANLIFE":"CLEANLIF","FISHER":"FISCHER","POWER EM":"POWEREM","RSV DIVISION":"RSV"};
+const EMP_PREFIJOS=["ASESOR","INSPECTOR","CEBALLOS"]; // "ASESOR AMBIENTE", "CEBALLOS REGADOR"… van con la empresa base
+const empNorm=(x)=>String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9]+/g," ").trim();
+const empresaGrupo=(emp)=>{
+  const raw=String(emp||"").trim();
+  if(!raw)return"Sin empresa";
+  const full=empNorm(raw);
+  if(/^(OBRAS Y SISTEMAS|OYS)( |$)/.test(full))return/\b(JERARQ[A-Z]*|JER|GERENCIA)\b/.test(full)?"OBRAS Y SISTEMAS - JERÁRQUICOS":"OBRAS Y SISTEMAS";
+  const x=empNorm(raw.split(/\s+-\s+/)[0]).replace(/ (S ?R ?L|S ?A)$/,"").trim();
+  if(!x)return"Sin empresa";
+  const pre=EMP_PREFIJOS.find(q=>x===q||x.startsWith(q+" "));
+  return pre||EMP_ALIAS[x]||x;
+};
+function ListaFiltrada({items,tipo,titulo,onClose,onRemove,onExcel}){
+  const gk=(x)=>empresaGrupo(x.empresa);
+  const cuentaEmp={};items.forEach(x=>{const k=gk(x);cuentaEmp[k]=(cuentaEmp[k]||0)+1;});
+  const empresas=Object.keys(cuentaEmp).sort((a,b)=>a.localeCompare(b,"es"));
   const[activas,setActivas]=useState(()=>{
     const s={};empresas.forEach(e=>{s[e]=true;});return s;
   });
@@ -705,7 +725,7 @@ function ListaFiltrada({items,tipo,titulo,onClose,onRemove}){
     const todasOn=empresas.every(e=>activas[e]);
     const s={};empresas.forEach(e=>{s[e]=!todasOn;});setActivas(s);
   };
-  const filtrados=items.filter(x=>(activas[x.empresa||"Sin empresa"]));
+  const filtrados=items.filter(x=>activas[gk(x)]);
   const[removing,setRemoving]=useState(null);
   const handleRemove=async(item)=>{
     if(removing)return;
@@ -714,7 +734,7 @@ function ListaFiltrada({items,tipo,titulo,onClose,onRemove}){
   };
 
   return <div className="mo"><div className="md">
-    <div className="mh"><div className="mt">{titulo} — hoy</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mh"><div className="mt">{titulo} — hoy</div><div style={{display:"flex",alignItems:"center",gap:8}}>{onExcel&&<button className="bsm" onClick={onExcel} title="Descargar Excel con quiénes están en predio, camino y chalet">⬇️ Excel</button>}<button className="mc" onClick={onClose}>x</button></div></div>
     <div className="mb">
       {empresas.length>1&&<>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
@@ -722,7 +742,7 @@ function ListaFiltrada({items,tipo,titulo,onClose,onRemove}){
           <button className="bsm" style={{fontSize:11}} onClick={toggleTodas}>{empresas.every(e=>activas[e])?"Quitar todas":"Todas"}</button>
         </div>
         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
-          {empresas.map(e=><button key={e} onClick={()=>toggleEmpresa(e)} style={{padding:"3px 10px",borderRadius:12,border:"1px solid",fontSize:11,fontFamily:"var(--fm)",cursor:"pointer",background:activas[e]?"var(--acc2)":"var(--s2)",color:activas[e]?"#fff":"var(--tx2)",borderColor:activas[e]?"var(--acc2)":"var(--bd)",transition:"all .15s"}}>{e}</button>)}
+          {empresas.map(e=><button key={e} onClick={()=>toggleEmpresa(e)} style={{padding:"3px 10px",borderRadius:12,border:"1px solid",fontSize:11,fontFamily:"var(--fm)",cursor:"pointer",background:activas[e]?"var(--acc2)":"var(--s2)",color:activas[e]?"#fff":"var(--tx2)",borderColor:activas[e]?"var(--acc2)":"var(--bd)",transition:"all .15s"}}>{e} <span style={{opacity:.7}}>({cuentaEmp[e]})</span></button>)}
         </div>
         <div style={{fontSize:12,color:"var(--tx2)",marginBottom:10}}>{filtrados.length} de {items.length}</div>
       </>}
@@ -827,6 +847,36 @@ function ChaletMini({proyectoId,user}){
     if(!ok){alert("No se pudo registrar la salida. Reintentá.");return;}
     await load();
   };
+  // Rev120: Excel con quiénes están en predio, camino y chalet (solo admins y puestos de control)
+  const puedeExcel=!!user&&(user.rol==="admin"||user.rol==="puesto");
+  const descargarExcel=async()=>{
+    try{
+      const XLSX=await joLoadXLSX();
+      const plp=data.plp||[],plc=data.plc||[],plm=data.plm||[];
+      const enCh=new Set(plc.map(x=>x.id)),enCam=new Set(plm.map(x=>x.id));
+      const donde=(x)=>enCh.has(x.id)?"Chalet":(enCam.has(x.id)?"Camino (P2 → P3)":"Campamento o caminos");
+      const orden=(a,b)=>empresaGrupo(a.empresa).localeCompare(empresaGrupo(b.empresa),"es")||`${a.apellido} ${a.nombre}`.localeCompare(`${b.apellido} ${b.nombre}`,"es");
+      const enc=["Apellido","Nombre","DNI","Empresa","Empresa (como figura en Personal)"];
+      const hoja=(lista,conDonde)=>{
+        const rows=[conDonde?[...enc,"Dónde está"]:enc];
+        [...lista].sort(orden).forEach(x=>{const f=[x.apellido||"",x.nombre||"",x.dni||"",empresaGrupo(x.empresa),x.empresa||""];rows.push(conDonde?[...f,donde(x)]:f);});
+        const ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=[{wch:20},{wch:20},{wch:12},{wch:32},{wch:38},{wch:22}];return ws;
+      };
+      const res={};const sumar=(lista,k)=>lista.forEach(x=>{const e=empresaGrupo(x.empresa);(res[e]=res[e]||{predio:0,camino:0,chalet:0})[k]++;});
+      sumar(plp,"predio");sumar(plm,"camino");sumar(plc,"chalet");
+      const rr=[["Empresa","En predio (campamento+camino+chalet)","En camino","En chalet"]];
+      Object.keys(res).sort((a,b)=>res[b].predio-res[a].predio||a.localeCompare(b,"es")).forEach(e=>rr.push([e,res[e].predio,res[e].camino,res[e].chalet]));
+      rr.push(["TOTAL",plp.length,plm.length,plc.length]);
+      const wr=XLSX.utils.aoa_to_sheet(rr);wr["!cols"]=[{wch:34},{wch:20},{wch:11},{wch:11}];
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,wr,"Resumen por empresa");
+      XLSX.utils.book_append_sheet(wb,hoja(plp,true),"En predio");
+      XLSX.utils.book_append_sheet(wb,hoja(plc),"En chalet");
+      XLSX.utils.book_append_sheet(wb,hoja(plm),"En camino");
+      const d=new Date();
+      XLSX.writeFile(wb,`Conteo de personal ${today()} ${String(d.getHours()).padStart(2,"0")}-${String(d.getMinutes()).padStart(2,"0")}.xlsx`);
+    }catch(e){alert("No se pudo generar el Excel: "+((e&&e.message)||e));}
+  };
   const listData={plc:data.plc,plm:data.plm,vlc:data.vlc,vlm:data.vlm,plp:data.plp};
   const listTitles={plc:"Personas en Chalet",plm:"Personas en Camino",vlc:"Vehiculos en Chalet",vlm:"Vehiculos en Camino",plp:"Personas en predio (campamento+camino+chalet)"};
   // Píldora TOTAL (más grande, color distintivo): personas en el predio.
@@ -845,6 +895,7 @@ function ChaletMini({proyectoId,user}){
       <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginLeft:4,marginRight:1}}>CH</span>
       <Pill n={data.pc} label="pers" color="#A78BFA" listKey="plc"/>
       <Pill n={data.vc} label="veh" color="#10B981" listKey="vlc"/>
+      {puedeExcel&&<button className="bsm" style={{fontSize:10,padding:"2px 8px",marginLeft:6,flexShrink:0}} onClick={descargarExcel} title="Descargar Excel con quiénes están en predio, camino y chalet">⬇️ Excel</button>}
     </div>
     {showList&&<ListaFiltrada
       items={listData[showList]}
@@ -852,6 +903,7 @@ function ChaletMini({proyectoId,user}){
       titulo={listTitles[showList]}
       onClose={()=>setShowList(null)}
       onRemove={showList==="plp"?(canRemovePredio?sacarPredio:null):(canRemove?(showList.startsWith("v")?sacarVeh:sacar):null)}
+      onExcel={puedeExcel&&!showList.startsWith("v")?descargarExcel:null}
     />}
   </>;
 }
@@ -3664,16 +3716,17 @@ const certAjusteAbierto=(iso)=>{const hoy=cmdIsoDate(new Date());if(iso!==hoy)re
 // Días (ISO) de a hasta b, inclusive
 const certRango=(a,b)=>{const r=[];for(let d=a;d<=b;d=cmdAddDays(d,1))r.push(d);return r;};
 // ── Revisiones del pedido ──
-// Una foto confirmada se corrige con revisiones 1, 2, 3… (viandas_fotos.revisiones, jsonb). Una revisión confirmada
-// rige desde el día SUBSIGUIENTE a su confirmación (al menos 24 hs de aviso) hasta el viernes de esa semana; los
-// días anteriores siguen con lo que estaba. Cada revisión guarda {n, estado, dias:{iso:{prog,pedido}}, desde, …}.
+// Una foto confirmada se actualiza con fotos nuevas 1, 2, 3… (viandas_fotos.revisiones, jsonb). Desde Rev119 cada foto
+// nueva rige DESDE EL DÍA EN QUE SE SACA hasta el viernes (antes: desde el día subsiguiente); los días anteriores siguen
+// con lo que estaba. Cada una guarda {n, estado, dias:{iso:{prog,pedido,editado?}}, desde, …}. "editado" = corregido
+// a mano con el lápiz ({at, por}).
 const certRevs=(foto)=>(foto&&Array.isArray(foto.revisiones))?foto.revisiones:[];
-const certRevDesde=(confIso,semana)=>{const d=cmdAddDays(confIso,2);return d<semana?semana:d;};
+const certRevDesde=(confIso,semana)=>confIso<semana?semana:confIso;
 // Pedido vigente de un día: el de la última revisión confirmada que ya rige ese día; si no hay, el de la foto
 const certVigente=(foto,iso)=>{
   let src=(foto&&foto.dias&&foto.dias[iso])||null,rev=0;
   certRevs(foto).filter(r=>r.estado==='confirmada'&&r.desde&&r.desde<=iso&&r.dias&&r.dias[iso]).sort((a,b)=>a.n-b.n).forEach(r=>{src=r.dias[iso];rev=r.n;});
-  return{pedido:(src&&src.pedido)||certCero(),prog:(src&&src.prog)||certCero(),rev};
+  return{pedido:(src&&src.pedido)||certCero(),prog:(src&&src.prog)||certCero(),rev,ed:(src&&src.editado)||null};
 };
 // Un día/comida. cobrado = lo que ya se facturó por ese día (en el certificado que cobró su semana);
 // vigente = el pedido con sus revisiones; acordado = vigente + ajuste (almuerzo −25). A facturar = lo acordado,
@@ -3825,6 +3878,105 @@ const certImprimir=(cert)=>{
   h+='</body></html>';
   w.document.write(h);w.document.close();w.focus();setTimeout(()=>{try{w.print();}catch(e){}},400);
 };
+// ═════ Regla 3 (Rev119, pedido del 2026-10-20) ═════════════════════════════════
+// · Semanas numeradas: la semana 1 es sáb 19/09/2026 → vie 25/09/2026.
+// · El pedido de cada semana (sáb→vie) es la ÚLTIMA foto del Radar: la foto inicial (se saca mié/jue/vie anterior y
+//   se confirma) y las fotos nuevas que se saquen durante la semana, que rigen DESDE EL DÍA EN QUE SE SACAN hasta el
+//   viernes (antes regía desde el día subsiguiente). Sobre eso se puede corregir a mano con el lápiz: lo que se edita
+//   es lo que se ve y lo que se certifica.
+// · Certificado a semana vencida: en la semana N+1 se certifica la semana N completa, pedido vs. despachado:
+//     desayuno → lo pedido (los despachos no se registran) · almuerzo → lo pedido + lo despachado de más
+//     merienda → lo despachado (lo pedido que no se consumió se devuelve) · cena → lo pedido (60% del Radar,
+//     mínimo 50) + lo despachado de más (a demanda).
+// Los certificados guardados con la regla 1 o 2 se siguen viendo como antes.
+const CERT_SEM1='2026-09-19';
+const certNumSem=(semana)=>{const[a,b,c]=CERT_SEM1.split('-').map(Number),[x,y,z]=semana.split('-').map(Number);return Math.round((Date.UTC(x,y-1,z)-Date.UTC(a,b-1,c))/(7*86400000))+1;};
+const certLblSemN=(s)=>'Semana '+certNumSem(s)+' ('+certLblSemana(s)+')';
+const CERT3_REGLA={
+  desayuno:'lo pedido (los desayunos despachados no se registran)',
+  almuerzo:'lo pedido + lo despachado de más',
+  merienda:'lo despachado: lo pedido que no se consumió se devuelve',
+  cena:'lo pedido ('+Math.round(CERT_CENA_PCT*100)+'% del Radar, mínimo '+CERT_CENA_PISO+') + lo despachado de más (a demanda)',
+};
+// Un día y una comida. desp = null cuando ese día no hay ningún despacho registrado en la app: se factura lo pedido.
+const certCalc3=(k,prog,pedido,ajuste,desp)=>{
+  const acordado=Math.max(0,pedido+(k==='almuerzo'?ajuste:0));
+  const r={prog,pedido,ajuste:acordado-pedido,acordado,desp:desp||0,demas:0,devueltas:0,fact:acordado,sinDesp:desp===null};
+  if(desp===null||k==='desayuno')return r;
+  if(k==='merienda'){r.fact=desp;r.devueltas=Math.max(0,acordado-desp);r.demas=Math.max(0,desp-acordado);return r;}
+  r.demas=Math.max(0,desp-acordado);r.fact=acordado+r.demas;return r;
+};
+const certCalcSemana3=(vigDe,ajustes,desp,semana)=>{
+  const dias={},tot={},sinDesp=[];
+  CMD_COMIDAS.forEach(c=>{tot[c.key]={prog:0,pedido:0,ajuste:0,acordado:0,desp:0,demas:0,devueltas:0,fact:0};});
+  certDias(semana).forEach(iso=>{
+    const v=vigDe(iso)||{},dd=(desp&&desp[iso])||null;
+    if(!dd)sinDesp.push(iso);
+    dias[iso]={};
+    CMD_COMIDAS.forEach(c=>{
+      const aj=(ajustes&&ajustes[iso]&&ajustes[iso][c.key])?ajustes[iso][c.key].cantidad:0;
+      const r=certCalc3(c.key,(v.prog||{})[c.key]||0,(v.pedido||{})[c.key]||0,aj,dd?(dd[c.key]||0):null);
+      dias[iso][c.key]=r;
+      Object.keys(tot[c.key]).forEach(x=>{tot[c.key][x]+=r[x]||0;});
+    });
+  });
+  return{dias,tot,sinDesp};
+};
+// Diferencia entre lo pedido y lo despachado, en palabras, según la comida
+const certDif3=(k,t)=>k==='desayuno'?'—':(k==='merienda'?(t.devueltas?t.devueltas+' devuelta'+(t.devueltas===1?'':'s'):'')+(t.demas?(t.devueltas?' · ':'')+'+'+t.demas+' de más':'')||'—':(t.demas?'+'+t.demas+(k==='cena'?' a demanda':' de más'):'—'));
+// La explicación de cada comida con sus números (como el ejemplo del pedido: Radar 100 → pedido 60 → salieron 68 → 8 de más)
+const certFrase3=(k,t)=>{
+  const aj=t.ajuste?' ('+certDifTxt(t.ajuste)+' de ajustes)':'';
+  // Se calcula día por día: si el total no sale de la cuenta directa (ej. un día que se despachó de más y otro de
+  // menos, o días sin despachos registrados), se aclara.
+  const directo=k==='merienda'?t.desp:Math.max(t.acordado,t.desp);
+  const dxd=k!=='desayuno'&&t.fact!==directo?' Se calcula día por día (ver abajo).':'';
+  if(k==='desayuno')return'Se pidieron '+t.acordado+': se facturan '+t.fact+'.';
+  if(k==='almuerzo')return'Se pidieron '+t.acordado+aj+' y se despacharon '+t.desp+': se facturan '+t.fact+(t.demas?' ('+t.demas+' de más)':'')+'.'+dxd;
+  if(k==='merienda')return'Se pidieron '+t.acordado+' y se despacharon '+t.desp+': '+(t.devueltas?'se devuelven '+t.devueltas+', ':'')+'se facturan '+t.fact+'.'+dxd;
+  return'El Radar decía '+t.prog+', se pidieron '+t.acordado+' y salieron '+t.desp+': se facturan '+t.fact+(t.demas?' ('+t.demas+' a demanda)':'')+'.'+dxd;
+};
+// De dónde sale el pedido: la foto inicial, las fotos nuevas de la semana y las correcciones a mano
+const certFotoTxt3=(ped)=>{
+  const meta=ped&&ped.foto,revs=(ped&&ped.revs)||[],eds=Object.keys((ped&&ped.ed)||{}).sort();
+  let t='Pedido = última foto del Radar. Foto inicial confirmada'+(meta&&meta.confirmada_at?' el '+fmtTs(meta.confirmada_at)+(meta.confirmada_por?' ('+meta.confirmada_por+')':''):'');
+  if(revs.length)t+='; actualizada por '+revs.map(r=>'la foto '+r.n+' ('+fmtTs(r.tomada_at||r.confirmada_at)+', desde el '+certLblDia(r.desde)+')').join(' y ');
+  if(eds.length)t+='; con correcciones a mano el '+eds.map(certLblDia).join(', ');
+  return t+'.';
+};
+const certTxtCert3=(cert)=>{
+  const d=cert.detalle,c=d.calc;
+  const L=['Certificado de viandas — '+certLblSemN(d.semana),'Lagunas del Radal · a semana vencida: pedido (última foto) vs. despachado','',certFotoTxt3(d.pedido),''];
+  CMD_COMIDAS.forEach(m=>{const t=c.tot[m.key];L.push(m.label.toUpperCase()+' — a facturar: '+t.fact);L.push('  '+certFrase3(m.key,t));L.push('  (se factura '+CERT3_REGLA[m.key]+')');});
+  L.push('','Por día (pedido / despachado → a facturar):');
+  certDias(d.semana).forEach(iso=>{const r=c.dias[iso];L.push('  '+certLblDia(iso)+': '+CMD_COMIDAS.map(m=>m.short+' '+(m.key==='desayuno'||r[m.key].sinDesp?r[m.key].acordado+' → '+r[m.key].fact:r[m.key].acordado+'/'+r[m.key].desp+' → '+r[m.key].fact)).join(' · '));});
+  (d.avisos||[]).forEach(a=>L.push('','⚠️ '+a));
+  return L.join('\n');
+};
+const certImprimir3=(cert)=>{
+  const w=window.open('','_blank');
+  if(!w){alert('El navegador bloqueó la ventana para imprimir. Permití las ventanas emergentes de esta página y probá de nuevo.');return;}
+  const d=cert.detalle,c=d.calc,E=certEsc;
+  const th=CMD_COMIDAS.map(m=>'<th class="n">'+m.label+'</th>').join('');
+  let h='<!doctype html><html><head><meta charset="utf-8"><title>Certificado viandas '+E(certLblSemN(d.semana))+'</title><style>'
+    +'body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;font-size:12px}h1{font-size:18px;margin:0 0 4px}h2{font-size:13px;margin:18px 0 6px}'
+    +'table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:4px 7px;text-align:left;vertical-align:top}th{background:#eee}.n{text-align:right;white-space:nowrap}'
+    +'.tot td{font-weight:bold;background:#f2f2f2}.av{background:#fff7e0;border:1px solid #d9a400;padding:6px 10px;margin:8px 0}.muted{color:#666;font-size:11px}'
+    +'@media print{body{margin:10mm}}</style></head><body>';
+  h+='<h1>Certificado de viandas — '+E(certLblSemN(d.semana))+'</h1>';
+  h+='<div class="muted">Proveedor: Lagunas del Radal · a semana vencida: pedido (última foto del Radar) vs. despachado'+(cert.generado_at?' · Generado '+E(fmtTs(cert.generado_at)):'')+(cert.generado_por_nombre?' por '+E(cert.generado_por_nombre):'')+'</div>';
+  (d.avisos||[]).forEach(a=>{h+='<div class="av">⚠ '+E(a)+'</div>';});
+  h+='<h2>Resumen</h2><table><thead><tr><th>Comida</th><th class="n">Radar</th><th class="n">Pedido</th><th class="n">Despachado</th><th class="n">Diferencia</th><th class="n">A facturar</th><th>Cómo se factura</th></tr></thead><tbody>';
+  CMD_COMIDAS.forEach(m=>{const t=c.tot[m.key];h+='<tr><td>'+m.label+'</td><td class="n">'+t.prog+'</td><td class="n">'+t.acordado+(t.ajuste?' <span class="muted">('+certDifTxt(t.ajuste)+')</span>':'')+'</td><td class="n">'+(m.key==='desayuno'?'—':t.desp)+'</td><td class="n">'+E(certDif3(m.key,t))+'</td><td class="n"><b>'+t.fact+'</b></td><td>'+E(certFrase3(m.key,t))+'<br><span class="muted">Se factura '+E(CERT3_REGLA[m.key])+'.</span></td></tr>';});
+  h+='</tbody></table>';
+  h+='<h2>Por día</h2><div class="muted">Pedido / despachado → a facturar</div><table><thead><tr><th>Día</th>'+th+'</tr></thead><tbody>';
+  certDias(d.semana).forEach(iso=>{const r=c.dias[iso];h+='<tr><td>'+E(certLblDia(iso))+'</td>'+CMD_COMIDAS.map(m=>{const x=r[m.key];return'<td class="n">'+(m.key==='desayuno'||x.sinDesp?x.acordado:x.acordado+' / '+x.desp)+' → <b>'+x.fact+'</b></td>';}).join('')+'</tr>';});
+  h+='<tr class="tot"><td>Total</td>'+CMD_COMIDAS.map(m=>'<td class="n">'+c.tot[m.key].fact+'</td>').join('')+'</tr></tbody></table>';
+  h+='<h2>Pedido por día (última foto)</h2><div class="muted">'+E(certFotoTxt3(d.pedido))+'</div><table><thead><tr><th>Día</th>'+th+'</tr></thead><tbody>';
+  certDias(d.semana).forEach(iso=>{const p=(d.pedido.dias[iso]||{}).pedido||certCero(),rv=d.pedido.rev&&d.pedido.rev[iso],ed=d.pedido.ed&&d.pedido.ed[iso];h+='<tr><td>'+E(certLblDia(iso))+(rv?' · foto '+rv:'')+(ed?' · corregido a mano':'')+'</td>'+CMD_COMIDAS.map(m=>'<td class="n">'+(p[m.key]||0)+'</td>').join('')+'</tr>';});
+  h+='</tbody></table></body></html>';
+  w.document.write(h);w.document.close();w.focus();setTimeout(()=>{try{w.print();}catch(e){}},400);
+};
 // Si algo falla al dibujar estas secciones nuevas, que no se caiga toda la app (queda el error acá adentro).
 class CmdErrBoundary extends React.Component{
   constructor(p){super(p);this.state={err:null};}
@@ -3847,7 +3999,7 @@ function CmdPedidoSemanal({user,canEdit,showToast}){
   const[sigOk,setSigOk]=useState(true);     // ¿está confirmado el pedido de la semana próxima?
   const[loading,setLoading]=useState(true);
   const[err,setErr]=useState(null);
-  const[draft,setDraft]=useState(null);     // edición a mano del pedido (solo en borrador)
+  const[draft,setDraft]=useState(null);     // corrección a mano (lápiz) de lo que se ve
   const[comida,setComida]=useState('almuerzo');
   const[busy,setBusy]=useState(false);
   const reqRef=useRef(0);
@@ -3865,59 +4017,49 @@ function CmdPedidoSemanal({user,canEdit,showToast}){
   // El Radar se lee aparte: es la consulta más pesada y no hace falta repetirla cada 20 s
   useEffect(()=>{let vivo=true;setRadar(undefined);certFetchRadar(semana,hasta).then(r=>{if(vivo)setRadar(r?r.prog:null);});return()=>{vivo=false;};},[semana,radarTick]);
   const fotoVis=foto&&(canEdit||foto.estado==='confirmada')?foto:null; // Lagunas no ve los borradores
-  const calc=useMemo(()=>fotoVis?certCalcSemana(fotoVis,ajustes,desp,semana):null,[fotoVis,ajustes,desp,semana]);
-  // Pedido VIGENTE de cada día: la foto, corregida por las revisiones confirmadas que ya rigen ese día
-  const pedVal=(iso,k)=>fotoVis?(certVigente(fotoVis,iso).pedido[k]||0):0;
-  const progVal=(iso,k)=>fotoVis?(certVigente(fotoVis,iso).prog[k]||0):0;
-  const revOf=(iso)=>fotoVis?certVigente(fotoVis,iso).rev:0;
+  // Lo vigente de cada día = la última foto que rige ese día (inicial o nueva) con sus correcciones a mano
+  const vig=(iso)=>fotoVis?certVigente(fotoVis,iso):{pedido:certCero(),prog:certCero(),rev:0,ed:null};
+  const pedVal=(iso,k)=>vig(iso).pedido[k]||0;
+  const progVal=(iso,k)=>vig(iso).prog[k]||0;
+  const calc=useMemo(()=>fotoVis?certCalcSemana3(iso=>certVigente(fotoVis,iso),ajustes,desp,semana):null,[fotoVis,ajustes,desp,semana]);
   const deRadar=!!(fotoVis&&fotoVis.origen!=='manual');
   const est=foto?foto.estado:null;
-  // ── Revisiones del pedido (solo sobre una foto confirmada) ──
-  const[revDraft,setRevDraft]=useState(null); // edición a mano de la revisión en borrador: {iso:{comida:valor}}
-  useEffect(()=>{setRevDraft(null);},[semana]);
   const revs=certRevs(foto);
-  const revBorr=revs.find(r=>r.estado!=='confirmada');
-  const revsVis=(canEdit?revs:revs.filter(r=>r.estado==='confirmada')).slice().sort((a,b)=>a.n-b.n);
-  const revDesdeHoy=certRevDesde(hoy,semana); // si se confirma hoy, rige desde este día
-  const hayDiasParaRev=revDesdeHoy<=hasta;
-  const guardarRevs=async(lista,msg)=>{
-    setBusy(true);const{ok}=await db.upd("viandas_fotos",{revisiones:lista},[["semana","eq",semana]]);setBusy(false);
-    if(!ok){alert('No se pudo guardar la revisión. ¿Ya se agregó la columna "revisiones" en Supabase (SQL de la Rev107)?');return false;}
+  const revsConf=revs.filter(r=>r.estado==='confirmada').sort((a,b)=>a.n-b.n);
+  const revsBorr=revs.filter(r=>r.estado!=='confirmada'); // borradores de la versión anterior (antes había que confirmarlas)
+  const desdeNueva=certRevDesde(hoy,semana); // una foto nueva sacada ahora rige desde hoy
+  const hayDiasParaFoto=desdeNueva<=hasta;
+  const tieneColRevs=!!(foto&&Object.prototype.hasOwnProperty.call(foto,'revisiones'));
+  const guardarFoto=async(cambios,msg,errMsg)=>{
+    setBusy(true);const{ok}=await db.upd("viandas_fotos",cambios,[["semana","eq",semana]]);setBusy(false);
+    if(!ok){alert(errMsg||'No se pudieron guardar los cambios.');return false;}
     if(msg)showToast({msg});load();return true;
   };
-  const nuevaRevision=async()=>{
-    if(!hayDiasParaRev){alert('Ya no quedan días para corregir en esta semana: una revisión confirmada hoy regiría desde el '+certLblDia(revDesdeHoy)+'.');return;}
-    if(revBorr){alert('Ya hay una revisión en borrador (Rev '+revBorr.n+'). Confirmala o descartala primero.');return;}
-    setBusy(true);
-    const isos=certRango(revDesdeHoy,hasta);
-    const r=await certFetchRadar(revDesdeHoy,hasta);
-    setBusy(false);
+  // Foto nueva durante la semana: lo que dice el Radar AHORA, desde hoy hasta el viernes (rige en el momento)
+  const nuevaFoto=async()=>{
+    if(!hayDiasParaFoto){alert('La semana ya terminó: no quedan días para actualizar.');return;}
+    const isos=certRango(desdeNueva,hasta);
+    if(!confirm('¿Sacar una foto nueva del Radar?\n\nActualiza el pedido del '+certLblDia(desdeNueva)+' al '+certLblDia(hasta)+' con lo que dice el Radar ahora. Los días anteriores quedan como estaban.\n\nSi corregiste a mano alguno de esos días, esa corrección se reemplaza por lo del Radar. Lagunas lo ve al instante.'))return;
+    setBusy(true);const r=await certFetchRadar(desdeNueva,hasta);setBusy(false);
     if(!r){alert('No se pudo leer el Radar (viandas_calendario).');return;}
     const sinDatos=isos.filter(iso=>!r.prog[iso]);
-    if(sinDatos.length&&!confirm('El Radar no tiene datos para: '+sinDatos.map(certLblDia).join(', ')+'.\n\nEsos días quedan en 0 y los podés completar a mano antes de confirmar. ¿Seguir?'))return;
-    const n=revs.reduce((m,x)=>Math.max(m,x.n||0),0)+1;
+    if(sinDatos.length&&!confirm('El Radar no tiene datos para: '+sinDatos.map(certLblDia).join(', ')+'.\n\nEsos días quedan en 0 (los podés corregir con el lápiz). Si falta sincronizar, primero tocá "🔄 Actualizar calendario". ¿Seguir?'))return;
+    const n=revs.reduce((m,x)=>Math.max(m,x.n||0),0)+1,ahora=new Date().toISOString();
     const d={};isos.forEach(iso=>{const prog=r.prog[iso]||certCero();d[iso]={prog,pedido:certPedidoDe(prog)};});
-    await guardarRevs([...revs,{n,estado:'borrador',origen:'radar',dias:d,desde:null,tomada_at:new Date().toISOString(),tomada_por_nombre:certNombre(user),confirmada_at:null,confirmada_por_nombre:null}],'📸 Revisión '+n+' en borrador: revisala y confirmala');
+    await guardarFoto({revisiones:[...revsConf,{n,estado:'confirmada',origen:'radar',dias:d,desde:desdeNueva,tomada_at:ahora,tomada_por_nombre:certNombre(user),confirmada_at:ahora,confirmada_por_nombre:certNombre(user)}]},
+      '📸 Foto '+n+' guardada: rige desde el '+certLblDia(desdeNueva),'No se pudo guardar la foto nueva. ¿Ya se agregó la columna "revisiones" en Supabase (SQL de la Rev107)?');
   };
-  const editarRev=()=>{const dr={};Object.keys(revBorr.dias||{}).forEach(iso=>{dr[iso]={...revBorr.dias[iso].pedido};});setRevDraft(dr);};
-  const setCeldaRev=(iso,k,v)=>setRevDraft(prev=>({...prev,[iso]:{...prev[iso],[k]:v.replace(/[^0-9]/g,'')}}));
-  const guardarRevDraft=async()=>{
-    const d={};Object.keys(revBorr.dias||{}).forEach(iso=>{const p={};CMD_COMIDAS.forEach(c=>{p[c.key]=parseInt(revDraft[iso][c.key],10)||0;});d[iso]={prog:revBorr.dias[iso].prog,pedido:p};});
-    if(await guardarRevs(revs.map(x=>x.n===revBorr.n?{...x,dias:d}:x),'💾 Revisión guardada'))setRevDraft(null);
+  const quitarFoto=async(r)=>{
+    if(!confirm('¿Quitar la foto '+r.n+' (sacada el '+fmtTs(r.tomada_at||r.confirmada_at)+')?\n\nDesde el '+certLblDia(r.desde)+' vuelve a regir la foto anterior, con sus correcciones a mano.'))return;
+    await guardarFoto({revisiones:revs.filter(x=>x.n!==r.n)},'Foto '+r.n+' quitada');
   };
-  const confirmarRev=async()=>{
-    const desde=certRevDesde(hoy,semana);
-    if(desde>hasta){alert('Ya no quedan días para corregir en esta semana.');return;}
-    const dias2={};Object.keys(revBorr.dias||{}).filter(iso=>iso>=desde).forEach(iso=>{dias2[iso]=revBorr.dias[iso];});
-    if(!Object.keys(dias2).length){alert('La revisión no tiene días a partir del '+certLblDia(desde)+'. Descartala y sacá una nueva.');return;}
-    const tot=certCero();Object.values(dias2).forEach(x=>CMD_COMIDAS.forEach(c=>{tot[c.key]+=x.pedido[c.key]||0;}));
-    if(!confirm('¿Confirmar la revisión '+revBorr.n+'?\n\nCorrige el pedido desde el '+certLblDia(desde)+' hasta el '+certLblDia(hasta)+'. Los días anteriores quedan como estaban.\n\n'+CMD_COMIDAS.map(c=>c.label+': '+tot[c.key]).join('\n')+'\n\nLagunas la ve y entra en el certificado.'))return;
-    await guardarRevs(revs.map(x=>x.n===revBorr.n?{...x,estado:'confirmada',desde,dias:dias2,confirmada_at:new Date().toISOString(),confirmada_por_nombre:certNombre(user)}:x),'✅ Revisión '+revBorr.n+' confirmada');
+  const descartarBorradores=async()=>{
+    if(!confirm('¿Descartar '+(revsBorr.length===1?'la revisión en borrador':'las '+revsBorr.length+' revisiones en borrador')+' de la versión anterior? No se usan para nada.'))return;
+    await guardarFoto({revisiones:revsConf},'Borradores descartados');
   };
-  const descartarRev=async()=>{if(!confirm('¿Descartar la revisión '+revBorr.n+' (borrador)?'))return;setRevDraft(null);await guardarRevs(revs.filter(x=>x.n!==revBorr.n),'Revisión descartada');};
 
   const crearFoto=async(desdeRadar)=>{
-    if(est==='confirmada'){alert('El pedido de esta semana ya está confirmado. Para cambiarlo primero tocá "🔓 Reabrir".');return;}
+    if(est==='confirmada'){alert('El pedido de esta semana ya está confirmado. Para actualizarlo sacá una foto nueva o corregilo con el lápiz.');return;}
     if(foto&&!confirm('Ya hay un pedido en borrador para esta semana. ¿Reemplazarlo'+(desdeRadar?' con lo que dice hoy el Radar':' por uno en cero para cargar a mano')+'?\n\nSe pierden los cambios hechos a mano.'))return;
     setBusy(true);
     const d={};let personas=null;
@@ -3938,28 +4080,36 @@ function CmdPedidoSemanal({user,canEdit,showToast}){
     await load();
     if(!desdeRadar){const dr={};dias.forEach(iso=>{dr[iso]=certCero();});setDraft(dr);}
   };
-  const editar=()=>{const dr={};dias.forEach(iso=>{const x=foto.dias&&foto.dias[iso];dr[iso]={...((x&&x.pedido)||certCero())};});setDraft(dr);};
+  // Lápiz: se corrige lo que se ve. Cada día se guarda en la foto que rige ese día (la inicial o la última nueva),
+  // así la corrección es lo que queda vigente y lo que entra en el certificado.
+  const editar=()=>{const dr={};dias.forEach(iso=>{dr[iso]={...vig(iso).pedido};});setDraft(dr);};
   const setCelda=(iso,k,v)=>setDraft(prev=>({...prev,[iso]:{...prev[iso],[k]:v.replace(/[^0-9]/g,'')}}));
   const draftNum=(iso,k)=>parseInt(draft[iso][k],10)||0;
   const guardarDraft=async()=>{
-    const d={};
-    dias.forEach(iso=>{const x=foto.dias&&foto.dias[iso];const p={};CMD_COMIDAS.forEach(c=>{p[c.key]=draftNum(iso,c.key);});d[iso]={prog:(x&&x.prog)||certCero(),pedido:p};});
-    setBusy(true);const{ok}=await db.upd("viandas_fotos",{dias:d},[["semana","eq",semana]]);setBusy(false);
-    if(!ok){alert('No se pudieron guardar los cambios.');return;}
-    showToast({msg:'💾 Pedido guardado'});setDraft(null);load();
+    const base={...(foto.dias||{})},revs2=revs.map(r=>({...r,dias:{...(r.dias||{})}}));
+    const ed={at:new Date().toISOString(),por:certNombre(user)};
+    let cambios=0,enRev=false;
+    dias.forEach(iso=>{
+      const p={};CMD_COMIDAS.forEach(c=>{p[c.key]=draftNum(iso,c.key);});
+      const v=certVigente(foto,iso);
+      if(CMD_COMIDAS.every(c=>(v.pedido[c.key]||0)===p[c.key]))return;
+      cambios++;
+      if(v.rev){const r=revs2.find(x=>x.n===v.rev);r.dias[iso]={...(r.dias[iso]||{prog:certCero()}),pedido:p,editado:ed};enRev=true;}
+      else base[iso]={prog:(base[iso]&&base[iso].prog)||certCero(),pedido:p,editado:ed};
+    });
+    if(!cambios){setDraft(null);return;}
+    if(est==='confirmada'&&!confirm('El pedido ya está confirmado: la corrección la ve Lagunas y entra en el certificado. ¿Guardar?'))return;
+    const payload={dias:base};if(enRev||tieneColRevs)payload.revisiones=revs2;
+    if(await guardarFoto(payload,'💾 Pedido corregido ('+cambios+' día'+(cambios===1?'':'s')+')'))setDraft(null);
   };
   const confirmar=async()=>{
     const tot=certCero();dias.forEach(iso=>CMD_COMIDAS.forEach(c=>{tot[c.key]+=pedVal(iso,c.key);}));
-    if(!confirm('¿Confirmar el pedido de la semana '+certLblSemana(semana)+'?\n\n'+CMD_COMIDAS.map(c=>c.label+': '+tot[c.key]).join('\n')+'\n\nQueda como base del certificado y Lagunas lo ve. Después solo se puede cambiar reabriéndolo.'))return;
-    setBusy(true);const{ok}=await db.upd("viandas_fotos",{estado:'confirmada',confirmada_por:user.id,confirmada_por_nombre:certNombre(user),confirmada_at:new Date().toISOString()},[["semana","eq",semana]]);setBusy(false);
-    if(!ok){alert('No se pudo confirmar el pedido.');return;}
-    showToast({msg:'✅ Pedido confirmado'});load();
+    if(!confirm('¿Confirmar el pedido de la '+certLblSemN(semana)+'?\n\n'+CMD_COMIDAS.map(c=>c.label+': '+tot[c.key]).join('\n')+'\n\nLagunas lo ve. Después se puede actualizar con fotos nuevas o corregir con el lápiz.'))return;
+    await guardarFoto({estado:'confirmada',confirmada_por:user.id,confirmada_por_nombre:certNombre(user),confirmada_at:new Date().toISOString()},'✅ Pedido confirmado','No se pudo confirmar el pedido.');
   };
   const reabrir=async()=>{
-    if(!confirm('¿Reabrir el pedido de la semana '+certLblSemana(semana)+'?\n\nVuelve a borrador para poder editarlo y Lagunas deja de verlo hasta que lo confirmes de nuevo. Si ya generaste un certificado con este pedido, después volvé a generarlo.'))return;
-    setBusy(true);const{ok}=await db.upd("viandas_fotos",{estado:'borrador',confirmada_por:null,confirmada_por_nombre:null,confirmada_at:null},[["semana","eq",semana]]);setBusy(false);
-    if(!ok){alert('No se pudo reabrir el pedido.');return;}
-    load();
+    if(!confirm('¿Reabrir el pedido de la '+certLblSemN(semana)+'?\n\nVuelve a borrador y Lagunas deja de verlo hasta que lo confirmes de nuevo. Si ya generaste el certificado de esta semana, después volvé a generarlo.'))return;
+    await guardarFoto({estado:'borrador',confirmada_por:null,confirmada_por_nombre:null,confirmada_at:null},null,'No se pudo reabrir el pedido.');
   };
   // Ajuste del almuerzo: restar hasta 25 viandas de un día, antes de las 11 hs de ese día
   const ajustar=async(iso)=>{
@@ -3986,121 +4136,110 @@ function CmdPedidoSemanal({user,canEdit,showToast}){
 
   const avisoSig=canEdit&&[3,4,5].includes(new Date().getDay())&&semana!==semSig&&!sigOk;
   const t=calc?calc.tot[comida]:null;
+  const nSem=certNumSem(semana);
+  const colDif=comida==='merienda'?'Devueltas':(comida==='cena'?'A demanda':(comida==='almuerzo'?'De más':null));
+  const valDif=(r)=>comida==='merienda'?(r.devueltas||(r.demas?'+'+r.demas:0)):r.demas;
   return <div>
     <div className="cmd-wk">
       <button className="nav" onClick={()=>setSemana(cmdAddDays(semana,-7))} title="Semana anterior">◀</button>
       <div>
-        <div className="ttl">Semana {certLblSemana(semana)}</div>
-        <div className="sub">{semana===semHoy?'en curso':(semana===semSig?'próxima':(semana>semHoy?'futura':'pasada'))} · se certifica el mié {cmdFmtDate(cmdAddDays(semana,4)).slice(0,5)} (pedido + diferencias sáb a mar; mié a vie van al mié {cmdFmtDate(cmdAddDays(semana,11)).slice(0,5)})</div>
+        <div className="ttl">Semana {nSem} · {certLblSemana(semana)}</div>
+        <div className="sub">{semana===semHoy?'en curso':(semana===semSig?'próxima':(semana>semHoy?'futura':'pasada'))} · el pedido se saca mié a vie de la semana {nSem-1} · se certifica en la semana {nSem+1} (a semana vencida)</div>
       </div>
       <button className="nav" onClick={()=>setSemana(cmdAddDays(semana,7))} title="Semana siguiente">▶</button>
       {!foto?<span className="cmd-chip none">Sin pedido</span>:(est==='confirmada'?<span className="cmd-chip ok">✅ Confirmado</span>:<span className="cmd-chip bor">✏️ Borrador</span>)}
       {semana!==semHoy&&<button className="cmd-btn" onClick={()=>setSemana(semHoy)}>Semana actual</button>}
       <button className="cmd-btn" style={{marginLeft:'auto'}} onClick={()=>{load();setRadarTick(x=>x+1);}}>↻ actualizar</button>
     </div>
-    {avisoSig&&<div className="cmd-aviso" style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>📸 Todavía no está confirmado el pedido de la semana próxima ({certLblSemana(semSig)}).<button className="cmd-btn pri" onClick={()=>setSemana(semSig)}>Ir a esa semana</button></div>}
+    {avisoSig&&<div className="cmd-aviso" style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>📸 Todavía no está confirmado el pedido de la semana {nSem+1} ({certLblSemana(semSig)}).<button className="cmd-btn pri" onClick={()=>setSemana(semSig)}>Ir a esa semana</button></div>}
     {loading?<div className="cmd-empty">Cargando…</div>:(err?<div className="cmd-aviso">{err}</div>:<>
       <div className="cmd-rep">
         <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
-          <h3 style={{margin:0}}>📸 Pedido a Lagunas {revsVis.some(r=>r.estado==='confirmada')?'(foto + revisiones)':'(foto)'}</h3>
-          {fotoVis&&<span style={{fontSize:11,color:'var(--tx3)'}}>{fotoVis.origen==='manual'?'cargado a mano':'sacado del Radar'} {fmtTs(fotoVis.tomada_at)}{fotoVis.tomada_por_nombre?' por '+fotoVis.tomada_por_nombre:''}{fotoVis.estado==='confirmada'&&fotoVis.confirmada_at?' · confirmado '+fmtTs(fotoVis.confirmada_at)+(fotoVis.confirmada_por_nombre?' por '+fotoVis.confirmada_por_nombre:''):''}</span>}
+          <h3 style={{margin:0}}>📸 Pedido a Lagunas <span style={{textTransform:'none',fontWeight:500,color:'var(--tx3)'}}>· última foto{revsConf.length?' (foto '+revsConf[revsConf.length-1].n+')':''}</span></h3>
+          {fotoVis&&<span style={{fontSize:11,color:'var(--tx3)'}}>foto inicial {fotoVis.origen==='manual'?'cargada a mano':'sacada del Radar'} {fmtTs(fotoVis.tomada_at)}{fotoVis.tomada_por_nombre?' por '+fotoVis.tomada_por_nombre:''}{fotoVis.estado==='confirmada'&&fotoVis.confirmada_at?' · confirmada '+fmtTs(fotoVis.confirmada_at)+(fotoVis.confirmada_por_nombre?' por '+fotoVis.confirmada_por_nombre:''):''}</span>}
           <div style={{marginLeft:'auto',display:'flex',gap:6,flexWrap:'wrap'}}>
             {canEdit&&!draft&&est!=='confirmada'&&<button className="cmd-btn pri" disabled={busy} onClick={()=>crearFoto(true)}>📸 {foto?'Volver a sacar':'Sacar foto'} del Radar</button>}
+            {canEdit&&!draft&&est==='confirmada'&&<button className="cmd-btn pri" disabled={busy||!hayDiasParaFoto} onClick={nuevaFoto} title={hayDiasParaFoto?'Actualiza el pedido desde hoy hasta el viernes con lo que dice el Radar ahora':'La semana ya terminó'}>📸 Nueva foto del Radar</button>}
             {canEdit&&!draft&&!foto&&<button className="cmd-btn" disabled={busy} onClick={()=>crearFoto(false)}>✍️ Cargar a mano</button>}
-            {canEdit&&!draft&&est==='borrador'&&<button className="cmd-btn" onClick={editar}>✏️ Editar</button>}
+            {canEdit&&!draft&&foto&&<button className="cmd-btn" onClick={editar} title="Corregir a mano lo que se ve">✏️ Corregir</button>}
             {draft&&<button className="cmd-btn ok" disabled={busy} onClick={guardarDraft}>💾 Guardar</button>}
             {draft&&<button className="cmd-btn" onClick={()=>setDraft(null)}>Cancelar</button>}
             {canEdit&&!draft&&est==='borrador'&&<button className="cmd-btn ok" disabled={busy} onClick={confirmar}>✅ Confirmar pedido</button>}
             {canEdit&&!draft&&est==='confirmada'&&<button className="cmd-btn" disabled={busy} onClick={reabrir}>🔓 Reabrir</button>}
-            {fotoVis&&!draft&&<button className="cmd-btn" onClick={()=>{const m={};dias.forEach(iso=>{m[iso]=certVigente(fotoVis,iso).pedido;});const rc=revs.filter(r=>r.estado==='confirmada').sort((a,b)=>a.n-b.n);let txt=certTxtPedido(semana,m);if(rc.length)txt+='\n('+rc.map(r=>'Rev '+r.n+' desde el '+certLblDia(r.desde)).join(' · ')+')';certCopiar(txt,showToast);}}>📋 Copiar</button>}
+            {fotoVis&&!draft&&<button className="cmd-btn" onClick={()=>{const m={};dias.forEach(iso=>{m[iso]=vig(iso).pedido;});let txt=certTxtPedido(semana,m).replace('Pedido de viandas — semana ','Pedido de viandas — Semana '+nSem+' · ');if(revsConf.length)txt+='\n('+revsConf.map(r=>'foto '+r.n+' desde el '+certLblDia(r.desde)).join(' · ')+')';certCopiar(txt,showToast);}}>📋 Copiar</button>}
           </div>
         </div>
         {!fotoVis?<div style={{color:'var(--tx3)',fontSize:12,padding:8,lineHeight:1.5}}>{canEdit?'Todavía no hay pedido para esta semana. La foto se saca el miércoles, jueves o viernes anterior, con el Radar actualizado.':(foto?'El pedido de esta semana todavía no fue confirmado por la obra.':'Todavía no hay pedido para esta semana.')}</div>:
         <div className="cmd-tblw"><table>
           <thead><tr><th>Día</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
           <tbody>
-            {dias.map(iso=><tr key={iso}><td>{certLblDia(iso)}{!draft&&revOf(iso)?<span className="cmd-chip ok" style={{marginLeft:6,fontSize:9,padding:'1px 5px'}}>Rev {revOf(iso)}</span>:null}</td>{CMD_COMIDAS.map(c=>{const pv=pedVal(iso,c.key),gv=progVal(iso,c.key);return <td key={c.key} className="n">
+            {dias.map(iso=>{const v=vig(iso);return <tr key={iso}><td>{certLblDia(iso)}
+              {!draft&&v.rev?<span className="cmd-chip ok" style={{marginLeft:6,fontSize:9,padding:'1px 5px'}} title="Este día rige la foto nueva">foto {v.rev}</span>:null}
+              {!draft&&v.ed?<span style={{marginLeft:6,fontSize:11}} title={'Corregido a mano'+(v.ed.por?' por '+v.ed.por:'')+(v.ed.at?' el '+fmtTs(v.ed.at):'')}>✍️</span>:null}
+            </td>{CMD_COMIDAS.map(c=>{const pv=pedVal(iso,c.key),gv=progVal(iso,c.key);return <td key={c.key} className="n">
               {draft?<input className="cmd-num" inputMode="numeric" value={draft[iso][c.key]} onChange={e=>setCelda(iso,c.key,e.target.value)}/>:pv}
               {deRadar&&gv!==pv&&<div style={{fontSize:9,color:'var(--tx3)',fontWeight:500}}>Radar {gv}</div>}
-            </td>;})}</tr>)}
+            </td>;})}</tr>;})}
             <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Total</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{dias.reduce((a,iso)=>a+(draft?draftNum(iso,c.key):pedVal(iso,c.key)),0)}</td>)}</tr>
           </tbody>
         </table></div>}
-        {fotoVis&&est==='confirmada'&&(canEdit||revsVis.length>0)&&<div style={{marginTop:14,borderTop:'1px solid var(--bd)',paddingTop:12}}>
+        {draft&&<div className="cmd-hint">Corregís lo que se ve: cada día queda guardado en la foto que rige ese día{est==='confirmada'?' y Lagunas ve el cambio':''}. Queda marcado con ✍️.</div>}
+        {fotoVis&&est==='confirmada'&&(revsConf.length>0||revsBorr.length>0)&&<div style={{marginTop:14,borderTop:'1px solid var(--bd)',paddingTop:12}}>
           <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:8}}>
-            <strong style={{fontSize:13}}>🔁 Revisiones del pedido</strong>
-            <span style={{fontSize:11,color:'var(--tx3)'}}>Cada revisión rige desde el día subsiguiente a su confirmación hasta el viernes; los días anteriores quedan como estaban.</span>
-            {canEdit&&!revBorr&&<button className="cmd-btn pri" style={{marginLeft:'auto'}} disabled={busy||!hayDiasParaRev} onClick={nuevaRevision} title={hayDiasParaRev?'Saca una nueva foto del Radar para los días que todavía se pueden corregir':'Ya no quedan días para corregir en esta semana'}>📸 Nueva revisión del Radar</button>}
+            <strong style={{fontSize:13}}>📸 Fotos nuevas de la semana</strong>
+            <span style={{fontSize:11,color:'var(--tx3)'}}>Cada una rige desde el día en que se sacó hasta el viernes; los días anteriores quedan como estaban.</span>
           </div>
-          {revsVis.length===0?<div style={{fontSize:12,color:'var(--tx3)'}}>Sin revisiones: rige la foto original.{canEdit&&hayDiasParaRev?' Una revisión confirmada hoy regiría desde el '+certLblDia(revDesdeHoy)+'.':''}</div>:
-           revsVis.map(r=>{
-             const isos=Object.keys(r.dias||{}).sort(),borr=r.estado!=='confirmada';
-             const tot=certCero();isos.forEach(iso=>CMD_COMIDAS.forEach(c=>{tot[c.key]+=(r.dias[iso].pedido[c.key]||0);}));
-             const editando=borr&&revDraft;
-             return <div key={r.n} style={{background:borr?'rgba(251,191,36,.08)':'var(--s2)',border:'1px solid '+(borr?'rgba(251,191,36,.45)':'var(--bd)'),borderLeft:'3px solid '+(borr?'var(--cmd-dieta)':'var(--cmd-info)'),borderRadius:6,padding:'8px 10px',marginBottom:8}}>
-               <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                 <strong>Rev {r.n}</strong>
-                 {borr?<span className="cmd-chip bor">Borrador</span>:<span className="cmd-chip ok">Confirmada {fmtTs(r.confirmada_at)}{r.confirmada_por_nombre?' · '+r.confirmada_por_nombre:''}</span>}
-                 <span style={{fontSize:12,color:'var(--tx2)'}}>{borr?('si la confirmás hoy rige desde el '+certLblDia(revDesdeHoy)):('rige del '+certLblDia(r.desde)+' al '+certLblDia(hasta))}</span>
-                 <span style={{fontFamily:'var(--fm)',fontSize:12,marginLeft:'auto'}}>{CMD_COMIDAS.map(c=>c.em+' '+tot[c.key]).join('  ')}</span>
-               </div>
-               {borr&&canEdit&&<>
-                 <div className="cmd-tblw" style={{marginTop:8}}><table>
-                   <thead><tr><th>Día</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
-                   <tbody>{isos.map(iso=><tr key={iso} style={iso<revDesdeHoy?{opacity:.45}:undefined}><td>{certLblDia(iso)}{iso<revDesdeHoy?<span style={{fontSize:10,color:'var(--tx3)',marginLeft:6}}>no se corrige</span>:null}</td>{CMD_COMIDAS.map(c=>{const pv=r.dias[iso].pedido[c.key]||0,gv=(r.dias[iso].prog||{})[c.key]||0;return <td key={c.key} className="n">
-                     {editando?<input className="cmd-num" inputMode="numeric" value={revDraft[iso][c.key]} onChange={e=>setCeldaRev(iso,c.key,e.target.value)}/>:pv}
-                     {gv!==pv&&<div style={{fontSize:9,color:'var(--tx3)',fontWeight:500}}>Radar {gv}</div>}
-                   </td>;})}</tr>)}</tbody>
-                 </table></div>
-                 <div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
-                   {editando?<><button className="cmd-btn ok" disabled={busy} onClick={guardarRevDraft}>💾 Guardar</button><button className="cmd-btn" onClick={()=>setRevDraft(null)}>Cancelar</button></>
-                   :<><button className="cmd-btn" onClick={editarRev}>✏️ Editar</button><button className="cmd-btn ok" disabled={busy} onClick={confirmarRev}>✅ Confirmar revisión {r.n}</button><button className="cmd-btn" disabled={busy} onClick={descartarRev}>🗑 Descartar</button></>}
-                 </div>
-               </>}
-             </div>;
-           })}
+          {revsConf.map((r,i)=>{const isos=Object.keys(r.dias||{}).sort();const tot=certCero();isos.forEach(iso=>CMD_COMIDAS.forEach(c=>{tot[c.key]+=((r.dias[iso].pedido||{})[c.key]||0);}));const ult=i===revsConf.length-1;
+            return <div key={r.n} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',background:'var(--s2)',border:'1px solid var(--bd)',borderLeft:'3px solid var(--cmd-info)',borderRadius:6,padding:'8px 10px',marginBottom:6}}>
+              <strong>Foto {r.n}</strong>
+              <span style={{fontSize:12,color:'var(--tx2)'}}>sacada {fmtTs(r.tomada_at||r.confirmada_at)}{r.tomada_por_nombre?' por '+r.tomada_por_nombre:''} · rige del {certLblDia(r.desde)} al {certLblDia(hasta)}</span>
+              <span style={{fontFamily:'var(--fm)',fontSize:12,marginLeft:'auto'}}>{CMD_COMIDAS.map(c=>c.em+' '+tot[c.key]).join('  ')}</span>
+              {canEdit&&ult&&<button className="cmd-btn" disabled={busy} onClick={()=>quitarFoto(r)} title="Si la sacaste por error">🗑 Quitar</button>}
+            </div>;})}
+          {canEdit&&revsBorr.length>0&&<div className="cmd-aviso" style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>Hay {revsBorr.length===1?'una revisión':revsBorr.length+' revisiones'} en borrador de la versión anterior: no se usan.<button className="cmd-btn" disabled={busy} onClick={descartarBorradores}>🗑 Descartar</button></div>}
         </div>}
-        <div className="cmd-hint">Cena: se pide el {Math.round(CERT_CENA_PCT*100)}% de lo que proyecta el Radar, con un mínimo de {CERT_CENA_PISO} por día (si hay {CERT_CENA_PISO} o menos, se pide todo). Almuerzo: se pueden restar hasta {CERT_ALM_MAX_RESTA} por día avisando antes de las {CERT_ALM_HORA_LIM} hs (se carga abajo, en el seguimiento).</div>
+        <div className="cmd-hint">El pedido es la última foto del Radar: la inicial (mié a vie de la semana anterior) y las fotos nuevas que se saquen durante la semana, que rigen desde ese momento hasta el viernes. Encima se puede corregir a mano con ✏️. Cena: se pide el {Math.round(CERT_CENA_PCT*100)}% de lo que proyecta el Radar, con un mínimo de {CERT_CENA_PISO} por día (si hay {CERT_CENA_PISO} o menos, se pide todo).</div>
       </div>
       {calc&&<div className="cmd-rep">
-        <h3>📊 Seguimiento de la semana</h3>
+        <h3>📊 Seguimiento de la semana · pedido vs. despachado</h3>
         <div className="cmd-mcards">
           {CMD_COMIDAS.map(c=>{const x=calc.tot[c.key];return <button key={c.key} className={'cmd-mcard'+(comida===c.key?' on':'')} onClick={()=>setComida(c.key)}>
             <div className="t">{c.em} {c.label}</div>
-            <div className="v">Pedido {x.pedido} · Desp. {x.desp}</div>
-            <div className={'v '+certDifCls(x.dif)} style={{fontWeight:800}}>Dif. {certDifTxt(x.dif)}</div>
+            <div className="v">Pedido {x.acordado}{c.key==='desayuno'?'':' · Desp. '+x.desp}</div>
+            <div className="v" style={{fontWeight:800,color:'var(--cmd-pri)'}}>A facturar {x.fact}</div>
           </button>;})}
         </div>
         <div className="cmd-tblw"><table>
-          <thead><tr><th>Día</th><th className="n" title="Lo que dice hoy el Radar (puede haber cambiado desde la foto)">Radar hoy</th><th className="n">Pedido</th>{comida==='almuerzo'&&<th className="n">Ajuste</th>}<th className="n">Acordado</th><th className="n">Desp.</th><th className="n">A facturar</th><th className="n">Dif.</th></tr></thead>
+          <thead><tr><th>Día</th><th className="n" title="Lo que dice hoy el Radar (puede haber cambiado desde la foto)">Radar hoy</th><th className="n">Pedido</th>{comida==='almuerzo'&&<th className="n">Ajuste</th>}<th className="n">Desp.</th>{colDif&&<th className="n">{colDif}</th>}<th className="n">A facturar</th></tr></thead>
           <tbody>
-            {dias.map(iso=>{const r=calc.dias[iso][comida],fut=iso>hoy,gv=progVal(iso,comida);
+            {dias.map(iso=>{const r=calc.dias[iso][comida],fut=iso>hoy,gv=progVal(iso,comida),v=vig(iso);
               const rh=radar?(radar[iso]?radar[iso][comida]:0):null;
               const aj=ajustes[iso]&&ajustes[iso][comida];
+              const sinD=!fut&&r.sinDesp;
               return <tr key={iso} style={iso===hoy?{background:'rgba(245,158,11,.06)'}:undefined}>
-                <td>{certLblDia(iso)}{iso===hoy&&<span style={{fontSize:10,color:'var(--cmd-pri)',marginLeft:6}}>hoy</span>}{revOf(iso)?<span className="cmd-chip ok" style={{marginLeft:6,fontSize:9,padding:'1px 5px'}}>Rev {revOf(iso)}</span>:null}</td>
-                <td className="n" style={{color:(rh!==null&&deRadar&&rh!==gv)?'var(--cmd-dieta)':'var(--tx3)'}} title={deRadar?'Al sacar la foto el Radar decía '+gv:''}>{rh===null?(radar===undefined?'…':'—'):rh}</td>
+                <td>{certLblDia(iso)}{iso===hoy&&<span style={{fontSize:10,color:'var(--cmd-pri)',marginLeft:6}}>hoy</span>}{v.rev?<span className="cmd-chip ok" style={{marginLeft:6,fontSize:9,padding:'1px 5px'}}>foto {v.rev}</span>:null}{v.ed?<span style={{marginLeft:4,fontSize:11}} title="Corregido a mano">✍️</span>:null}</td>
+                <td className="n" style={{color:(rh!==null&&deRadar&&rh!==gv)?'var(--cmd-dieta)':'var(--tx3)'}} title={deRadar?'En la foto el Radar decía '+gv:''}>{rh===null?(radar===undefined?'…':'—'):rh}</td>
                 <td className="n">{r.pedido}</td>
                 {comida==='almuerzo'&&<td className="n" style={{whiteSpace:'nowrap'}}>
                   {r.ajuste!==0&&<span className={certDifCls(r.ajuste)} title={aj?((aj.motivo?aj.motivo+' · ':'')+(aj.cargado_por_nombre||'')+(aj.cargado_at?' '+fmtTs(aj.cargado_at):'')):''}>{r.ajuste}</span>}
                   {canEdit&&certAjusteAbierto(iso)&&<button className="cmd-undo" style={{marginLeft:6}} onClick={()=>ajustar(iso)}>{r.ajuste?'cambiar':'− restar'}</button>}
                 </td>}
-                <td className="n">{r.acordado}</td>
-                <td className="n" style={{color:fut?'var(--tx3)':undefined}}>{fut?'—':r.desp}</td>
-                <td className="n">{fut?'—':r.fact}</td>
-                <td className={'n '+certDifCls(r.dif)}>{fut&&!r.dif?'—':certDifTxt(r.dif)}</td>
+                <td className="n" style={{color:'var(--tx3)'}}>{comida==='desayuno'||fut?'—':(sinD?<span title="Ese día no hay despachos registrados en la app">s/d</span>:<span style={{color:'var(--tx)'}}>{r.desp}</span>)}</td>
+                {colDif&&<td className="n">{fut||sinD?'—':(valDif(r)?<span className={comida==='merienda'&&r.devueltas?'dif-neg':'dif-pos'}>{valDif(r)}</span>:<span className="dif-0">0</span>)}</td>}
+                <td className="n">{fut&&comida!=='desayuno'?'—':r.fact}</td>
               </tr>;})}
             <tr style={{borderTop:'2px solid var(--bd)'}}>
               <td style={{fontWeight:800}}>Total</td>
               <td className="n" style={{color:'var(--tx3)'}}>{radar?dias.reduce((a,iso)=>a+(radar[iso]?radar[iso][comida]:0),0):'…'}</td>
               <td className="n">{t.pedido}</td>
               {comida==='almuerzo'&&<td className={'n '+certDifCls(t.ajuste)}>{t.ajuste||''}</td>}
-              <td className="n">{t.acordado}</td><td className="n">{t.desp}</td><td className="n">{t.fact}</td>
-              <td className={'n '+certDifCls(t.dif)}>{certDifTxt(t.dif)}</td>
+              <td className="n">{comida==='desayuno'?'—':t.desp}</td>
+              {colDif&&<td className="n">{comida==='merienda'?t.devueltas:t.demas}</td>}
+              <td className="n" style={{fontWeight:800,color:'var(--cmd-pri)'}}>{t.fact}</td>
             </tr>
           </tbody>
         </table></div>
-        <div className="cmd-hint">Pedido = el vigente (foto + revisiones confirmadas). Acordado = pedido{comida==='almuerzo'?' menos lo restado':''}. A facturar = lo acordado, o lo despachado si fue más. Las diferencias se certifican: sábado a martes en el certificado del mié {cmdFmtDate(cmdAddDays(semana,4)).slice(0,5)}; miércoles a viernes en el del mié {cmdFmtDate(cmdAddDays(semana,11)).slice(0,5)} (positivo se suma; negativo queda a favor de la obra). "Radar hoy" en amarillo = cambió desde la foto.{comida==='cena'?' Las cenas repetidas cuentan como despachadas.':''}</div>
+        <div className="cmd-hint">{CMD_COMIDAS.find(c=>c.key===comida).label}: se factura {CERT3_REGLA[comida]}.{comida==='almuerzo'?' Ajuste = almuerzos restados avisando antes de las '+CERT_ALM_HORA_LIM+' hs.':''}{comida==='cena'?' Las cenas repetidas cuentan como despachadas.':''} Los días sin despachos registrados en la app (s/d) se facturan por lo pedido. La semana se certifica completa en la semana {nSem+1}. "Radar hoy" en amarillo = cambió desde la foto.</div>
       </div>}
     </>)}
   </div>;
@@ -4166,13 +4305,62 @@ function CmdCertDetalle({cert,preview,onVolver,onGuardar,busy,showToast}){
     {df&&<div className="cmd-hint">Por día: acordado / despachado → diferencia contra lo cobrado. Positivo se suma a este certificado; negativo queda a favor de la obra.</div>}
   </div>;
 }
+// Detalle de un certificado de la regla 3 (semana vencida: pedido vs. despachado)
+function CmdCertDetalle3({cert,preview,onVolver,onGuardar,busy,showToast}){
+  const d=cert.detalle,c=d.calc;
+  return <div className="cmd-rep">
+    <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:10}}>
+      <button className="cmd-btn" onClick={onVolver}>← Volver</button>
+      <h3 style={{margin:0}}>🧾 Certificado · {certLblSemN(d.semana)}</h3>
+      {preview?<span className="cmd-chip bor">Vista previa · sin guardar</span>:<span style={{fontSize:11,color:'var(--tx3)'}}>generado {cert.generado_at?fmtTs(cert.generado_at):''}{cert.generado_por_nombre?' por '+cert.generado_por_nombre:''}</span>}
+      <div style={{marginLeft:'auto',display:'flex',gap:6,flexWrap:'wrap'}}>
+        {preview&&<button className="cmd-btn ok" disabled={busy} onClick={onGuardar}>💾 Guardar certificado</button>}
+        <button className="cmd-btn" onClick={()=>certImprimir3(cert)}>🖨️ Imprimir / PDF</button>
+        <button className="cmd-btn" onClick={()=>certCopiar(certTxtCert3(cert),showToast)}>📋 Copiar</button>
+      </div>
+    </div>
+    {(d.avisos||[]).map((a,i)=><div key={i} className="cmd-aviso">⚠️ {a}</div>)}
+    <div className="cmd-tblw"><table>
+      <thead><tr><th>Comida</th><th className="n">Radar</th><th className="n">Pedido</th><th className="n">Despachado</th><th className="n">Diferencia</th><th className="n">A facturar</th><th>Cómo se factura</th></tr></thead>
+      <tbody>{CMD_COMIDAS.map(m=>{const t=c.tot[m.key];return <tr key={m.key}>
+        <td style={{whiteSpace:'nowrap'}}>{m.em} {m.label}</td>
+        <td className="n" style={{color:'var(--tx3)'}}>{t.prog}</td>
+        <td className="n">{t.acordado}{t.ajuste?<div style={{fontSize:10,color:'var(--tx3)'}}>{certDifTxt(t.ajuste)} ajustes</div>:null}</td>
+        <td className="n">{m.key==='desayuno'?<span style={{color:'var(--tx3)'}}>—</span>:t.desp}</td>
+        <td className="n" style={{color:t.devueltas?'var(--cmd-ok)':(t.demas?'var(--cmd-dieta)':'var(--tx3)')}}>{certDif3(m.key,t)}</td>
+        <td className="n" style={{color:'var(--cmd-pri)',fontSize:15}}>{t.fact}</td>
+        <td style={{fontSize:11,lineHeight:1.4}}>{certFrase3(m.key,t)}<div style={{color:'var(--tx3)'}}>Se factura {CERT3_REGLA[m.key]}.</div></td>
+      </tr>;})}</tbody>
+    </table></div>
+    <h3 style={{marginTop:18}}>Por día · pedido / despachado → a facturar</h3>
+    <div className="cmd-tblw"><table>
+      <thead><tr><th>Día</th>{CMD_COMIDAS.map(m=><th key={m.key} className="n">{m.em} {m.short}</th>)}</tr></thead>
+      <tbody>
+        {certDias(d.semana).map(iso=>{const r=c.dias[iso];return <tr key={iso}><td>{certLblDia(iso)}</td>{CMD_COMIDAS.map(m=>{const x=r[m.key];return <td key={m.key} className="n" title={x.sinDesp&&m.key!=='desayuno'?'Ese día no hay despachos registrados: se factura lo pedido':''}>
+          <span style={{color:'var(--tx3)',fontWeight:500}}>{m.key==='desayuno'||x.sinDesp?x.acordado:x.acordado+' / '+x.desp} → </span><b>{x.fact}</b>
+        </td>;})}</tr>;})}
+        <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Total</td>{CMD_COMIDAS.map(m=><td key={m.key} className="n" style={{fontWeight:800,color:'var(--cmd-pri)'}}>{c.tot[m.key].fact}</td>)}</tr>
+      </tbody>
+    </table></div>
+    <h3 style={{marginTop:18}}>Pedido por día (última foto)</h3>
+    <div className="cmd-hint" style={{marginTop:-4,marginBottom:8}}>{certFotoTxt3(d.pedido)}</div>
+    <div className="cmd-tblw"><table>
+      <thead><tr><th>Día</th>{CMD_COMIDAS.map(m=><th key={m.key} className="n">{m.em} {m.short}</th>)}</tr></thead>
+      <tbody>{certDias(d.semana).map(iso=>{const x=d.pedido.dias[iso]||{},p=x.pedido||certCero(),g=x.prog||certCero(),rv=d.pedido.rev&&d.pedido.rev[iso],ed=d.pedido.ed&&d.pedido.ed[iso];return <tr key={iso}>
+        <td>{certLblDia(iso)}{rv?<span className="cmd-chip ok" style={{marginLeft:6,fontSize:9,padding:'1px 5px'}}>foto {rv}</span>:null}{ed?<span style={{marginLeft:4,fontSize:11}} title={'Corregido a mano'+(ed.por?' por '+ed.por:'')+(ed.at?' el '+fmtTs(ed.at):'')}>✍️</span>:null}</td>
+        {CMD_COMIDAS.map(m=><td key={m.key} className="n">{p[m.key]||0}{(g[m.key]||0)!==(p[m.key]||0)&&<div style={{fontSize:9,color:'var(--tx3)',fontWeight:500}}>Radar {g[m.key]||0}</div>}</td>)}
+      </tr>;})}</tbody>
+    </table></div>
+  </div>;
+}
 function CmdCertificados({user,canEdit,showToast}){
   const hoy=cmdIsoDate(new Date());
+  const semAnt=cmdAddDays(certSemanaDe(hoy),-7); // a semana vencida: por defecto, la semana anterior
   const[lista,setLista]=useState(null);
   const[err,setErr]=useState(null);
-  const[ver,setVer]=useState(null);        // certificado guardado abierto
-  const[preview,setPreview]=useState(null);// certificado calculado sin guardar
-  const[fechaN,setFechaN]=useState(()=>cmdAddDays(certSemanaDe(hoy),4));
+  const[ver,setVer]=useState(null);
+  const[preview,setPreview]=useState(null);
+  const[semC,setSemC]=useState(semAnt);
   const[busy,setBusy]=useState(false);
   const load=async()=>{
     const{data}=await db.sel("viandas_certificados",{ord:"semana.desc",lim:200});
@@ -4180,82 +4368,67 @@ function CmdCertificados({user,canEdit,showToast}){
     setErr(null);setLista(data);
   };
   useEffect(()=>{load();},[]);
-  const semN=certSemanaDe(fechaN||hoy);
-  // Regla 2 (Rev107): el certificado del miércoles W cobra el pedido vigente de su semana (foto + revisiones
-  // confirmadas) y cierra las diferencias de los 7 días W−7 … W−1 (miércoles a martes).
+  const existente=(lista||[]).find(x=>x.semana===semC);
+  // Regla 3: certifica la semana completa (sáb→vie): pedido = última foto con correcciones a mano, contra lo despachado.
   const calcular=async()=>{
-    const semana=semN,prev=cmdAddDays(semN,-7),W=cmdAddDays(semN,4),dDesde=cmdAddDays(W,-7),dHasta=cmdAddDays(W,-1);
+    const semana=semC,hasta=cmdAddDays(semana,6);
     setBusy(true);
-    const[f,fp,aj,de,cp]=await Promise.all([certFetchFoto(semana),certFetchFoto(prev),certFetchAjustes(dDesde,dHasta),certFetchDesp(dDesde,dHasta),certFetchCert(prev)]);
+    const[f,aj,de]=await Promise.all([certFetchFoto(semana),certFetchAjustes(semana,hasta),certFetchDesp(semana,hasta)]);
     setBusy(false);
-    if(!f||!fp||!cp||aj===null||de===null){alert('No se pudieron leer los datos. ¿Ya se crearon las tablas en Supabase?');return;}
-    const foto=f.foto,fotoPrev=(fp.foto&&fp.foto.estado==='confirmada')?fp.foto:null,certPrev=cp.cert;
-    if(!foto||foto.estado!=='confirmada'){alert('Falta '+(foto?'confirmar':'sacar')+' la foto del pedido de la semana '+certLblSemana(semana)+'.\n\nEl certificado factura ese pedido: hacelo desde "📦 Pedido semanal".');return;}
+    if(!f||aj===null||de===null){alert('No se pudieron leer los datos. ¿Ya se crearon las tablas en Supabase?');return;}
+    const foto=f.foto;
+    if(!foto||foto.estado!=='confirmada'){alert('Falta '+(foto?'confirmar':'sacar')+' el pedido de la '+certLblSemN(semana)+'.\n\nHacelo desde "📦 Pedido semanal".');return;}
     const avisos=[];
-    // Cuándo y quién confirmó la foto y cada revisión, para mostrar en el certificado de dónde sale el pedido
-    const fotoMeta=(fo)=>({confirmada_at:fo.confirmada_at||null,confirmada_por:fo.confirmada_por_nombre||null});
     const revsConf=certRevs(foto).filter(r=>r.estado==='confirmada').sort((a,b)=>a.n-b.n);
-    // 1) Pedido de la semana: lo vigente hoy, día por día
-    const pedido={dias:{},rev:{},tot:certCero(),foto:fotoMeta(foto),revs:revsConf.map(r=>({n:r.n,desde:r.desde,confirmada_at:r.confirmada_at,confirmada_por:r.confirmada_por_nombre||null}))};
-    certDias(semana).forEach(iso=>{const v=certVigente(foto,iso);pedido.dias[iso]=v.pedido;pedido.rev[iso]=v.rev;CMD_COMIDAS.forEach(c=>{pedido.tot[c.key]+=v.pedido[c.key]||0;});});
-    if(certRevs(foto).some(r=>r.estado!=='confirmada'))avisos.push('El pedido de esta semana tiene una revisión en borrador: no se tuvo en cuenta (confirmala o descartala).');
-    // 2) Diferencias de miércoles a martes. Días de esta semana (sáb → mar): lo cobrado es lo que cobra este mismo
-    //    certificado. Días de la semana anterior (mié → vie): lo que cobró el certificado anterior por ese día.
-    const prevIsos=certRango(dDesde,dHasta).filter(iso=>iso<semana);
-    const cobPrev=(iso)=>{
-      const pd=certPrev&&certPrev.detalle&&certPrev.detalle.pedido&&certPrev.detalle.pedido.dias;
-      if(pd&&pd[iso])return pd[iso];
-      return(fotoPrev&&fotoPrev.dias&&fotoPrev.dias[iso])?fotoPrev.dias[iso].pedido:null;
-    };
-    if(prevIsos.length){
-      if(!fotoPrev)avisos.push('No hay pedido confirmado de la semana '+certLblSemana(prev)+': '+prevIsos.map(certLblDia).join(', ')+' no se ajustan en este certificado.');
-      else{
-        if(!certPrev)avisos.push('No hay certificado guardado del mié '+cmdFmtDate(cmdAddDays(prev,4))+': para '+prevIsos.map(certLblDia).join(', ')+' se toma como cobrado el pedido original (foto).');
-        if(certRevs(fotoPrev).some(r=>r.estado!=='confirmada'))avisos.push('La semana '+certLblSemana(prev)+' tiene una revisión en borrador: no se tuvo en cuenta.');
-      }
-    }
-    const isos=certRango(dDesde,dHasta).filter(iso=>iso>=semana||fotoPrev);
-    const cs=certCalcDias(isos,
-      iso=>iso>=semana?pedido.dias[iso]:cobPrev(iso),
-      iso=>iso>=semana?pedido.dias[iso]:certVigente(fotoPrev,iso).pedido,
-      aj,de);
-    const dif={desde:dDesde,hasta:dHasta,dias:cs.dias,tot:cs.tot};
-    if(dHasta>=hoy)avisos.push('El período '+certDifLbl(dif)+' todavía no terminó: las diferencias pueden cambiar.');
-    const sinDesp=isos.filter(iso=>iso<=hoy&&!de[iso]);
-    if(sinDesp.length)avisos.push('No hay despachos registrados en la app el '+sinDesp.map(certLblDia).join(', ')+'. Para esos días se toma lo acordado, sin sumar diferencias.');
-    const total={};CMD_COMIDAS.forEach(c=>{total[c.key]=pedido.tot[c.key]+dif.tot[c.key].dif;});
-    setPreview({semana,fecha:W,detalle:{regla:2,semana,pedido,dif,total,avisos},generado_por_nombre:certNombre(user)});
+    const pedido={dias:{},rev:{},ed:{},foto:{confirmada_at:foto.confirmada_at||null,confirmada_por:foto.confirmada_por_nombre||null},
+      revs:revsConf.map(r=>({n:r.n,desde:r.desde,tomada_at:r.tomada_at||null,confirmada_at:r.confirmada_at||null,por:r.tomada_por_nombre||r.confirmada_por_nombre||null}))};
+    certDias(semana).forEach(iso=>{const v=certVigente(foto,iso);pedido.dias[iso]={prog:v.prog,pedido:v.pedido};if(v.rev)pedido.rev[iso]=v.rev;if(v.ed)pedido.ed[iso]=v.ed;});
+    const calc=certCalcSemana3(iso=>pedido.dias[iso],aj,de,semana);
+    if(hasta>=hoy)avisos.push('La '+certLblSemN(semana)+' todavía no terminó (termina el vie '+cmdFmtDate(hasta).slice(0,5)+'): lo despachado puede cambiar.');
+    const sinD=calc.sinDesp.filter(iso=>iso<=hoy);
+    if(sinD.length)avisos.push('No hay despachos registrados en la app el '+sinD.map(certLblDia).join(', ')+': esos días se facturan por lo pedido.');
+    const total={};CMD_COMIDAS.forEach(m=>{total[m.key]=calc.tot[m.key].fact;});
+    setPreview({semana,fecha:hoy,detalle:{regla:3,semana,num:certNumSem(semana),pedido,calc,total,avisos},generado_por_nombre:certNombre(user)});
   };
   const guardar=async()=>{
-    const p=preview;
-    if((lista||[]).some(x=>x.semana===p.semana)&&!confirm('Ya hay un certificado guardado para el mié '+cmdFmtDate(p.fecha)+'. ¿Reemplazarlo por este?'))return;
+    const p=preview,ya=(lista||[]).find(x=>x.semana===p.semana);
+    if(ya&&!confirm(ya.detalle&&ya.detalle.regla===3
+      ?'Ya hay un certificado guardado de la '+certLblSemN(p.semana)+'. ¿Reemplazarlo por este?'
+      :'Ya hay un certificado de esa semana hecho con la regla anterior (el del mié '+cmdFmtDate(ya.fecha)+'). Si lo reemplazás, se pierde. ¿Reemplazarlo?'))return;
     const row={semana:p.semana,fecha:p.fecha,detalle:p.detalle,generado_por:user.id,generado_por_nombre:certNombre(user),generado_at:new Date().toISOString()};
     setBusy(true);const{ok}=await db.ins("viandas_certificados",row,true,"semana");setBusy(false);
     if(!ok){alert('No se pudo guardar el certificado. ¿Ya se creó la tabla viandas_certificados en Supabase?');return;}
     showToast({msg:'🧾 Certificado guardado'});setPreview(null);setVer(row);load();
   };
-  if(preview)return <CmdCertDetalle cert={preview} preview busy={busy} onVolver={()=>setPreview(null)} onGuardar={guardar} showToast={showToast}/>;
-  if(ver)return <CmdCertDetalle cert={ver} onVolver={()=>setVer(null)} showToast={showToast}/>;
+  const Det=(props)=>props.cert.detalle&&props.cert.detalle.regla===3?<CmdCertDetalle3 {...props}/>:<CmdCertDetalle {...props}/>;
+  if(preview)return <Det cert={preview} preview busy={busy} onVolver={()=>setPreview(null)} onGuardar={guardar} showToast={showToast}/>;
+  if(ver)return <Det cert={ver} onVolver={()=>setVer(null)} showToast={showToast}/>;
   return <div>
     {canEdit&&<div className="cmd-rep">
-      <h3>🧾 Nuevo certificado</h3>
-      <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
-        <label style={{fontSize:11,color:'var(--tx2)',textTransform:'uppercase',fontWeight:700,letterSpacing:.5}}>Miércoles del certificado</label>
-        <input type="date" value={fechaN} onChange={e=>setFechaN(e.target.value)} style={{background:'var(--s2)',border:'1px solid var(--bd)',color:'var(--tx)',borderRadius:4,padding:'6px 8px',fontFamily:'var(--fm)',fontSize:13}}/>
-        <button className="cmd-btn pri" disabled={busy||!fechaN} onClick={calcular}>{busy?'Calculando…':'Calcular'}</button>
+      <h3>🧾 Certificar una semana</h3>
+      <div className="cmd-wk" style={{marginBottom:8}}>
+        <button className="nav" onClick={()=>setSemC(cmdAddDays(semC,-7))} title="Semana anterior">◀</button>
+        <div>
+          <div className="ttl">Semana {certNumSem(semC)} · {certLblSemana(semC)}</div>
+          <div className="sub">{semC===semAnt?'semana anterior (la que corresponde certificar ahora)':(semC>semAnt?'semana en curso o futura: todavía no terminó':'semana pasada')}</div>
+        </div>
+        <button className="nav" onClick={()=>setSemC(cmdAddDays(semC,7))} title="Semana siguiente">▶</button>
+        {semC!==semAnt&&<button className="cmd-btn" onClick={()=>setSemC(semAnt)}>Semana anterior</button>}
+        <button className="cmd-btn pri" style={{marginLeft:'auto'}} disabled={busy} onClick={calcular}>{busy?'Calculando…':'Calcular'}</button>
       </div>
-      <div className="cmd-hint">Certificado del mié {cmdFmtDate(cmdAddDays(semN,4))}: factura el pedido de la semana {certLblSemana(semN)} (foto + revisiones confirmadas) + el cierre del pedido anterior (diferencias del {certLblDia(cmdAddDays(semN,-3))} al {certLblDia(cmdAddDays(semN,-1))}) + las diferencias de este pedido del {certLblDia(semN)} al {certLblDia(cmdAddDays(semN,3))} (hasta la cena del martes). Se calcula, lo revisás y recién ahí lo guardás.</div>
+      {existente&&<div className="cmd-aviso" style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>{existente.detalle&&existente.detalle.regla===3?'Esta semana ya tiene certificado guardado ('+fmtTs(existente.generado_at)+').':'Esta semana tiene un certificado de la regla anterior (el del mié '+cmdFmtDate(existente.fecha)+'). Si calculás y guardás uno nuevo, lo reemplaza.'}<button className="cmd-btn" onClick={()=>setVer(existente)}>Ver</button></div>}
+      <div className="cmd-hint">Lagunas factura a semana vencida: en la semana N+1 se certifica la semana N completa (sábado a viernes), cruzando lo pedido (la última foto, con las correcciones a mano) con lo despachado. Desayuno: se factura {CERT3_REGLA.desayuno}. Almuerzo: {CERT3_REGLA.almuerzo}. Merienda: {CERT3_REGLA.merienda}. Cena: {CERT3_REGLA.cena}. Se calcula, lo revisás y recién ahí lo guardás.</div>
     </div>}
     <div className="cmd-rep">
       <h3>Historial de certificados</h3>
       {err&&<div className="cmd-aviso">{err}</div>}
       {lista===null?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Cargando…</div>:
        (lista.length===0?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Todavía no hay certificados guardados.</div>:
-       <div className="cmd-clist">{lista.map(c=><button key={c.semana} className="cmd-citem" onClick={()=>setVer(c)}>
-         <strong>Mié {cmdFmtDate(c.fecha)}</strong>
-         <span style={{fontSize:12,color:'var(--tx2)'}}>pedido {certLblSemana(c.semana)}</span>
+       <div className="cmd-clist">{lista.map(c=>{const r3=c.detalle&&c.detalle.regla===3;return <button key={c.semana} className="cmd-citem" onClick={()=>setVer(c)}>
+         <strong>{r3?'Semana '+certNumSem(c.semana):'Mié '+cmdFmtDate(c.fecha)}</strong>
+         <span style={{fontSize:12,color:'var(--tx2)'}}>{r3?certLblSemana(c.semana):'pedido '+certLblSemana(c.semana)+' · regla anterior'}</span>
          <span style={{fontFamily:'var(--fm)',fontSize:12,marginLeft:'auto'}}>{CMD_COMIDAS.map(x=>x.em+' '+((c.detalle&&c.detalle.total&&c.detalle.total[x.key])||0)).join('   ')}</span>
-       </button>)}</div>)}
+       </button>;})}</div>)}
     </div>
   </div>;
 }
