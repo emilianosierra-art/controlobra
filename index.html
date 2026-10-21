@@ -400,7 +400,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev120";
+const APP_REV="Rev121";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -3715,19 +3715,51 @@ const certNombre=(user)=>user.nombre||user.email||'';
 const certAjusteAbierto=(iso)=>{const hoy=cmdIsoDate(new Date());if(iso!==hoy)return iso>hoy;return new Date().getHours()<CERT_ALM_HORA_LIM;};
 // Días (ISO) de a hasta b, inclusive
 const certRango=(a,b)=>{const r=[];for(let d=a;d<=b;d=cmdAddDays(d,1))r.push(d);return r;};
-// ── Revisiones del pedido ──
-// Una foto confirmada se actualiza con fotos nuevas 1, 2, 3… (viandas_fotos.revisiones, jsonb). Desde Rev119 cada foto
-// nueva rige DESDE EL DÍA EN QUE SE SACA hasta el viernes (antes: desde el día subsiguiente); los días anteriores siguen
-// con lo que estaba. Cada una guarda {n, estado, dias:{iso:{prog,pedido,editado?}}, desde, …}. "editado" = corregido
-// a mano con el lápiz ({at, por}).
+// ── Fotos nuevas del pedido ──
+// Una foto confirmada se actualiza con fotos nuevas 1, 2, 3… (viandas_fotos.revisiones, jsonb). Desde Rev121 cada foto
+// nueva cambia el pedido con 24 hs de aviso y un horario límite por comida (CERT_HORA_LIM, pedido del 2026-10-21):
+// sacada hoy antes de las 11 hs, el almuerzo cambia desde mañana; a las 11 o después, desde pasado mañana. Merienda y
+// cena: límite 19 hs. Desayuno: 7 hs. Cada foto guarda desdeC = {comida: día desde el que rige}. Las fotos de antes
+// (Rev107–120) tienen un solo "desde" para todas las comidas y se siguen leyendo así.
+// "editado" = corregido a mano con el lápiz ({at, por, k:[comidas]}).
+const CERT_HORA_LIM={desayuno:7,almuerzo:11,merienda:19,cena:19};
 const certRevs=(foto)=>(foto&&Array.isArray(foto.revisiones))?foto.revisiones:[];
 const certRevDesde=(confIso,semana)=>confIso<semana?semana:confIso;
-// Pedido vigente de un día: el de la última revisión confirmada que ya rige ese día; si no hay, el de la foto
-const certVigente=(foto,iso)=>{
-  let src=(foto&&foto.dias&&foto.dias[iso])||null,rev=0;
-  certRevs(foto).filter(r=>r.estado==='confirmada'&&r.desde&&r.desde<=iso&&r.dias&&r.dias[iso]).sort((a,b)=>a.n-b.n).forEach(r=>{src=r.dias[iso];rev=r.n;});
-  return{pedido:(src&&src.pedido)||certCero(),prog:(src&&src.prog)||certCero(),rev,ed:(src&&src.editado)||null};
+// Desde qué día rige cada comida una foto sacada en el momento ts
+const certDesdeFoto=(ts,semana)=>{
+  const d=new Date(ts),iso=cmdIsoDate(d),h=d.getHours()+d.getMinutes()/60,o={};
+  CMD_COMIDAS.forEach(c=>{let x=cmdAddDays(iso,h<CERT_HORA_LIM[c.key]?1:2);if(x<semana)x=semana;o[c.key]=x;});
+  return o;
 };
+const certRevDesdeK=(r,k)=>(r.desdeC&&r.desdeC[k])||r.desde;
+// "almuerzo, merienda y cena desde el jue 22-10 · desayuno desde el vie 23-10" (fin = viernes de la semana, si se sabe)
+const certTxtDesdeC=(r,fin)=>{
+  if(!r.desdeC)return'desde el '+certLblDia(r.desde);
+  const g={};
+  CMD_COMIDAS.forEach(c=>{const d=r.desdeC[c.key];const k=(fin&&d>fin)?'_no':d;(g[k]=g[k]||[]).push(c.label.toLowerCase());});
+  const y=(l)=>l.length>1?l.slice(0,-1).join(', ')+' y '+l[l.length-1]:l[0];
+  return Object.keys(g).sort().map(k=>k==='_no'?y(g[k])+' sin cambios esta semana':y(g[k])+' desde el '+certLblDia(k)).join(' · ');
+};
+// Pedido vigente de un día, comida por comida: el de la última foto nueva que ya rige esa comida ese día; si no hay,
+// el de la foto inicial. maxN: tener en cuenta solo las fotos nuevas hasta esa (para reconstruir versiones anteriores).
+const certVigente=(foto,iso,maxN)=>{
+  const base=(foto&&foto.dias&&foto.dias[iso])||null;
+  const revs=certRevs(foto).filter(r=>r.estado==='confirmada'&&r.dias&&r.dias[iso]&&(maxN===undefined||r.n<=maxN)).sort((a,b)=>a.n-b.n);
+  const pedido={},prog={},revK={},edK={};let ed=null;
+  CMD_COMIDAS.forEach(c=>{
+    let src=base,rev=0;
+    revs.forEach(r=>{const d=certRevDesdeK(r,c.key);if(d&&d<=iso){src=r.dias[iso];rev=r.n;}});
+    pedido[c.key]=(src&&src.pedido&&src.pedido[c.key])||0;
+    prog[c.key]=(src&&src.prog&&src.prog[c.key])||0;
+    revK[c.key]=rev;
+    const e=src&&src.editado;
+    if(e&&(!e.k||e.k.includes(c.key))){edK[c.key]=true;ed=e;}
+  });
+  return{pedido,prog,rev:Math.max(0,...Object.values(revK)),revK,ed,edK};
+};
+// Etiqueta "foto 2" (o "foto 1·2" si ese día unas comidas rigen por una foto y otras por otra)
+const certChipRev=(v)=>{const s=[...new Set(Object.values(v.revK||{}).filter(Boolean))].sort((a,b)=>a-b);return s.length?'foto '+s.join('·'):null;};
+const certChipRevTit=(v)=>CMD_COMIDAS.map(c=>c.label+': '+(v.revK&&v.revK[c.key]?'foto '+v.revK[c.key]:'foto inicial')).join(' · ');
 // Un día/comida. cobrado = lo que ya se facturó por ese día (en el certificado que cobró su semana);
 // vigente = el pedido con sus revisiones; acordado = vigente + ajuste (almuerzo −25). A facturar = lo acordado,
 // o lo despachado si fue más (si se despacha menos no hay devolución). Diferencia = a facturar − cobrado
@@ -3940,7 +3972,8 @@ const certFrase3=(k,t)=>{
 const certFotoTxt3=(ped)=>{
   const meta=ped&&ped.foto,revs=(ped&&ped.revs)||[],eds=Object.keys((ped&&ped.ed)||{}).sort();
   let t='Pedido = última foto del Radar. Foto inicial confirmada'+(meta&&meta.confirmada_at?' el '+fmtTs(meta.confirmada_at)+(meta.confirmada_por?' ('+meta.confirmada_por+')':''):'');
-  if(revs.length)t+='; actualizada por '+revs.map(r=>'la foto '+r.n+' ('+fmtTs(r.tomada_at||r.confirmada_at)+', desde el '+certLblDia(r.desde)+')').join(' y ');
+  const fin=Object.keys((ped&&ped.dias)||{}).sort().pop();
+  if(revs.length)t+='; actualizada por '+revs.map(r=>'la foto '+r.n+' ('+fmtTs(r.tomada_at||r.confirmada_at)+': '+certTxtDesdeC(r,fin)+')').join(' y ');
   if(eds.length)t+='; con correcciones a mano el '+eds.map(certLblDia).join(', ');
   return t+'.';
 };
@@ -3977,6 +4010,65 @@ const certImprimir3=(cert)=>{
   h+='</tbody></table></body></html>';
   w.document.write(h);w.document.close();w.focus();setTimeout(()=>{try{w.print();}catch(e){}},400);
 };
+// ── Historial del pedido (Rev121) ──
+// Cada vez que cambia el pedido vigente (confirmar, foto nueva, corrección a mano, quitar una foto) se guarda una versión
+// con el pedido completo de la semana en viandas_fotos.historial: [{v, tipo, at, por, desc, ped:{iso:{comida:n}}}].
+// Si la columna todavía no existe, o la semana es anterior, las versiones se reconstruyen con la foto inicial y las fotos
+// nuevas (las correcciones a mano ya quedan incluidas en esas fotos, sin versión propia).
+const CERT_SQL_HIST=`ALTER TABLE obra.viandas_fotos ADD COLUMN IF NOT EXISTS historial jsonb NOT NULL DEFAULT '[]'::jsonb;`;
+const certPedSem=(foto,semana,maxN)=>{const o={};certDias(semana).forEach(iso=>{o[iso]=certVigente(foto,iso,maxN).pedido;});return o;};
+const certVersionesRecons=(foto,semana)=>{
+  if(!foto||foto.estado!=='confirmada')return[];
+  const out=[{v:1,tipo:'inicial',at:foto.confirmada_at||foto.tomada_at,por:foto.confirmada_por_nombre||foto.tomada_por_nombre||'',desc:'Pedido inicial (foto confirmada)',ped:certPedSem(foto,semana,0)}];
+  certRevs(foto).filter(r=>r.estado==='confirmada').sort((a,b)=>a.n-b.n)
+    .forEach(r=>out.push({v:out.length+1,tipo:'foto',n:r.n,at:r.tomada_at||r.confirmada_at,por:r.tomada_por_nombre||'',desc:'Foto '+r.n+' del Radar',ped:certPedSem(foto,semana,r.n)}));
+  return out;
+};
+const certVersiones=(foto,semana)=>(foto&&Array.isArray(foto.historial)&&foto.historial.length)?foto.historial:certVersionesRecons(foto,semana);
+const certPedIgual=(a,b)=>!!a&&!!b&&Object.keys({...a,...b}).every(iso=>CMD_COMIDAS.every(c=>((a[iso]||{})[c.key]||0)===((b[iso]||{})[c.key]||0)));
+// Contra qué se compara lo actual: la versión anterior a la última (si la última es lo que se ve) o la última.
+const certBaseComp=(vers,actual)=>{if(!vers.length||!actual)return null;const u=vers[vers.length-1];return certPedIgual(u.ped,actual)?(vers[vers.length-2]||null):u;};
+const certLblVersion=(x)=>(x.desc||'Versión '+x.v)+' · '+fmtTs(x.at)+(x.por?' ('+x.por+')':'');
+const certCambios=(ped,ant)=>{let n=0;if(!ant)return 0;Object.keys(ped).forEach(iso=>CMD_COMIDAS.forEach(c=>{if(((ant[iso]||{})[c.key]||0)!==((ped[iso]||{})[c.key]||0))n++;}));return n;};
+// Copiar el pedido para el mail: tabla con formato (se pega así en Gmail/Outlook) y texto plano de respaldo.
+// Lo que cambió respecto a la versión anterior va tachado y al lado el número nuevo.
+const certCopiarPedido=async({semana,ped,ant,antLbl,showToast})=>{
+  const dias=certDias(semana),E=certEsc;
+  const tach=(t)=>[...String(t)].map(ch=>ch+'̶').join(''); // tachado que se ve también en texto plano
+  const tot=certCero(),totA=certCero();
+  dias.forEach(iso=>CMD_COMIDAS.forEach(c=>{tot[c.key]+=(ped[iso]||{})[c.key]||0;totA[c.key]+=ant?((ant[iso]||{})[c.key]||0):((ped[iso]||{})[c.key]||0);}));
+  const n=certCambios(ped,ant);
+  const tit='Pedido de viandas — '+certLblSemN(semana);
+  const nota=ant?(n?'Cambios respecto a '+antLbl+': el número tachado es el anterior y al lado el nuevo ('+n+' cambio'+(n===1?'':'s')+').':'Sin cambios respecto a '+antLbl+'.'):'';
+  const val=(a,v,html)=>a===v?(html?String(v):String(v)):(html?'<s style="color:#999">'+a+'</s>&nbsp;<b>'+v+'</b>':tach(a)+' '+v);
+  const L=[tit];if(nota)L.push(nota);L.push('');
+  dias.forEach(iso=>L.push(certLblDia(iso)+': '+CMD_COMIDAS.map(c=>{const v=(ped[iso]||{})[c.key]||0,a=ant?((ant[iso]||{})[c.key]||0):v;return c.label+' '+val(a,v,false);}).join(' · ')));
+  L.push('TOTAL: '+CMD_COMIDAS.map(c=>c.label+' '+val(totA[c.key],tot[c.key],false)).join(' · '));
+  const txt=L.join('\n');
+  let h='<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px"><p style="margin:0 0 4px"><b>'+E(tit)+'</b></p>'+(nota?'<p style="margin:0 0 8px;color:#666">'+E(nota)+'</p>':'')
+    +'<table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:13px"><tr style="background:#eee"><th align="left">Día</th>'+CMD_COMIDAS.map(c=>'<th align="right">'+c.label+'</th>').join('')+'</tr>';
+  dias.forEach(iso=>{h+='<tr><td>'+E(certLblDia(iso))+'</td>'+CMD_COMIDAS.map(c=>{const v=(ped[iso]||{})[c.key]||0,a=ant?((ant[iso]||{})[c.key]||0):v;return'<td align="right"'+(a!==v?' style="background:#fff3cd"':'')+'>'+val(a,v,true)+'</td>';}).join('')+'</tr>';});
+  h+='<tr style="background:#f2f2f2;font-weight:bold"><td>Total</td>'+CMD_COMIDAS.map(c=>'<td align="right"'+(totA[c.key]!==tot[c.key]?' style="background:#fff3cd"':'')+'>'+val(totA[c.key],tot[c.key],true)+'</td>').join('')+'</tr></table></div>';
+  try{
+    await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([h],{type:'text/html'}),'text/plain':new Blob([txt],{type:'text/plain'})})]);
+    showToast({msg:'📋 Copiado: pegalo en el mail'+(n?' (con '+n+' cambio'+(n===1?'':'s')+' marcados)':'')});
+  }catch(e){
+    try{await navigator.clipboard.writeText(txt);showToast({msg:'📋 Copiado (texto)'});}catch(e2){prompt('Copiá el texto:',txt);}
+  }
+};
+// Tabla de un pedido semanal marcando lo que cambió respecto a otro (tachado el anterior)
+function CmdPedTablaDif({semana,ped,ant}){
+  const dias=certDias(semana),tot=certCero(),totA=certCero();
+  dias.forEach(iso=>CMD_COMIDAS.forEach(c=>{const v=(ped[iso]||{})[c.key]||0;tot[c.key]+=v;totA[c.key]+=ant?((ant[iso]||{})[c.key]||0):v;}));
+  const celda=(a,v)=>a===v?v:<><s style={{color:'var(--tx3)',marginRight:6,fontWeight:400}}>{a}</s>{v}</>;
+  return <div className="cmd-tblw"><table>
+    <thead><tr><th>Día</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
+    <tbody>
+      {dias.map(iso=><tr key={iso}><td>{certLblDia(iso)}</td>{CMD_COMIDAS.map(c=>{const v=(ped[iso]||{})[c.key]||0,a=ant?((ant[iso]||{})[c.key]||0):v;return <td key={c.key} className="n" style={a!==v?{background:'rgba(251,191,36,.14)'}:undefined}>{celda(a,v)}</td>;})}</tr>)}
+      <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Total</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n" style={{fontWeight:800}}>{celda(totA[c.key],tot[c.key])}</td>)}</tr>
+    </tbody>
+  </table></div>;
+}
 // Si algo falla al dibujar estas secciones nuevas, que no se caiga toda la app (queda el error acá adentro).
 class CmdErrBoundary extends React.Component{
   constructor(p){super(p);this.state={err:null};}
@@ -4018,7 +4110,7 @@ function CmdPedidoSemanal({user,canEdit,showToast}){
   useEffect(()=>{let vivo=true;setRadar(undefined);certFetchRadar(semana,hasta).then(r=>{if(vivo)setRadar(r?r.prog:null);});return()=>{vivo=false;};},[semana,radarTick]);
   const fotoVis=foto&&(canEdit||foto.estado==='confirmada')?foto:null; // Lagunas no ve los borradores
   // Lo vigente de cada día = la última foto que rige ese día (inicial o nueva) con sus correcciones a mano
-  const vig=(iso)=>fotoVis?certVigente(fotoVis,iso):{pedido:certCero(),prog:certCero(),rev:0,ed:null};
+  const vig=(iso)=>fotoVis?certVigente(fotoVis,iso):{pedido:certCero(),prog:certCero(),rev:0,revK:{},ed:null,edK:{}};
   const pedVal=(iso,k)=>vig(iso).pedido[k]||0;
   const progVal=(iso,k)=>vig(iso).prog[k]||0;
   const calc=useMemo(()=>fotoVis?certCalcSemana3(iso=>certVigente(fotoVis,iso),ajustes,desp,semana):null,[fotoVis,ajustes,desp,semana]);
@@ -4027,31 +4119,49 @@ function CmdPedidoSemanal({user,canEdit,showToast}){
   const revs=certRevs(foto);
   const revsConf=revs.filter(r=>r.estado==='confirmada').sort((a,b)=>a.n-b.n);
   const revsBorr=revs.filter(r=>r.estado!=='confirmada'); // borradores de la versión anterior (antes había que confirmarlas)
-  const desdeNueva=certRevDesde(hoy,semana); // una foto nueva sacada ahora rige desde hoy
-  const hayDiasParaFoto=desdeNueva<=hasta;
+  // Una foto nueva sacada AHORA: desde qué día cambia cada comida (24 hs de aviso con horario límite por comida)
+  const desdeAhora=certDesdeFoto(new Date(),semana);
+  const minDesde=(o)=>Object.values(o).sort()[0];
+  const hayDiasParaFoto=minDesde(desdeAhora)<=hasta;
   const tieneColRevs=!!(foto&&Object.prototype.hasOwnProperty.call(foto,'revisiones'));
-  const guardarFoto=async(cambios,msg,errMsg)=>{
+  const tieneColHist=!!(foto&&Object.prototype.hasOwnProperty.call(foto,'historial'));
+  // Historial: versiones del pedido de la semana y la actual, para ver qué cambió
+  const vers=fotoVis?certVersiones(fotoVis,semana):[];
+  const actual=fotoVis?certPedSem(fotoVis,semana):null;
+  const baseComp=certBaseComp(vers,actual);
+  const[verHist,setVerHist]=useState(false);
+  const[verV,setVerV]=useState(null);
+  useEffect(()=>{setVerHist(false);setVerV(null);},[semana]);
+  // Guarda cambios en la foto; si hist, agrega una versión al historial (si la columna existe)
+  const guardarFoto=async(cambios,msg,errMsg,hist)=>{
+    if(hist&&tieneColHist){
+      const prev=certVersiones(foto,semana),nueva={...foto,...cambios};
+      cambios={...cambios,historial:[...prev,{v:prev.length+1,tipo:hist.tipo,at:new Date().toISOString(),por:certNombre(user),desc:hist.desc,ped:certPedSem(nueva,semana)}]};
+    }
     setBusy(true);const{ok}=await db.upd("viandas_fotos",cambios,[["semana","eq",semana]]);setBusy(false);
     if(!ok){alert(errMsg||'No se pudieron guardar los cambios.');return false;}
     if(msg)showToast({msg});load();return true;
   };
-  // Foto nueva durante la semana: lo que dice el Radar AHORA, desde hoy hasta el viernes (rige en el momento)
+  // Foto nueva durante la semana: lo que dice el Radar AHORA. Cambia el pedido con 24 hs de aviso, según el horario
+  // límite de cada comida (ej.: sacada hoy antes de las 11, el almuerzo cambia desde mañana; después, desde pasado).
   const nuevaFoto=async()=>{
-    if(!hayDiasParaFoto){alert('La semana ya terminó: no quedan días para actualizar.');return;}
-    const isos=certRango(desdeNueva,hasta);
-    if(!confirm('¿Sacar una foto nueva del Radar?\n\nActualiza el pedido del '+certLblDia(desdeNueva)+' al '+certLblDia(hasta)+' con lo que dice el Radar ahora. Los días anteriores quedan como estaban.\n\nSi corregiste a mano alguno de esos días, esa corrección se reemplaza por lo del Radar. Lagunas lo ve al instante.'))return;
-    setBusy(true);const r=await certFetchRadar(desdeNueva,hasta);setBusy(false);
+    const ts=new Date(),desdeC=certDesdeFoto(ts,semana),desde=minDesde(desdeC);
+    if(desde>hasta){alert('Ya no quedan días de esta semana que se puedan cambiar.');return;}
+    const isos=certRango(desde,hasta);
+    if(!confirm('¿Sacar una foto nueva del Radar?\n\nCon lo que dice el Radar ahora ('+cmdHora(ts)+' hs) se actualiza:\n· '+certTxtDesdeC({desdeC},hasta).split(' · ').join('\n· ')+'\n\nHorario límite: desayuno '+CERT_HORA_LIM.desayuno+' hs, almuerzo '+CERT_HORA_LIM.almuerzo+' hs, merienda y cena '+CERT_HORA_LIM.cena+' hs (24 hs antes). Lo anterior queda como estaba.\n\nSi corregiste a mano alguna de esas comidas, se reemplaza por lo del Radar. Lagunas la ve al instante.'))return;
+    setBusy(true);const r=await certFetchRadar(desde,hasta);setBusy(false);
     if(!r){alert('No se pudo leer el Radar (viandas_calendario).');return;}
     const sinDatos=isos.filter(iso=>!r.prog[iso]);
     if(sinDatos.length&&!confirm('El Radar no tiene datos para: '+sinDatos.map(certLblDia).join(', ')+'.\n\nEsos días quedan en 0 (los podés corregir con el lápiz). Si falta sincronizar, primero tocá "🔄 Actualizar calendario". ¿Seguir?'))return;
     const n=revs.reduce((m,x)=>Math.max(m,x.n||0),0)+1,ahora=new Date().toISOString();
     const d={};isos.forEach(iso=>{const prog=r.prog[iso]||certCero();d[iso]={prog,pedido:certPedidoDe(prog)};});
-    await guardarFoto({revisiones:[...revsConf,{n,estado:'confirmada',origen:'radar',dias:d,desde:desdeNueva,tomada_at:ahora,tomada_por_nombre:certNombre(user),confirmada_at:ahora,confirmada_por_nombre:certNombre(user)}]},
-      '📸 Foto '+n+' guardada: rige desde el '+certLblDia(desdeNueva),'No se pudo guardar la foto nueva. ¿Ya se agregó la columna "revisiones" en Supabase (SQL de la Rev107)?');
+    await guardarFoto({revisiones:[...revsConf,{n,estado:'confirmada',origen:'radar',dias:d,desde,desdeC,tomada_at:ahora,tomada_por_nombre:certNombre(user),confirmada_at:ahora,confirmada_por_nombre:certNombre(user)}]},
+      '📸 Foto '+n+' guardada: '+certTxtDesdeC({desdeC},hasta),'No se pudo guardar la foto nueva. ¿Ya se agregó la columna "revisiones" en Supabase (SQL de la Rev107)?',
+      {tipo:'foto',desc:'Foto '+n+' del Radar ('+certTxtDesdeC({desdeC},hasta)+')'});
   };
   const quitarFoto=async(r)=>{
-    if(!confirm('¿Quitar la foto '+r.n+' (sacada el '+fmtTs(r.tomada_at||r.confirmada_at)+')?\n\nDesde el '+certLblDia(r.desde)+' vuelve a regir la foto anterior, con sus correcciones a mano.'))return;
-    await guardarFoto({revisiones:revs.filter(x=>x.n!==r.n)},'Foto '+r.n+' quitada');
+    if(!confirm('¿Quitar la foto '+r.n+' (sacada el '+fmtTs(r.tomada_at||r.confirmada_at)+')?\n\nVuelve a regir la foto anterior, con sus correcciones a mano.'))return;
+    await guardarFoto({revisiones:revs.filter(x=>x.n!==r.n)},'Foto '+r.n+' quitada',null,{tipo:'quitar',desc:'Se quitó la foto '+r.n});
   };
   const descartarBorradores=async()=>{
     if(!confirm('¿Descartar '+(revsBorr.length===1?'la revisión en borrador':'las '+revsBorr.length+' revisiones en borrador')+' de la versión anterior? No se usan para nada.'))return;
@@ -4073,39 +4183,44 @@ function CmdPedidoSemanal({user,canEdit,showToast}){
     }else{
       dias.forEach(iso=>{d[iso]={prog:certCero(),pedido:certCero()};});
     }
-    const{ok}=await db.ins("viandas_fotos",{semana,estado:'borrador',origen:desdeRadar?'radar':'manual',dias:d,personas,tomada_por:user.id,tomada_por_nombre:certNombre(user),tomada_at:new Date().toISOString(),confirmada_por:null,confirmada_por_nombre:null,confirmada_at:null},true,"semana");
+    const{ok}=await db.ins("viandas_fotos",{semana,estado:'borrador',origen:desdeRadar?'radar':'manual',dias:d,personas,...(tieneColRevs?{revisiones:[]}:{}),...(tieneColHist?{historial:[]}:{}),tomada_por:user.id,tomada_por_nombre:certNombre(user),tomada_at:new Date().toISOString(),confirmada_por:null,confirmada_por_nombre:null,confirmada_at:null},true,"semana");
     setBusy(false);
     if(!ok){alert('No se pudo guardar el pedido. ¿Ya se crearon las tablas en Supabase?');return;}
     showToast({msg:desdeRadar?'📸 Foto guardada en borrador: revisala y confirmala':'✍️ Pedido en cero: completalo y guardá'});
     await load();
     if(!desdeRadar){const dr={};dias.forEach(iso=>{dr[iso]=certCero();});setDraft(dr);}
   };
-  // Lápiz: se corrige lo que se ve. Cada día se guarda en la foto que rige ese día (la inicial o la última nueva),
+  // Lápiz: se corrige lo que se ve. Cada comida de cada día se guarda en la foto que la rige (la inicial o una nueva),
   // así la corrección es lo que queda vigente y lo que entra en el certificado.
   const editar=()=>{const dr={};dias.forEach(iso=>{dr[iso]={...vig(iso).pedido};});setDraft(dr);};
   const setCelda=(iso,k,v)=>setDraft(prev=>({...prev,[iso]:{...prev[iso],[k]:v.replace(/[^0-9]/g,'')}}));
   const draftNum=(iso,k)=>parseInt(draft[iso][k],10)||0;
   const guardarDraft=async()=>{
     const base={...(foto.dias||{})},revs2=revs.map(r=>({...r,dias:{...(r.dias||{})}}));
-    const ed={at:new Date().toISOString(),por:certNombre(user)};
+    const at=new Date().toISOString(),por=certNombre(user);
     let cambios=0,enRev=false;
     dias.forEach(iso=>{
-      const p={};CMD_COMIDAS.forEach(c=>{p[c.key]=draftNum(iso,c.key);});
       const v=certVigente(foto,iso);
-      if(CMD_COMIDAS.every(c=>(v.pedido[c.key]||0)===p[c.key]))return;
-      cambios++;
-      if(v.rev){const r=revs2.find(x=>x.n===v.rev);r.dias[iso]={...(r.dias[iso]||{prog:certCero()}),pedido:p,editado:ed};enRev=true;}
-      else base[iso]={prog:(base[iso]&&base[iso].prog)||certCero(),pedido:p,editado:ed};
+      CMD_COMIDAS.forEach(c=>{
+        const nv=draftNum(iso,c.key);
+        if(nv===(v.pedido[c.key]||0))return;
+        cambios++;
+        const rn=v.revK[c.key],tgt=rn?revs2.find(x=>x.n===rn).dias:base;
+        if(rn)enRev=true;
+        const ent=tgt[iso]||{prog:certCero(),pedido:certCero()};
+        const ks=new Set((ent.editado&&ent.editado.k)||[]);ks.add(c.key);
+        tgt[iso]={...ent,pedido:{...(ent.pedido||certCero()),[c.key]:nv},editado:{at,por,k:[...ks]}};
+      });
     });
     if(!cambios){setDraft(null);return;}
     if(est==='confirmada'&&!confirm('El pedido ya está confirmado: la corrección la ve Lagunas y entra en el certificado. ¿Guardar?'))return;
     const payload={dias:base};if(enRev||tieneColRevs)payload.revisiones=revs2;
-    if(await guardarFoto(payload,'💾 Pedido corregido ('+cambios+' día'+(cambios===1?'':'s')+')'))setDraft(null);
+    if(await guardarFoto(payload,'💾 Pedido corregido ('+cambios+' cambio'+(cambios===1?'':'s')+')',null,est==='confirmada'?{tipo:'lapiz',desc:'Corrección a mano ('+cambios+' cambio'+(cambios===1?'':'s')+')'}:null))setDraft(null);
   };
   const confirmar=async()=>{
     const tot=certCero();dias.forEach(iso=>CMD_COMIDAS.forEach(c=>{tot[c.key]+=pedVal(iso,c.key);}));
     if(!confirm('¿Confirmar el pedido de la '+certLblSemN(semana)+'?\n\n'+CMD_COMIDAS.map(c=>c.label+': '+tot[c.key]).join('\n')+'\n\nLagunas lo ve. Después se puede actualizar con fotos nuevas o corregir con el lápiz.'))return;
-    await guardarFoto({estado:'confirmada',confirmada_por:user.id,confirmada_por_nombre:certNombre(user),confirmada_at:new Date().toISOString()},'✅ Pedido confirmado','No se pudo confirmar el pedido.');
+    await guardarFoto({estado:'confirmada',confirmada_por:user.id,confirmada_por_nombre:certNombre(user),confirmada_at:new Date().toISOString()},'✅ Pedido confirmado','No se pudo confirmar el pedido.',{tipo:'inicial',desc:vers.length?'Pedido confirmado de nuevo':'Pedido inicial (foto confirmada)'});
   };
   const reabrir=async()=>{
     if(!confirm('¿Reabrir el pedido de la '+certLblSemN(semana)+'?\n\nVuelve a borrador y Lagunas deja de verlo hasta que lo confirmes de nuevo. Si ya generaste el certificado de esta semana, después volvé a generarlo.'))return;
@@ -4166,7 +4281,7 @@ function CmdPedidoSemanal({user,canEdit,showToast}){
             {draft&&<button className="cmd-btn" onClick={()=>setDraft(null)}>Cancelar</button>}
             {canEdit&&!draft&&est==='borrador'&&<button className="cmd-btn ok" disabled={busy} onClick={confirmar}>✅ Confirmar pedido</button>}
             {canEdit&&!draft&&est==='confirmada'&&<button className="cmd-btn" disabled={busy} onClick={reabrir}>🔓 Reabrir</button>}
-            {fotoVis&&!draft&&<button className="cmd-btn" onClick={()=>{const m={};dias.forEach(iso=>{m[iso]=vig(iso).pedido;});let txt=certTxtPedido(semana,m).replace('Pedido de viandas — semana ','Pedido de viandas — Semana '+nSem+' · ');if(revsConf.length)txt+='\n('+revsConf.map(r=>'foto '+r.n+' desde el '+certLblDia(r.desde)).join(' · ')+')';certCopiar(txt,showToast);}}>📋 Copiar</button>}
+            {fotoVis&&!draft&&<button className="cmd-btn" title={baseComp?'Copia el pedido para el mail, con lo que cambió respecto a: '+certLblVersion(baseComp):'Copia el pedido para el mail'} onClick={()=>certCopiarPedido({semana,ped:actual,ant:baseComp?baseComp.ped:null,antLbl:baseComp?certLblVersion(baseComp):'',showToast})}>📋 Copiar{baseComp&&certCambios(actual,baseComp.ped)?' (con cambios)':''}</button>}
           </div>
         </div>
         {!fotoVis?<div style={{color:'var(--tx3)',fontSize:12,padding:8,lineHeight:1.5}}>{canEdit?'Todavía no hay pedido para esta semana. La foto se saca el miércoles, jueves o viernes anterior, con el Radar actualizado.':(foto?'El pedido de esta semana todavía no fue confirmado por la obra.':'Todavía no hay pedido para esta semana.')}</div>:
@@ -4174,31 +4289,55 @@ function CmdPedidoSemanal({user,canEdit,showToast}){
           <thead><tr><th>Día</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
           <tbody>
             {dias.map(iso=>{const v=vig(iso);return <tr key={iso}><td>{certLblDia(iso)}
-              {!draft&&v.rev?<span className="cmd-chip ok" style={{marginLeft:6,fontSize:9,padding:'1px 5px'}} title="Este día rige la foto nueva">foto {v.rev}</span>:null}
+              {!draft&&certChipRev(v)?<span className="cmd-chip ok" style={{marginLeft:6,fontSize:9,padding:'1px 5px'}} title={certChipRevTit(v)}>{certChipRev(v)}</span>:null}
               {!draft&&v.ed?<span style={{marginLeft:6,fontSize:11}} title={'Corregido a mano'+(v.ed.por?' por '+v.ed.por:'')+(v.ed.at?' el '+fmtTs(v.ed.at):'')}>✍️</span>:null}
-            </td>{CMD_COMIDAS.map(c=>{const pv=pedVal(iso,c.key),gv=progVal(iso,c.key);return <td key={c.key} className="n">
+            </td>{CMD_COMIDAS.map(c=>{const pv=pedVal(iso,c.key),gv=progVal(iso,c.key),av=baseComp?((baseComp.ped[iso]||{})[c.key]||0):pv,cambio=!draft&&av!==pv;return <td key={c.key} className="n" style={cambio?{background:'rgba(251,191,36,.14)'}:undefined} title={cambio?'Antes: '+av+' ('+certLblVersion(baseComp)+')':undefined}>
+              {cambio&&<s style={{color:'var(--tx3)',marginRight:6,fontWeight:400}}>{av}</s>}
               {draft?<input className="cmd-num" inputMode="numeric" value={draft[iso][c.key]} onChange={e=>setCelda(iso,c.key,e.target.value)}/>:pv}
               {deRadar&&gv!==pv&&<div style={{fontSize:9,color:'var(--tx3)',fontWeight:500}}>Radar {gv}</div>}
             </td>;})}</tr>;})}
             <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Total</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{dias.reduce((a,iso)=>a+(draft?draftNum(iso,c.key):pedVal(iso,c.key)),0)}</td>)}</tr>
           </tbody>
         </table></div>}
-        {draft&&<div className="cmd-hint">Corregís lo que se ve: cada día queda guardado en la foto que rige ese día{est==='confirmada'?' y Lagunas ve el cambio':''}. Queda marcado con ✍️.</div>}
+        {draft&&<div className="cmd-hint">Corregís lo que se ve: cada comida queda guardada en la foto que la rige{est==='confirmada'?' y Lagunas ve el cambio':''}. Queda marcado con ✍️.</div>}
+        {!draft&&baseComp&&certCambios(actual,baseComp.ped)>0&&<div className="cmd-hint">En amarillo, lo que cambió respecto a: {certLblVersion(baseComp)} (tachado = antes). Así sale también en "📋 Copiar".</div>}
         {fotoVis&&est==='confirmada'&&(revsConf.length>0||revsBorr.length>0)&&<div style={{marginTop:14,borderTop:'1px solid var(--bd)',paddingTop:12}}>
           <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:8}}>
             <strong style={{fontSize:13}}>📸 Fotos nuevas de la semana</strong>
-            <span style={{fontSize:11,color:'var(--tx3)'}}>Cada una rige desde el día en que se sacó hasta el viernes; los días anteriores quedan como estaban.</span>
+            <span style={{fontSize:11,color:'var(--tx3)'}}>Cada una cambia el pedido con 24 hs de aviso: desayuno si se sacó antes de las {CERT_HORA_LIM.desayuno}, almuerzo antes de las {CERT_HORA_LIM.almuerzo}, merienda y cena antes de las {CERT_HORA_LIM.cena} hs (si no, un día más tarde).</span>
           </div>
           {revsConf.map((r,i)=>{const isos=Object.keys(r.dias||{}).sort();const tot=certCero();isos.forEach(iso=>CMD_COMIDAS.forEach(c=>{tot[c.key]+=((r.dias[iso].pedido||{})[c.key]||0);}));const ult=i===revsConf.length-1;
             return <div key={r.n} style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',background:'var(--s2)',border:'1px solid var(--bd)',borderLeft:'3px solid var(--cmd-info)',borderRadius:6,padding:'8px 10px',marginBottom:6}}>
               <strong>Foto {r.n}</strong>
-              <span style={{fontSize:12,color:'var(--tx2)'}}>sacada {fmtTs(r.tomada_at||r.confirmada_at)}{r.tomada_por_nombre?' por '+r.tomada_por_nombre:''} · rige del {certLblDia(r.desde)} al {certLblDia(hasta)}</span>
+              <span style={{fontSize:12,color:'var(--tx2)'}}>sacada {fmtTs(r.tomada_at||r.confirmada_at)}{r.tomada_por_nombre?' por '+r.tomada_por_nombre:''} · {certTxtDesdeC(r,hasta)}</span>
               <span style={{fontFamily:'var(--fm)',fontSize:12,marginLeft:'auto'}}>{CMD_COMIDAS.map(c=>c.em+' '+tot[c.key]).join('  ')}</span>
               {canEdit&&ult&&<button className="cmd-btn" disabled={busy} onClick={()=>quitarFoto(r)} title="Si la sacaste por error">🗑 Quitar</button>}
             </div>;})}
           {canEdit&&revsBorr.length>0&&<div className="cmd-aviso" style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>Hay {revsBorr.length===1?'una revisión':revsBorr.length+' revisiones'} en borrador de la versión anterior: no se usan.<button className="cmd-btn" disabled={busy} onClick={descartarBorradores}>🗑 Descartar</button></div>}
         </div>}
-        <div className="cmd-hint">El pedido es la última foto del Radar: la inicial (mié a vie de la semana anterior) y las fotos nuevas que se saquen durante la semana, que rigen desde ese momento hasta el viernes. Encima se puede corregir a mano con ✏️. Cena: se pide el {Math.round(CERT_CENA_PCT*100)}% de lo que proyecta el Radar, con un mínimo de {CERT_CENA_PISO} por día (si hay {CERT_CENA_PISO} o menos, se pide todo).</div>
+        {fotoVis&&est==='confirmada'&&vers.length>0&&<div style={{marginTop:14,borderTop:'1px solid var(--bd)',paddingTop:12}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+            <button className="cmd-btn" onClick={()=>setVerHist(!verHist)}>{verHist?'▾':'▸'} 📜 Historial del pedido ({vers.length} versi{vers.length===1?'ón':'ones'})</button>
+            <span style={{fontSize:11,color:'var(--tx3)'}}>El rastro de cómo fue cambiando el pedido de esta semana.</span>
+          </div>
+          {verHist&&<div style={{marginTop:8}}>
+            {canEdit&&!tieneColHist&&<div className="cmd-aviso" style={{fontSize:11}}>Se reconstruye con la foto inicial y las fotos nuevas; para que también queden las correcciones a mano como versión, un admin tiene que correr una vez en Supabase: <code style={{fontFamily:'var(--fm)'}}>{CERT_SQL_HIST}</code></div>}
+            {[...vers].reverse().map(x=>{const idx=vers.indexOf(x),prev=vers[idx-1],n=prev?certCambios(x.ped,prev.ped):0,ab=verV===x.v;
+              return <div key={x.v} style={{background:'var(--s2)',border:'1px solid var(--bd)',borderRadius:6,padding:'8px 10px',marginBottom:6}}>
+                <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                  <strong style={{fontFamily:'var(--fm)'}}>v{x.v}</strong>
+                  <span style={{fontSize:12}}>{x.desc||'Versión '+x.v}</span>
+                  <span style={{fontSize:11,color:'var(--tx3)'}}>{fmtTs(x.at)}{x.por?' · '+x.por:''}{prev?' · '+(n?n+' cambio'+(n===1?'':'s'):'sin cambios')+' respecto a v'+prev.v:''}</span>
+                  <div style={{marginLeft:'auto',display:'flex',gap:6}}>
+                    <button className="cmd-btn" onClick={()=>setVerV(ab?null:x.v)}>{ab?'Ocultar':'Ver'}</button>
+                    {!certPedIgual(x.ped,actual)&&<button className="cmd-btn" title="Copia el pedido actual para el mail, marcando lo que cambió respecto a esta versión" onClick={()=>certCopiarPedido({semana,ped:actual,ant:x.ped,antLbl:certLblVersion(x),showToast})}>📋 Copiar el actual vs. esta</button>}
+                  </div>
+                </div>
+                {ab&&<div style={{marginTop:8}}><CmdPedTablaDif semana={semana} ped={x.ped} ant={prev?prev.ped:null}/>{prev&&<div className="cmd-hint">Tachado = cómo estaba en la v{prev.v}.</div>}</div>}
+              </div>;})}
+          </div>}
+        </div>}
+        <div className="cmd-hint">El pedido es la última foto del Radar: la inicial (mié a vie de la semana anterior) y las fotos nuevas que se saquen durante la semana, que lo cambian con 24 hs de aviso (horario límite: desayuno {CERT_HORA_LIM.desayuno} hs, almuerzo {CERT_HORA_LIM.almuerzo} hs, merienda y cena {CERT_HORA_LIM.cena} hs). Encima se puede corregir a mano con ✏️. Cena: se pide el {Math.round(CERT_CENA_PCT*100)}% de lo que proyecta el Radar, con un mínimo de {CERT_CENA_PISO} por día (si hay {CERT_CENA_PISO} o menos, se pide todo).</div>
       </div>
       {calc&&<div className="cmd-rep">
         <h3>📊 Seguimiento de la semana · pedido vs. despachado</h3>
@@ -4217,7 +4356,7 @@ function CmdPedidoSemanal({user,canEdit,showToast}){
               const aj=ajustes[iso]&&ajustes[iso][comida];
               const sinD=!fut&&r.sinDesp;
               return <tr key={iso} style={iso===hoy?{background:'rgba(245,158,11,.06)'}:undefined}>
-                <td>{certLblDia(iso)}{iso===hoy&&<span style={{fontSize:10,color:'var(--cmd-pri)',marginLeft:6}}>hoy</span>}{v.rev?<span className="cmd-chip ok" style={{marginLeft:6,fontSize:9,padding:'1px 5px'}}>foto {v.rev}</span>:null}{v.ed?<span style={{marginLeft:4,fontSize:11}} title="Corregido a mano">✍️</span>:null}</td>
+                <td>{certLblDia(iso)}{iso===hoy&&<span style={{fontSize:10,color:'var(--cmd-pri)',marginLeft:6}}>hoy</span>}{v.revK&&v.revK[comida]?<span className="cmd-chip ok" style={{marginLeft:6,fontSize:9,padding:'1px 5px'}}>foto {v.revK[comida]}</span>:null}{v.edK&&v.edK[comida]?<span style={{marginLeft:4,fontSize:11}} title="Corregido a mano">✍️</span>:null}</td>
                 <td className="n" style={{color:(rh!==null&&deRadar&&rh!==gv)?'var(--cmd-dieta)':'var(--tx3)'}} title={deRadar?'En la foto el Radar decía '+gv:''}>{rh===null?(radar===undefined?'…':'—'):rh}</td>
                 <td className="n">{r.pedido}</td>
                 {comida==='almuerzo'&&<td className="n" style={{whiteSpace:'nowrap'}}>
@@ -4381,7 +4520,7 @@ function CmdCertificados({user,canEdit,showToast}){
     const avisos=[];
     const revsConf=certRevs(foto).filter(r=>r.estado==='confirmada').sort((a,b)=>a.n-b.n);
     const pedido={dias:{},rev:{},ed:{},foto:{confirmada_at:foto.confirmada_at||null,confirmada_por:foto.confirmada_por_nombre||null},
-      revs:revsConf.map(r=>({n:r.n,desde:r.desde,tomada_at:r.tomada_at||null,confirmada_at:r.confirmada_at||null,por:r.tomada_por_nombre||r.confirmada_por_nombre||null}))};
+      revs:revsConf.map(r=>({n:r.n,desde:r.desde,desdeC:r.desdeC||null,tomada_at:r.tomada_at||null,confirmada_at:r.confirmada_at||null,por:r.tomada_por_nombre||r.confirmada_por_nombre||null}))};
     certDias(semana).forEach(iso=>{const v=certVigente(foto,iso);pedido.dias[iso]={prog:v.prog,pedido:v.pedido};if(v.rev)pedido.rev[iso]=v.rev;if(v.ed)pedido.ed[iso]=v.ed;});
     const calc=certCalcSemana3(iso=>pedido.dias[iso],aj,de,semana);
     if(hasta>=hoy)avisos.push('La '+certLblSemN(semana)+' todavía no terminó (termina el vie '+cmdFmtDate(hasta).slice(0,5)+'): lo despachado puede cambiar.');
