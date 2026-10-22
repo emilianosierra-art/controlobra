@@ -400,7 +400,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev121";
+const APP_REV="Rev122";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -1028,6 +1028,17 @@ const calcPosicionesMontana=async()=>{
     vehiculo[k]=classifyLast(last);
     vehiculoLast[k]=last;
   });
+  // Rev122: quien fichó por Puesto 1 DESPUÉS de su última fichada en P2/P3 ya no está en la montaña (P1 está abajo, en
+  // la entrada del predio). Corrige una salida de P2/P3 mal escaneada u omitida: ej. el 21/10 COSTA fichó la salida por
+  // P1 pero en P3 su DNI se leyó pegado a otro y seguía figurando en el chalet. Lo mismo para los vehículos.
+  const[{data:u1},{data:s1}]=await Promise.all([
+    db.sel("v_ultima_fichada",{cols:"clave,ts",f:[["puesto","eq","Puesto 1"],["ts","gte",todayStr+"T00:00:00"]],lim:5000}),
+    db.sel("sesiones_acceso",{cols:"vehiculo_id,vehiculo_razon,cerrada_at",f:[["puesto","eq","Puesto 1"],["cerrada_at","gte",todayStr+"T00:00:00"]],ord:"cerrada_at.asc",lim:5000}),
+  ]);
+  const p1={};(u1||[]).forEach(x=>{p1[x.clave]=new Date(x.ts).getTime();});
+  Object.keys(persona).forEach(k=>{const t=p1[k];if(t&&t>personaLast[k].t)persona[k]="fuera";});
+  const v1={};(s1||[]).forEach(x=>{const k=x.vehiculo_id||(x.vehiculo_razon&&x.vehiculo_razon.startsWith("No registrado:")?x.vehiculo_razon:null);if(k)v1[k]=new Date(x.cerrada_at).getTime();});
+  Object.keys(vehiculo).forEach(k=>{const t=v1[k];if(t&&t>vehiculoLast[k].t)vehiculo[k]="fuera";});
   return{persona,vehiculo,personaLast,vehiculoLast};
 };
 
@@ -1049,6 +1060,181 @@ const calcPersonasEnPredio=async()=>{
   });
   return{inSet,lastMap};
 };
+
+// ─── Fichadas para corregir (Rev122) ──────────────────────────────────────────
+// Caso real del 21/10: en P3 se leyó "4325675741080690" = dos DNIs pegados (SEGOVIA 43256757 + COSTA 41080690). Quedó
+// como "DNI no encontrado" y los dos siguieron figurando en el chalet. Ahora: (1) al escanear, si lo leído se puede partir
+// en dos DNIs de la base se cargan los dos; (2) las fichadas con DNI que no está en la base quedan en "Para corregir"
+// (en el Puesto y en Registros) con sugerencias para resolverlas en un toque.
+const fcNorm=(s)=>normDni(s).replace(/[^A-Z0-9]/g,"");
+// a y b difieren en un solo carácter (cambiado, de más o de menos)
+const fcCasi=(a,b)=>{
+  if(a===b)return false;
+  if(a.length===b.length){let n=0;for(let i=0;i<a.length;i++)if(a[i]!==b[i]&&++n>1)return false;return n===1;}
+  if(Math.abs(a.length-b.length)!==1)return false;
+  const[l,s]=a.length>b.length?[a,b]:[b,a];
+  for(let i=0;i<l.length;i++)if(l.slice(0,i)+l.slice(i+1)===s)return true;
+  return false;
+};
+// Partir lo leído en dos DNIs conocidos (devuelve [a,b] personas o null). porDni: Map DNI normalizado → persona
+const fcPartir=(raw,porDni)=>{
+  const r=fcNorm(raw);
+  if(r.length<12)return null;
+  for(let i=6;i<=r.length-6;i++){const a=porDni.get(r.slice(0,i)),b=porDni.get(r.slice(i));if(a&&b)return[a,b];}
+  return null;
+};
+const fcSugerencias=(raw,porDni)=>{
+  const r=fcNorm(raw),out=[],ya=new Set();
+  if(!r)return out;
+  const push=(personas,txt)=>{const k=personas.map(p=>p.id).join(",");if(ya.has(k))return;ya.add(k);out.push({personas,txt});};
+  if(porDni.get(r))push([porDni.get(r)],"ya está dada de alta en Personal");
+  const dos=fcPartir(r,porDni);
+  if(dos)push(dos[0].id===dos[1].id?[dos[0]]:dos,dos[0].id===dos[1].id?"el mismo DNI leído dos veces":"2 DNIs leídos juntos");
+  if(!out.length&&r.length>=10)porDni.forEach((p,d)=>{if(d.length>=7&&(r.startsWith(d)||r.endsWith(d)))push([p],"su DNI está dentro de lo leído");});
+  if(!out.length&&r.length>=6&&r.length<=10)porDni.forEach((p,d)=>{if(fcCasi(r,d))push([p],"difiere en un dígito");});
+  return out.slice(0,4);
+};
+const fcProblema=(it)=>{
+  const r=fcNorm(it.raw);
+  if(!r)return"fichada sin DNI";
+  if(/^[A-Z]{2,3}\d{3}[A-Z]{0,3}$/.test(r))return"parece una patente leída como DNI";
+  if(r.length>=12)return"lectura demasiado larga (¿2 DNIs pegados?)";
+  return"el DNI no está en la base";
+};
+const fcDelOk=async(table,filters)=>{
+  let u=`${table}?`;filters.forEach(([k,op,v])=>{u+=`&${k}=${op}.${encodeURIComponent(v)}`;});
+  const r=await dbq(u,{method:"DELETE",h:{"Prefer":"return=representation"}});
+  return r.ok&&Array.isArray(r.data)&&r.data.length>0;
+};
+// Vuelve a contar los totales de una sesión después de corregir sus registros
+const fcRecontar=async(sid)=>{
+  const{data}=await db.sel("registros_acceso",{cols:"resultado",f:[["sesion_id","eq",sid]],lim:500});
+  if(!data)return;
+  await db.upd("sesiones_acceso",{total_personas:data.length,total_aprobados:data.filter(x=>x.resultado==="aprobado").length,total_rechazados:data.filter(x=>x.resultado!=="aprobado").length},[["id","eq",sid]]);
+};
+// Fichadas con DNI que no está en la base, entre dos días (hora local), de un puesto o de todos
+const fcCargar=async(puesto,desde,hasta)=>{
+  const ini=new Date(desde+"T00:00:00").toISOString(),fin=new Date(cmdAddDays(hasta,1)+"T00:00:00").toISOString();
+  const fs=[["cerrada_at","gte",ini],["cerrada_at","lt",fin]];if(puesto)fs.push(["puesto","eq",puesto]);
+  const fm=[["created_at","gte",ini],["created_at","lt",fin],["persona_id","is","null"]];if(puesto)fm.push(["puesto","eq",puesto]);
+  const[{data:ses},{data:man}]=await Promise.all([
+    db.sel("sesiones_acceso",{cols:"id,puesto,direccion,cerrada_at",f:fs,lim:3000}),
+    db.sel("movimientos_manuales",{cols:"id,puesto,direccion,created_at,dni_raw,nombre_raw",f:fm,lim:2000}),
+  ]);
+  if(!ses||!man)return null;
+  const sm={};ses.forEach(s=>{sm[s.id]=s;});
+  const ids=ses.map(s=>s.id);let regs=[];
+  for(let i=0;i<ids.length;i+=80){
+    const{data}=await db.sel("registros_acceso",{cols:"id,sesion_id,dni_raw,orden_escaneo",inFilter:["sesion_id",ids.slice(i,i+80)],f:[["persona_id","is","null"]]});
+    if(!data)return null;regs=regs.concat(data);
+  }
+  const items=[
+    ...regs.map(r=>{const s=sm[r.sesion_id];return{tipo:"reg",id:r.id,sid:r.sesion_id,orden:r.orden_escaneo,raw:r.dni_raw||"",ts:s.cerrada_at,puesto:s.puesto,dir:s.direccion};}),
+    // Los "Sacar" del conteo (nombre "No registrado: …") ya son una corrección: no se listan
+    ...man.filter(m=>!String(m.nombre_raw||"").startsWith("No registrado")).map(m=>({tipo:"man",id:m.id,raw:m.dni_raw||"",nombre:m.nombre_raw,ts:m.created_at,puesto:m.puesto,dir:m.direccion})),
+  ];
+  return items.sort((a,b)=>new Date(b.ts)-new Date(a.ts));
+};
+// modo "banner": franja que avisa y abre la lista en una ventana (en el Puesto). modo "panel": la lista a la vista (Registros).
+function FichadasParaCorregir({puesto,desde,hasta,user,modo,refrescar,onCambio}){
+  const[items,setItems]=useState(null);
+  const[porDni,setPorDni]=useState(null);
+  const[abierto,setAbierto]=useState(false);
+  const[busy,setBusy]=useState(null);
+  const[q,setQ]=useState({});
+  const puede=!!user&&(user.rol==="admin"||user.rol==="puesto");
+  const d1=desde||today(),d2=hasta||today();
+  const load=useCallback(async()=>{const it=await fcCargar(puesto,d1,d2).catch(()=>null);if(it)setItems(it);},[puesto,d1,d2]);
+  useEffect(()=>{load();const i=setInterval(load,60000);return()=>clearInterval(i);},[load,refrescar]);
+  useEffect(()=>{
+    if(!items||!items.length||porDni)return;
+    dbSelAll("personas",{cols:"id,dni,nombre,apellido,empresa,deleted_at",ord:"id.asc"}).then(({data})=>{
+      const m=new Map();(data||[]).filter(p=>!p.deleted_at).forEach(p=>{const k=fcNorm(p.dni);if(k)m.set(k,p);});setPorDni(m);
+    });
+  },[items,porDni]);
+  if(!items||!items.length)return null;
+  const nom=(p)=>`${(p.apellido||"").trim()}, ${(p.nombre||"").trim()}`;
+  const corregir=async(it,personas)=>{
+    setBusy(it.id);
+    try{
+      if(it.tipo==="man"){
+        const p=personas[0];
+        const r=await db.upd("movimientos_manuales",{persona_id:p.id,dni_raw:p.dni,nombre_raw:`${(p.nombre||"").trim()} ${(p.apellido||"").trim()}`},[["id","eq",it.id]]);
+        if(!r.ok||!Array.isArray(r.data)||!r.data.length)throw new Error("rls");
+      }else{
+        // Si alguna de esas personas ya está en la misma pasada, no se duplica
+        const{data:ya}=await db.sel("registros_acceso",{cols:"persona_id",f:[["sesion_id","eq",it.sid]],lim:500});
+        const yaIds=new Set((ya||[]).map(x=>x.persona_id).filter(Boolean));
+        const faltan=personas.filter(p=>!yaIds.has(p.id));
+        const nota="Corregido a mano: se había leído "+it.raw;
+        if(!faltan.length){if(!(await fcDelOk("registros_acceso",[["id","eq",it.id]])))throw new Error("rls");}
+        else{
+          const r=await db.upd("registros_acceso",{persona_id:faltan[0].id,dni_raw:faltan[0].dni,resultado:"aprobado",motivo_rechazo:nota},[["id","eq",it.id]]);
+          if(!r.ok||!Array.isArray(r.data)||!r.data.length)throw new Error("rls");
+          for(const p of faltan.slice(1)){
+            const r2=await db.ins("registros_acceso",{sesion_id:it.sid,persona_id:p.id,dni_raw:p.dni,resultado:"aprobado",motivo_rechazo:nota,orden_escaneo:it.orden||null});
+            if(!r2.ok)throw new Error("ins");
+          }
+        }
+        await fcRecontar(it.sid);
+      }
+      await load();onCambio&&onCambio();
+    }catch(e){alert(e.message==="rls"?"Supabase no dejó guardar la corrección (permisos de la tabla). Avisale a un admin.":"No se pudo guardar la corrección. Revisá la conexión y probá de nuevo.");}
+    setBusy(null);
+  };
+  const borrar=async(it)=>{
+    if(!confirm('¿Borrar la fichada de "'+(it.raw||"sin DNI")+'" ('+String(it.puesto).replace("Puesto ","P")+' '+dirVerbo(it.puesto,it.dir)+' '+joHora(new Date(it.ts).getTime())+')?\n\nUsalo solo si no corresponde a nadie (lectura basura). Si era una persona, mejor elegila.'))return;
+    setBusy(it.id);
+    const ok=await fcDelOk(it.tipo==="man"?"movimientos_manuales":"registros_acceso",[["id","eq",it.id]]);
+    if(ok&&it.tipo==="reg")await fcRecontar(it.sid);
+    if(!ok)alert("No se pudo borrar (conexión o permisos de la tabla).");
+    await load();onCambio&&onCambio();setBusy(null);
+  };
+  const lista=<div>
+    <div style={{fontSize:12,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Fichadas con un DNI que no está en la base: puede ser un DNI mal leído (por ejemplo, dos DNIs pegados) o una persona sin dar de alta. Mientras no se corrijan, esas personas no figuran bien en los conteos.{puede?" Elegí a quién corresponde o borrala si no era nadie.":""}</div>
+    {items.map(it=>{
+      const sug=porDni?fcSugerencias(it.raw,porDni):[];
+      const qq=q[it.id]||"";
+      const res=porDni&&qq.trim().length>=3?[...porDni.values()].filter(p=>(" "+empNorm(`${p.dni} ${p.apellido} ${p.nombre}`)+" ").includes(empNorm(qq))).slice(0,6):[];
+      return <div key={it.tipo+it.id} style={{background:"var(--s2)",border:"1px solid rgba(245,158,11,.4)",borderLeft:"3px solid var(--acc)",borderRadius:6,padding:"9px 12px",marginBottom:8,opacity:busy===it.id?.5:1}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span className="mn" style={{color:"var(--tx2)"}}>{fmtTs(it.ts)}</span>
+          <span style={{fontSize:12,fontWeight:600}}>{it.puesto} · {dirVerbo(it.puesto,it.dir)}{it.tipo==="man"?" · manual":""}</span>
+          <span style={{fontSize:12}}>leído: <b className="mn" style={{color:"var(--acc)"}}>{it.raw||"—"}</b>{it.nombre?" ("+it.nombre+")":""}</span>
+          <span style={{fontSize:11,color:"var(--tx3)",marginLeft:"auto"}}>{fcProblema(it)}</span>
+        </div>
+        {sug.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+          {sug.map((s,i)=>puede
+            ?<button key={i} className="bsm" disabled={!!busy} style={{color:"var(--gr)",borderColor:"rgba(16,185,129,.45)"}} onClick={()=>corregir(it,s.personas)}>✔ {s.personas.length>1?"Eran 2: ":"Era "}{s.personas.map(nom).join(" y ")} <span style={{color:"var(--tx3)"}}>· {s.txt}</span></button>
+            :<span key={i} style={{fontSize:12,color:"var(--gr)"}}>💡 {s.personas.map(nom).join(" y ")} ({s.txt})</span>)}
+        </div>}
+        {puede&&<div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginTop:8}}>
+          <input className="fi" style={{padding:"5px 9px",fontSize:12,minWidth:200,flex:1}} placeholder="Otra persona: buscar por DNI o apellido…" value={qq} onChange={e=>setQ(x=>({...x,[it.id]:e.target.value}))}/>
+          <button className="bsm bsm-r" disabled={!!busy} onClick={()=>borrar(it)}>🗑 No era nadie</button>
+        </div>}
+        {res.length>0&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>{res.map(p=><button key={p.id} className="bsm" disabled={!!busy} onClick={()=>corregir(it,[p])}>{nom(p)} <span style={{color:"var(--tx3)"}}>· {p.dni} · {p.empresa||"—"}</span></button>)}</div>}
+      </div>;
+    })}
+  </div>;
+  if(modo==="panel")return <div className="jo-wrap" style={{borderColor:"rgba(245,158,11,.45)"}}>
+    <div className="jo-h" style={{color:"var(--acc)"}}>⚠ Para corregir ({items.length})</div>
+    {lista}
+  </div>;
+  return <>
+    <div onClick={()=>setAbierto(true)} style={{background:"rgba(245,158,11,.14)",border:"2px solid var(--acc)",borderRadius:8,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",cursor:"pointer",animation:"pulseWarn 2s infinite"}}>
+      <span style={{fontSize:22}}>⚠️</span>
+      <div style={{flex:1,minWidth:200}}>
+        <div style={{fontFamily:"var(--fh)",fontSize:17,fontWeight:800,color:"var(--acc)",textTransform:"uppercase"}}>{items.length} fichada{items.length===1?"":"s"} para corregir</div>
+        <div style={{fontSize:12,color:"var(--tx2)"}}>DNI mal leído o que no está en la base{items.some(it=>fcNorm(it.raw).length>=12)?" (hay lecturas con 2 DNIs pegados)":""}. Cuando baje el movimiento, revisalas.</div>
+      </div>
+      <button className="bsm" style={{flexShrink:0}}>Revisar</button>
+    </div>
+    {abierto&&<div className="mo"><div className="md md-lg">
+      <div className="mh"><div className="mt">Fichadas para corregir</div><button className="mc" onClick={()=>setAbierto(false)}>x</button></div>
+      <div className="mb">{lista}</div>
+    </div></div>}
+  </>;
+}
 
 function ChaletCounter({proyectoId}){
   const[countChalet,setCountChalet]=useState(null);
@@ -2480,6 +2666,7 @@ function Registros({defaultPuesto,user}){
       <select className="fi" value={fd} onChange={e=>setFd(e.target.value)}><option value="">Entrada y salida</option><option value="entrada">Entrada</option><option value="salida">Salida</option></select>
       <select className="fi" value={fTipo} onChange={e=>setFTipo(e.target.value)}><option value="">Todo</option><option value="vehiculo">Con vehiculo</option><option value="manual">Manuales</option></select>
     </div>
+    {fFecha&&<CmdErrBoundary><FichadasParaCorregir puesto={fp||null} desde={fFecha} hasta={fFecha} user={user} modo="panel" refrescar={list.length} onCambio={load}/></CmdErrBoundary>}
     {!loading&&coinc.length>0&&<div className="jo-wrap" style={{padding:"10px 12px"}}>
       <div style={{fontSize:12,color:"var(--tx2)",marginBottom:6}}>{coinc.length} persona{coinc.length===1?"":"s"} con movimientos {fFecha?"ese día":""} coinciden con "{search.trim()}". Tocá una para ver solo sus movimientos:</div>
       <div style={{display:"flex",flexWrap:"wrap",gap:5,maxHeight:150,overflowY:"auto"}}>{coinc.slice(0,80).map(({p,n})=><button key={p.id} className="bsm" onClick={()=>setSearch(String(p.dni))} title={`DNI ${p.dni}`}>{p.apellido}, {p.nombre} <span style={{color:"var(--tx3)"}}>· {p.empresa||"—"} · {n}</span></button>)}</div>
@@ -5117,19 +5304,40 @@ function Puesto({user,pid}){
     setOffline(false); // la consulta funcionó → hay conexión
     found=data&&data[0];
     const esConductor=esMontanaP&&!!veh&&pax.length===0; // el primero después del vehículo es quien maneja
+    // Arma la fila de una persona encontrada (habilitaciones, aviso de manejo, almuerzo arriba)
+    const armar=(per,conductor)=>{
+      const rr=getHabPills("persona",per.id,habs,effPuesto,radarMap,per.dni);
+      // Comida de hoy + default checkbox "almorzará arriba".
+      // Regla: quien sube por P2/P3 antes de las 11 AM come en chalet por default, salvo que hoy ya se haya
+      // decidido otra cosa (ej. en P2 lo destildaron). El garitero puede cambiar el checkbox.
+      const cd=comidaDefault(per.id);
+      return{r:rr,ok:!rr.blocks,avisoManejo:conductor&&!rr.pills.some(x=>x.short==="MAN"&&x.color==="green"),item:{raw:per.dni,person:per,ok:!rr.blocks,reason:rr.reason,pills:rr.pills,activeAuths:[],tieneComidaHoy:cd.tieneComidaHoy,comeArriba:cd.comeArriba}};
+    };
     if(!found){
+      // Rev122: el lector a veces junta dos DNIs en una sola lectura (ej. 4325675741080690 = 43256757 + 41080690).
+      // Si lo leído se parte en dos DNIs de la base, se cargan las dos personas.
+      const rr=fcNorm(v);
+      if(rr.length>=12){
+        const cands=[];for(let i=6;i<=rr.length-6;i++)cands.push(rr.slice(0,i),rr.slice(i));
+        const{data:dd}=await db.sel("personas",{inFilter:["dni",[...new Set(cands)]],f:[["deleted_at","is","null"]],lim:50});
+        const m=new Map();(dd||[]).forEach(x=>m.set(fcNorm(x.dni),x));
+        const dos=fcPartir(rr,m);
+        if(dos){
+          const per=(dos[0].id===dos[1].id?[dos[0]]:dos).filter(x=>!pax.some(q=>q.person&&q.person.id===x.id));
+          const filas=per.map((x,i)=>armar(x,esConductor&&i===0));
+          if(filas.length)setPax(p=>[...p,...filas.map(f=>f.item)]);
+          const neg=filas.filter(f=>!f.ok);
+          sf({ok:!neg.length,label:dos[0].id===dos[1].id?"DNI LEÍDO DOS VECES":"2 DNIs LEÍDOS JUNTOS",sub:dos[0].id===dos[1].id?`${dos[0].nombre} ${dos[0].apellido}`:`${dos[0].nombre} ${dos[0].apellido} y ${dos[1].nombre} ${dos[1].apellido}`,detail:!filas.length?(dos[0].id===dos[1].id?"Ya estaba en la lista":"Ya estaban en la lista"):(dos[0].id===dos[1].id?"Se cargó una sola vez":"Se cargaron por separado: revisá la lista"),reason:neg.length?neg.map(f=>`${f.item.person.apellido}: ${f.r.reason}`).join(" · "):null,aviso:filas.some(f=>f.avisoManejo)?AVISO_MANEJO:null,dur:6000});
+          setVal("");return;
+        }
+      }
       setPax(p=>[...p,{raw:v.toUpperCase(),person:null,ok:false,reason:"DNI no encontrado",activeAuths:[]}]);
-      sf({ok:false,label:"SIN REGISTRO",sub:v,reason:"DNI no encontrado",aviso:esConductor?AVISO_MANEJO+" (conductor sin registro)":null,dur:esConductor?6000:undefined});
+      sf({ok:false,label:"⚠ DNI QUE NO ESTÁ EN LA BASE",sub:v,reason:"¿Se leyó mal? Revisalo o volvé a escanear. Queda en \"Para corregir\".",aviso:esConductor?AVISO_MANEJO+" (conductor sin registro)":null,dur:6000});
       setVal("");return;
     }
-    const r=getHabPills("persona",found.id,habs,effPuesto,radarMap,found.dni);
-    const ok=!r.blocks;
-    const avisoManejo=esConductor&&!r.pills.some(x=>x.short==="MAN"&&x.color==="green");
-    // Comida de hoy + default checkbox "almorzará arriba".
-    // Regla: quien sube por P2/P3 antes de las 11 AM come en chalet por default, salvo que hoy ya se haya
-    // decidido otra cosa (ej. en P2 lo destildaron). El garitero puede cambiar el checkbox.
-    const{tieneComidaHoy,comeArriba}=comidaDefault(found.id);
-    setPax(p=>[...p,{raw:found.dni,person:found,ok,reason:r.reason,pills:r.pills,activeAuths:[],tieneComidaHoy,comeArriba}]);
+    const{r,ok,avisoManejo,item}=armar(found,esConductor);
+    const tieneComidaHoy=item.tieneComidaHoy;
+    setPax(p=>[...p,item]);
     const flashExtra=tieneComidaHoy?" · 🍽 ya contado para almorzar arriba":"";
     sf({ok,label:ok?"ACCESO PERMITIDO":"ACCESO DENEGADO",sub:`${found.nombre} ${found.apellido}${flashExtra}`,detail:`DNI ${found.dni} · ${found.empresa||""}`,reason:ok?null:r.reason,aviso:avisoManejo?AVISO_MANEJO:null,dur:avisoManejo?6000:undefined});
     setVal("");
@@ -5229,6 +5437,7 @@ function Puesto({user,pid}){
         <Clock/>
       </div>
     </div>
+    {effPuesto&&<CmdErrBoundary><FichadasParaCorregir puesto={effPuesto} desde={cmdAddDays(today(),-1)} hasta={today()} user={user} modo="banner" refrescar={refreshKey}/></CmdErrBoundary>}
     {offline&&<div style={{background:"rgba(239,68,68,.15)",border:"2px solid var(--rd)",borderRadius:8,padding:"14px 18px",marginBottom:14,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
       <span style={{fontSize:28}}>📵</span>
       <div style={{flex:1,minWidth:200}}>
