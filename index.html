@@ -400,7 +400,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev128";
+const APP_REV="Rev129";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -1089,7 +1089,11 @@ const calcPersonasEnPredio=async()=>{
   const{data}=await db.sel("v_ultima_fichada",{f:[["ts","gte",OPERATIVA_DESDE]],lim:20000});
   const inSet=new Set();
   const lastMap={};
+  const iniHoy=new Date(today()+"T00:00:00").getTime();
   (data||[]).forEach(r=>{
+    // Rev129: un DNI que no está en la base (lectura mala, DNIs pegados, apellido tipeado) solo cuenta el día en que se
+    // fichó; si no, como nunca "sale", quedaba en el predio para siempre.
+    if(!r.persona_id&&new Date(r.ts).getTime()<iniHoy)return;
     lastMap[r.clave]={t:new Date(r.ts).getTime(),puesto:r.puesto,dir:r.direccion};
     if(!(r.puesto==="Puesto 1"&&r.direccion==="salida"))inSet.add(r.clave);
   });
@@ -5369,8 +5373,47 @@ function Puesto({user,pid}){
     if(!r.blocks||found._noRegistrado)setFase(F.P);
   },[val,habs,user,effPuesto,radarMap]);
 
+  // Rev129: lectura que no está en la base → queda "en duda" hasta que el garitero elige qué era (antes se cargaba directo
+  // como "sin registrar" y, si era una lectura mala, quedaba en el conteo del predio).
+  const[dudoso,setDudoso]=useState(null); // {raw, sugs:[{p,txt}], pareceDni}
+  const mapaRef=useRef(null);
+  const mapaPersonas=async()=>{
+    if(mapaRef.current&&Date.now()-mapaRef.current.at<10*60000)return mapaRef.current.m;
+    const{data}=await dbSelAll("personas",{f:[["deleted_at","is","null"]],ord:"id.asc"});
+    const m=new Map();(data||[]).forEach(p=>{const k=fcNorm(p.dni);if(k)m.set(k,p);});
+    if(data)mapaRef.current={at:Date.now(),m};
+    return m;
+  };
+  // Arma la fila de una persona encontrada (habilitaciones, aviso de manejo, almuerzo arriba)
+  const armarFila=(per,conductor,rm)=>{
+    const rr=getHabPills("persona",per.id,habs,effPuesto,rm||radarMap,per.dni);
+    // Comida de hoy + default checkbox "almorzará arriba".
+    // Regla: quien sube por P2/P3 antes de las 11 AM come en chalet por default, salvo que hoy ya se haya
+    // decidido otra cosa (ej. en P2 lo destildaron). El garitero puede cambiar el checkbox.
+    const cd=comidaDefault(per.id);
+    return{r:rr,ok:!rr.blocks,avisoManejo:conductor&&!rr.pills.some(x=>x.short==="MAN"&&x.color==="green"),item:{raw:per.dni,person:per,ok:!rr.blocks,reason:rr.reason,pills:rr.pills,activeAuths:[],tieneComidaHoy:cd.tieneComidaHoy,comeArriba:cd.comeArriba}};
+  };
+  const agregarElegida=async(per)=>{
+    setDudoso(null);
+    if(pax.some(q=>q.person&&q.person.id===per.id)){sf({ok:false,label:"DNI REPETIDO",sub:`${per.nombre} ${per.apellido}`,reason:"Ya está en la lista"});return;}
+    const conductor=esMontanaP&&!!veh&&!veh.data._aPie&&pax.length===0;
+    const rm=await completarRadar([per.dni]);
+    const{r,ok,avisoManejo,item}=armarFila(per,conductor,rm);
+    setPax(p=>[...p,item]);
+    sf({ok,label:ok?"ACCESO PERMITIDO":"ACCESO DENEGADO",sub:`${per.nombre} ${per.apellido}`,detail:`DNI ${per.dni} · ${per.empresa||""}`,reason:ok?null:r.reason,aviso:avisoManejo?AVISO_MANEJO:null,dur:avisoManejo?6000:undefined});
+    if(ref.current)ref.current.focus();
+  };
+  const registrarDudoso=()=>{
+    const d=dudoso;if(!d)return;
+    setDudoso(null);
+    const conductor=esMontanaP&&!!veh&&!veh.data._aPie&&pax.length===0;
+    setPax(p=>[...p,{raw:d.raw,person:null,ok:false,reason:"DNI no encontrado",activeAuths:[]}]);
+    sf({ok:false,label:"REGISTRADO SIN ALTA",sub:d.raw,reason:"Queda en \"Para corregir\" para identificarlo después.",aviso:conductor?AVISO_MANEJO+" (conductor sin registro)":null,dur:5000});
+    if(ref.current)ref.current.focus();
+  };
   const scanP=useCallback(async()=>{
     const v=val.trim();if(!v)return;
+    setDudoso(null);
     if(!isOnline()){sf({ok:false,label:"SIN CONEXIÓN",sub:"No se puede fichar",reason:"Registrá la fichada en la hoja alternativa"});setVal("");return;}
     if(pax.some(p=>sameDni(p.raw,v))){sf({ok:false,label:"DNI REPETIDO",sub:v,reason:"Ya fue escaneado"});setVal("");return;}
     let found=null;
@@ -5385,15 +5428,7 @@ function Puesto({user,pid}){
     setOffline(false); // la consulta funcionó → hay conexión
     found=data&&data[0];
     const esConductor=esMontanaP&&!!veh&&!veh.data._aPie&&pax.length===0; // el primero después del vehículo es quien maneja
-    // Arma la fila de una persona encontrada (habilitaciones, aviso de manejo, almuerzo arriba)
-    const armar=(per,conductor,rm)=>{
-      const rr=getHabPills("persona",per.id,habs,effPuesto,rm||radarMap,per.dni);
-      // Comida de hoy + default checkbox "almorzará arriba".
-      // Regla: quien sube por P2/P3 antes de las 11 AM come en chalet por default, salvo que hoy ya se haya
-      // decidido otra cosa (ej. en P2 lo destildaron). El garitero puede cambiar el checkbox.
-      const cd=comidaDefault(per.id);
-      return{r:rr,ok:!rr.blocks,avisoManejo:conductor&&!rr.pills.some(x=>x.short==="MAN"&&x.color==="green"),item:{raw:per.dni,person:per,ok:!rr.blocks,reason:rr.reason,pills:rr.pills,activeAuths:[],tieneComidaHoy:cd.tieneComidaHoy,comeArriba:cd.comeArriba}};
-    };
+    const armar=armarFila;
     if(!found){
       // Rev122: el lector a veces junta dos DNIs en una sola lectura (ej. 4325675741080690 = 43256757 + 41080690).
       // Si lo leído se parte en dos DNIs de la base, se cargan las dos personas.
@@ -5413,8 +5448,20 @@ function Puesto({user,pid}){
           setVal("");return;
         }
       }
-      setPax(p=>[...p,{raw:v.toUpperCase(),person:null,ok:false,reason:"DNI no encontrado",activeAuths:[]}]);
-      sf({ok:false,label:"⚠ DNI QUE NO ESTÁ EN LA BASE",sub:v,reason:"¿Se leyó mal? Revisalo o volvé a escanear. Queda en \"Para corregir\".",aviso:esConductor?AVISO_MANEJO+" (conductor sin registro)":null,dur:6000});
+      // Rev129: no se carga directo. Sugerencias: DNI parecido (un dígito distinto, DNI dentro de lo leído) o, si se tipeó
+      // un apellido, las personas con ese apellido. "Registrar igual" solo si parece un DNI de verdad.
+      const mapa=await mapaPersonas();
+      const up=normDni(v),vistos=new Set(),sugs=[];
+      const sumar=(p,txt)=>{if(!p||vistos.has(p.id))return;vistos.add(p.id);sugs.push({p,txt});};
+      fcSugerencias(v,mapa).forEach(x=>{if(x.personas.length===1)sumar(x.personas[0],x.txt);});
+      if(/[A-Z]/.test(up)&&!/\d/.test(up)&&up.replace(/[^A-Z]/g,"").length>=3){
+        const t=joNorm(v).split(" ").filter(Boolean);
+        [...mapa.values()].filter(p=>{const x=" "+joNorm(`${p.apellido} ${p.nombre}`)+" ";return t.every(w=>x.includes(w));}).slice(0,8).forEach(p=>sumar(p,"por nombre"));
+      }
+      const r0=fcNorm(v);
+      const pareceDni=/^[A-Z0-9]{6,15}$/.test(r0)&&/\d/.test(r0)&&!/^[A-Z]{2,3}\d{3}[A-Z]{0,3}$/.test(r0);
+      setDudoso({raw:v.toUpperCase(),sugs:sugs.slice(0,8),pareceDni});
+      sf({ok:false,label:"⚠ NO ESTÁ EN LA BASE",sub:v,reason:sugs.length?"¿Era alguno de los de abajo? Si no, volvé a escanear.":"Volvé a escanear el DNI.",dur:4000});
       setVal("");return;
     }
     const rmP=await completarRadar([found.dni]);
@@ -5485,9 +5532,9 @@ function Puesto({user,pid}){
     }
     setDir(d);setSaving(false);setSaveStatus("online");setFase(F.D);
   };
-  const nueva=()=>{setFase(F.V);setVeh(null);setPax([]);setPaxSnap([]);setVal("");setFlash(null);setPaxSugFrom(null);setSaveStatus(null);setRefreshKey(k=>k+1);};
+  const nueva=()=>{setFase(F.V);setVeh(null);setPax([]);setPaxSnap([]);setVal("");setFlash(null);setPaxSugFrom(null);setSaveStatus(null);setDudoso(null);setRefreshKey(k=>k+1);};
   // Rev127: gente que pasa a pie. Mismo flujo que con vehículo (escanear DNIs, ver habilitaciones, elegir sentido), sin patente.
-  const aPie=()=>{setVeh({data:{id:null,patente:"A PIE",tipo:"A pie",descripcion:"Sin vehículo",_aPie:true},ok:true,reason:null,pills:[]});setPax([]);setPaxSnap([]);setPaxSugFrom(null);setFlash(null);setVal("");setSaveStatus(null);setFase(F.P);};
+  const aPie=()=>{setVeh({data:{id:null,patente:"A PIE",tipo:"A pie",descripcion:"Sin vehículo",_aPie:true},ok:true,reason:null,pills:[]});setPax([]);setPaxSnap([]);setPaxSugFrom(null);setFlash(null);setVal("");setSaveStatus(null);setDudoso(null);setFase(F.P);};
   const dirLabel=dirVerbo(effPuesto,dir);
 
   // Admin sin puesto elegido: mostrar selector
@@ -5593,6 +5640,18 @@ function Puesto({user,pid}){
       </div>
       {/* Flash debajo del input */}
       {flash&&<div className={`fl fl-${flash.ok?(flash.aviso?"warn":"ok"):"no"}`} style={{marginBottom:10}}><div className="fll">{flash.label}</div><div style={{fontWeight:600,marginTop:2}}>{flash.sub}</div>{flash.detail&&<div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)"}}>{flash.detail}</div>}{flash.reason&&<div style={{fontSize:13,color:"var(--rd)",marginTop:4}}>{flash.reason}</div>}{flash.aviso&&<div className="fl-aviso">{flash.aviso}</div>}</div>}
+      {dudoso&&<div style={{background:"rgba(245,158,11,.12)",border:"2px solid var(--acc)",borderRadius:8,padding:"12px 14px",marginBottom:10}}>
+        <div style={{fontFamily:"var(--fh)",fontSize:16,fontWeight:800,color:"var(--acc)",textTransform:"uppercase"}}>⚠ «{dudoso.raw}» no está en la base{dudoso.pareceDni?"":(/\d/.test(dudoso.raw)?" (no parece un DNI completo)":" (no es un DNI)")}</div>
+        {dudoso.sugs.length>0&&<>
+          <div style={{fontSize:12,color:"var(--tx2)",margin:"6px 0"}}>¿Era alguno de estos?</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>{dudoso.sugs.map(({p,txt})=><button key={p.id} className="bsm" style={{color:"var(--gr)",borderColor:"rgba(16,185,129,.45)",padding:"6px 10px"}} onClick={()=>agregarElegida(p)}>✔ {(p.apellido||"").trim()}, {(p.nombre||"").trim()} <span style={{color:"var(--tx3)"}}>· DNI {p.dni} · {txt}</span></button>)}</div>
+        </>}
+        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>
+          <button className="bsm" style={{padding:"6px 12px"}} onClick={()=>{setDudoso(null);if(ref.current)ref.current.focus();}}>🔁 Volver a escanear</button>
+          {dudoso.pareceDni&&<button className="bsm" style={{padding:"6px 12px",color:"var(--tx2)"}} onClick={registrarDudoso} title="Para alguien que todavía no está dado de alta en Personal">➕ Registrar igual (persona sin alta)</button>}
+        </div>
+        {!dudoso.pareceDni&&<div style={{fontSize:11,color:"var(--tx3)",marginTop:6}}>No se puede registrar así: volvé a escanear el DNI o tipealo completo{/[A-Z]/.test(dudoso.raw)&&!/\d/.test(dudoso.raw)?" (o elegí a la persona de la lista)":""}.</div>}
+      </div>}
       {/* Vehículo compacto debajo del input */}
       {veh&&<div className={`vc ${veh.ok?"ok":"no"}`} style={{marginBottom:10}}>
         <div style={{fontSize:26,lineHeight:1}}>{VI[veh.data.tipo]||"🚗"}</div>
