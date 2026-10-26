@@ -400,7 +400,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev126";
+const APP_REV="Rev127";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -491,7 +491,9 @@ const dbSelAll=async(table,opts={})=>{
     if(data.length<PAGE)return{data:out};
   }
 };
-const VI={Camioneta:"🛻",Combi:"🚐",Colectivo:"🚌","Camión":"🚛",Auto:"🚗",Maquinaria:"🚜",Otro:"🚗"};
+const VI={Camioneta:"🛻",Combi:"🚐",Colectivo:"🚌","Camión":"🚛",Auto:"🚗",Maquinaria:"🚜",Otro:"🚗","A pie":"🚶"};
+// Rev127: pasada sin vehículo = sesión con vehiculo_id null y vehiculo_razon "A pie (sin vehículo)"
+const esSesionAPie=(s)=>!!(s&&!s.vehiculo_id&&String(s.vehiculo_razon||"").startsWith("A pie"));
 const today=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 // DNI normalizado: los extranjeros pueden tener letras (ej. pasaporte "AAB123456"). Se compara sin espacios y en
 // mayúsculas, así "aab123456" y "AAB123456" son la misma persona. Las búsquedas en la base usan ilike (no distingue
@@ -586,7 +588,8 @@ const personaEstado=(id,habs,radarMap,dni)=>{
   // Bloqueada: falta (vencida, sin fecha o suspendida) el INGRESO de S&H y/o el INGRESO de Control de Personal
   const shIng=habSt(getHab("persona",id,"sh_ingreso",habs));
   let cpIng;
-  if(radarMap&&dni){
+  if(cpForzadoActivo())cpIng="ok";
+  else if(radarMap&&dni){
     const r=radarDe(radarMap,dni);
     cpIng=(r&&r.letra&&r.letra!=="F")?"ok":"exp";
   }else{
@@ -641,7 +644,27 @@ const chkAuth=(type,id,habs)=>{
 //   - radarMap[dni] undefined o letra='F' → CP Ingreso bloqueado
 //   Si radarMap no se pasa (contextos donde no está disponible), cae al viejo comportamiento
 //   leyendo de habs para no romper.
+// Rev127: habilitación permanente de CP (pedido del 2026-10-26, para francos del admin). Mientras está activa, CP Ingreso
+// queda OK para todos y no se toma del Radar. Se guarda en obra.app_config (clave "cp_forzado", valor JSON
+// {activo, hasta, por, at}); la activan y desactivan los admins desde "⭐ Habilitar todo". Con "hasta" se apaga sola
+// después de esa fecha. La vista pública sin login no puede leer app_config y sigue usando el Radar.
+let CP_FORZADO=null,CP_VER=0;
+const CP_SUBS=new Set();
+const cpForzadoActivo=()=>!!CP_FORZADO&&(!CP_FORZADO.hasta||today()<=CP_FORZADO.hasta);
+const cargarCpForzado=async()=>{
+  const{data}=await db.sel("app_config",{f:[["clave","eq","cp_forzado"]],lim:1});
+  if(data===null)return;
+  let v=null;try{v=data[0]&&data[0].valor?JSON.parse(data[0].valor):null;}catch(e){v=null;}
+  const nuevo=v&&v.activo?v:null;
+  if(JSON.stringify(nuevo)!==JSON.stringify(CP_FORZADO)){CP_FORZADO=nuevo;CP_VER++;CP_SUBS.forEach(f=>{try{f(CP_VER);}catch(e){}});}
+};
+const guardarCpForzado=async(v,userId)=>{
+  const{ok}=await db.ins("app_config",{clave:"cp_forzado",valor:JSON.stringify(v),actualizado_por:userId,actualizado_at:new Date().toISOString()},true,"clave");
+  if(ok)await cargarCpForzado();
+  return ok;
+};
 const getCpIngresoStatusFromRadar=(dni,radarMap)=>{
+  if(cpForzadoActivo())return"ok";
   if(!radarMap)return null;
   const r=radarDe(radarMap,dni);
   if(!r||!r.letra||r.letra==="F")return"expired";
@@ -672,7 +695,7 @@ const getHabPills=(entityType,entityId,habs,puesto,radarMap,personaDni)=>{
         {label:"S&H Ingreso",short:"ING",color:shIng==="ok"?"green":"red"},
         {label:"Subir a Chalet",short:"CHA",color:shCha==="ok"?"green":"red"},
         {label:"Manejo Montaña",short:"MAN",color:shMan==="ok"?"green":"orange"},
-        {label:"CP Ingreso",short:"CP",color:cpIng==="ok"?"green":"red",tooltip:cpFromRadar?"Derivado del Radar de Obra":undefined},
+        {label:"CP Ingreso",short:"CP",color:cpIng==="ok"?"green":"red",tooltip:cpForzadoActivo()?"Habilitación permanente de CP (no se toma del Radar)":(cpFromRadar?"Derivado del Radar de Obra":undefined)},
       ],
       blocks,
       reason:blocks?("Falta: "+reasons.join(" + ")):null,
@@ -1488,6 +1511,9 @@ function HabCell({hab:habInit,tipo,entityType,entityId,proyectoId,canEdit,curren
 // Rev86+: cp_ingreso ya no es manual; se calcula de viandas_calendario del día.
 // Si letra != 'F' y no es null → OK (verde). Si es F o vacía → bloqueado (rojo).
 function HabCellRadar({dni,radarMap,tdClass}){
+  if(cpForzadoActivo())return <td className={tdClass||""} style={{minWidth:88}} title="Habilitación permanente de CP activada: no se toma del Radar">
+    <span className="hc hc-ok" style={{cursor:"help",display:"inline-flex",alignItems:"center",gap:4}}>ok <span style={{fontSize:9,opacity:.7,fontFamily:"var(--fm)"}}>perm.</span></span>
+  </td>;
   const r=radarDe(radarMap,dni)||null;
   const ok=r&&r.letra&&r.letra!=="F";
   const codigo=r&&r.codigo?r.codigo:"—";
@@ -1621,58 +1647,87 @@ function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
 }
 
 // ─── HABILITAR TODO MODAL ────────────────────────────────────────────────────
-function HabTodoModal({proyectoId,currentUserId,tipo,onClose,onSaved}){
+function HabTodoModal({proyectoId,currentUserId,tipo,onClose,onSaved,porNombre}){
+  // Rev127: se elige qué habilitar (S&H Ingreso, Subir a Chalet, Manejo) y, en Personal, la habilitación permanente de CP.
+  const TIPOS=tipo==="persona"
+    ?[["sh_ingreso","S&H Ingreso"],["sh_chalet","S&H Subir a Chalet"],["sh_manejo","S&H Manejo en Montaña"]]
+    :[["sh_ingreso","S&H Ingreso"],["sh_manejo","S&H Subir a Chalet (vehículo)"]];
   const[fecha,setFecha]=useState("2027-01-01");
+  const[sel,setSel]=useState(()=>new Set());
   const[saving,setSaving]=useState(false);
   const[prog,setProg]=useState(null); // {done, total}
-  // Rev86: cp_ingreso deriva del Radar de Obra automáticamente; cp_almuerzo/cp_cena eliminados
-  const TODOS_TIPOS_P=["sh_ingreso","sh_chalet","sh_manejo"];
-  const TODOS_TIPOS_V=["sh_ingreso","sh_manejo"];
-
+  const cpAct=tipo==="persona"&&cpForzadoActivo();
+  const[cpOn,setCpOn]=useState(false);
+  const[cpHasta,setCpHasta]=useState(()=>cmdAddDays(today(),4));
+  const tog=(k)=>{const n=new Set(sel);n.has(k)?n.delete(k):n.add(k);setSel(n);};
+  const hayAlgo=sel.size>0||cpOn;
   const save=async()=>{
-    if(!fecha)return;
+    if(!hayAlgo)return;
+    if(sel.size&&!fecha)return;
+    const quePasa=[];
+    if(sel.size)quePasa.push([...sel].map(k=>TIPOS.find(x=>x[0]===k)[1]).join(", ")+" hasta el "+cmdFmtDate(fecha)+" a todos");
+    if(cpOn)quePasa.push("CP Ingreso permanente (sin Radar) "+(cpHasta?"hasta el "+cmdFmtDate(cpHasta):"sin fecha de fin"));
+    if(!confirm("¿Aplicar?\n\n· "+quePasa.join("\n· ")))return;
     setSaving(true);
-    const tipos=tipo==="persona"?TODOS_TIPOS_P:TODOS_TIPOS_V;
-    // Fetch all entities
-    const{data:entities}=tipo==="persona"
-      ?await db.sel("personas",{cols:"id",f:[["deleted_at","is","null"]],lim:5000})
-      :await db.sel("vehiculos",{cols:"id",f:[["activo","eq",true]],lim:2000});
-    const{data:habsExist}=await db.sel("habilitaciones",{f:[["entity_type","eq",tipo==="persona"?"persona":"vehiculo"]],lim:10000});
-    const habMap={};
-    (habsExist||[]).forEach(h=>{
-      const eid=tipo==="persona"?h.persona_id:h.vehiculo_id;
-      habMap[`${eid}_${h.tipo}`]=h.id;
-    });
-    const total=(entities||[]).length*tipos.length;
-    let done=0;
-    for(const ent of(entities||[])){
-      for(const t of tipos){
-        const key=`${ent.id}_${t}`;
-        if(habMap[key]){
-          await db.upd("habilitaciones",{fecha_hasta:fecha,suspendida:false,motivo_suspension:null},[["id","eq",habMap[key]]]);
-        } else {
-          const payload={entity_type:tipo==="persona"?"persona":"vehiculo",tipo,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_hasta:fecha,suspendida:false};
-          if(tipo==="persona")payload.persona_id=ent.id;else payload.vehiculo_id=ent.id;
-          payload.tipo=t;
-          await db.ins("habilitaciones",payload);
+    if(cpOn){
+      const ok=await guardarCpForzado({activo:true,hasta:cpHasta||null,por:porNombre||"",at:new Date().toISOString()},currentUserId);
+      if(!ok){setSaving(false);alert("No se pudo guardar la habilitación permanente de CP. Revisá la conexión.");return;}
+    }
+    const tipos=[...sel];
+    if(tipos.length){
+      const{data:entities}=tipo==="persona"
+        ?await db.sel("personas",{cols:"id",f:[["deleted_at","is","null"]],lim:5000})
+        :await db.sel("vehiculos",{cols:"id",f:[["activo","eq",true]],lim:2000});
+      const{data:habsExist}=await db.sel("habilitaciones",{f:[["entity_type","eq",tipo==="persona"?"persona":"vehiculo"]],lim:10000});
+      const habMap={};
+      (habsExist||[]).forEach(h=>{const eid=tipo==="persona"?h.persona_id:h.vehiculo_id;habMap[`${eid}_${h.tipo}`]=h.id;});
+      const total=(entities||[]).length*tipos.length;
+      let done=0;
+      for(const ent of(entities||[])){
+        for(const t of tipos){
+          const key=`${ent.id}_${t}`;
+          if(habMap[key]){
+            await db.upd("habilitaciones",{fecha_hasta:fecha,suspendida:false,motivo_suspension:null},[["id","eq",habMap[key]]]);
+          }else{
+            const payload={entity_type:tipo==="persona"?"persona":"vehiculo",tipo:t,proyecto_id:proyectoId,otorgado_por:currentUserId,fecha_hasta:fecha,suspendida:false};
+            if(tipo==="persona")payload.persona_id=ent.id;else payload.vehiculo_id=ent.id;
+            await db.ins("habilitaciones",payload);
+          }
+          done++;
+          if(done%20===0)setProg({done,total});
         }
-        done++;
-        if(done%20===0)setProg({done,total});
       }
     }
     setSaving(false);setProg(null);onSaved();onClose();
   };
-
-  return <div className="mo"><div className="md" style={{maxWidth:400}}>
+  const desactivar=async()=>{
+    if(!confirm("¿Desactivar la habilitación permanente de CP? CP Ingreso vuelve a tomarse del Radar."))return;
+    setSaving(true);
+    const ok=await guardarCpForzado({activo:false,por:porNombre||"",at:new Date().toISOString()},currentUserId);
+    setSaving(false);
+    if(!ok){alert("No se pudo guardar. Revisá la conexión.");return;}
+    onSaved();onClose();
+  };
+  return <div className="mo"><div className="md" style={{maxWidth:460}}>
     <div className="mh"><div className="mt">⭐ Habilitar todo — {tipo==="persona"?"Personal":"Vehiculos"}</div><button className="mc" onClick={onClose}>x</button></div>
     <div className="mb">
-      <div style={{color:"var(--tx2)",fontSize:13,marginBottom:16}}>
-        Aplica <strong>todas</strong> las habilitaciones a {tipo==="persona"?"todas las personas":"todos los vehículos"} del sistema. Los que ya tienen habilitación actualiza la fecha; los que no la tienen la crea.
-      </div>
-      <div className="f"><label>Fecha de vencimiento</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/></div>
+      <div style={{fontFamily:"var(--fh)",fontWeight:700,textTransform:"uppercase",fontSize:13,color:"#60A5FA",marginBottom:6}}>Habilitaciones S&H</div>
+      <div style={{color:"var(--tx2)",fontSize:12,marginBottom:10}}>Elegí cuáles aplicar a {tipo==="persona"?"todas las personas":"todos los vehículos"}: a quien ya la tiene se le actualiza la fecha; a quien no, se le crea.</div>
+      {TIPOS.map(([k,l])=><label key={k} style={{display:"flex",alignItems:"center",gap:8,fontSize:14,padding:"5px 0",cursor:"pointer"}}><input type="checkbox" checked={sel.has(k)} onChange={()=>tog(k)} style={{width:"auto"}}/> {l}</label>)}
+      {sel.size>0&&<div className="f" style={{marginTop:8}}><label>Fecha de vencimiento</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/></div>}
+      {tipo==="persona"&&<div style={{borderTop:"1px solid var(--bd)",marginTop:14,paddingTop:12}}>
+        <div style={{fontFamily:"var(--fh)",fontWeight:700,textTransform:"uppercase",fontSize:13,color:"var(--gr)",marginBottom:6}}>CP Ingreso</div>
+        {cpAct
+          ?<div className="warn" style={{fontSize:12,marginBottom:0}}>⚠ <b>Habilitación permanente activada</b> {CP_FORZADO.hasta?"hasta el "+cmdFmtDate(CP_FORZADO.hasta):"(sin fecha de fin)"}: no se toma del Radar.{CP_FORZADO.por?" Activada por "+CP_FORZADO.por+".":""}
+              <div style={{marginTop:8}}><button className="bsm" disabled={saving} onClick={desactivar}>Desactivar (volver al Radar)</button></div></div>
+          :<>
+            <label style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:14,cursor:"pointer"}}><input type="checkbox" checked={cpOn} onChange={e=>setCpOn(e.target.checked)} style={{width:"auto",marginTop:3}}/> <span>Habilitación permanente de CP<div style={{fontSize:12,color:"var(--tx2)"}}>Todos quedan con CP Ingreso habilitado y no se toma del Radar (por ejemplo, mientras nadie actualiza el Radar). A los admins les aparece un cartel mientras esté activa.</div></span></label>
+            {cpOn&&<div className="f" style={{marginTop:8}}><label>Hasta (inclusive) — vacío = hasta que la desactives</label><input type="date" value={cpHasta} min={today()} onChange={e=>setCpHasta(e.target.value)}/></div>}
+          </>}
+      </div>}
       {prog&&<div style={{marginTop:12,fontSize:13,color:"var(--tx2)",textAlign:"center"}}>{prog.done} / {prog.total} habilitaciones...</div>}
-      <button className="bp" style={{marginTop:8,background:"rgba(16,185,129,.2)",border:"2px solid var(--gr)",color:"var(--gr)"}} disabled={saving||!fecha} onClick={save}>
-        {saving?"Procesando...":"Aplicar a todos"}
+      <button className="bp" style={{marginTop:14,background:"rgba(16,185,129,.2)",border:"2px solid var(--gr)",color:"var(--gr)"}} disabled={saving||!hayAlgo||(sel.size>0&&!fecha)} onClick={save}>
+        {saving?"Procesando...":hayAlgo?"Aplicar":"Elegí qué habilitar"}
       </button>
     </div>
   </div></div>;
@@ -2124,7 +2179,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   };
   const delP=async id=>{if(!confirm("Eliminar?"))return;await db.upd("personas",{deleted_at:new Date().toISOString()},[["id","eq",id]]);load();};
   // Nivel de habilitación de cada persona, calculado una vez por cambio de datos (se usa en tarjetas, filtro y columna Estado)
-  const nivelDe=useMemo(()=>{const m={};personas.forEach(p=>{m[p.id]=personaNivel(p.id,habs,radarMap,p.dni);});return m;},[personas,habs,radarMap]);
+  const nivelDe=useMemo(()=>{const m={};personas.forEach(p=>{m[p.id]=personaNivel(p.id,habs,radarMap,p.dni);});return m;},[personas,habs,radarMap,CP_VER]);
   let filtered=personas.filter(p=>!filter||`${p.nombre} ${p.apellido} ${p.dni} ${p.empresa||""}`.toLowerCase().includes(filter.toLowerCase()));
   if(filterEst==="venc"){
     // Filtro "próximas a vencer": personas con alguna hab S&H bloqueante (ing/chalet) o
@@ -2219,7 +2274,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
     {showModal&&<PersonModal p={editP} onClose={()=>setShowModal(false)} onSave={saveP}/>}
     {detalleP&&<PersonaDetalleModal persona={detalleP} proyectoId={proyectoId} onClose={()=>setDetalleP(null)}/>}
     {registroP&&user&&<RegistroManualAcceso persona={registroP} user={user} proyectoId={proyectoId} onClose={()=>setRegistroP(null)} onSaved={()=>setRegistroP(null)}/>}
-    {showMasivoTodo&&<HabTodoModal proyectoId={proyectoId} currentUserId={currentUserId} tipo="persona" onClose={()=>setShowMasivoTodo(false)} onSaved={load}/>}
+    {showMasivoTodo&&<HabTodoModal proyectoId={proyectoId} currentUserId={currentUserId} tipo="persona" porNombre={user&&(user.nombre||user.email)} onClose={()=>setShowMasivoTodo(false)} onSaved={load}/>}
     {showMasivo&&<HabMasivaModal proyectoId={proyectoId} currentUserId={currentUserId} habs={habs} onClose={()=>setShowMasivo(false)} onSaved={load}/>}
   </div>;
 }
@@ -2456,11 +2511,11 @@ function SesionDetalle({ses,onClose,onInverted,soloVer}){
   },[ses.id]);
   return <div className="mo"><div className="md md-lg">
     <div className="mh">
-      <div><div className="mt">{veh?veh.patente:"Sesion"} — detalle</div><div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)",marginTop:2}}>{ses.puesto} · {fmtTs(ses.cerrada_at)} · <span className={`ld ld-${ses.direccion==="entrada"?"in":"out"}`}>{dirVerbo(ses.puesto,ses.direccion)}</span></div></div>
+      <div><div className="mt">{veh?veh.patente:(esSesionAPie(ses)?"A pie":"Sesion")} — detalle</div><div style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)",marginTop:2}}>{ses.puesto} · {fmtTs(ses.cerrada_at)} · <span className={`ld ld-${ses.direccion==="entrada"?"in":"out"}`}>{dirVerbo(ses.puesto,ses.direccion)}</span></div></div>
       <div style={{display:"flex",gap:8,alignItems:"center"}}>
         <button className="bsm" onClick={()=>{
           const dir=dirVerbo(ses.puesto,ses.direccion).toUpperCase();
-          const pat=veh?veh.patente:"SIN PATENTE";
+          const pat=veh?veh.patente:(esSesionAPie(ses)?"A PIE":"SIN PATENTE");
           const desc=veh?` ${veh.descripcion||veh.tipo}`:"";
           const paxStr=pers.map(p=>`${p.nombre} ${p.apellido} ${p.empresa||""} DNI ${p.dni}`).join("; ");
           const txt=`${dir} — ${pat}${desc}${paxStr?` - ${paxStr}`:""}`;
@@ -2661,7 +2716,7 @@ function Registros({defaultPuesto,user}){
       <input className="fi" type="date" value={fFecha} onChange={e=>setFFecha(e.target.value)}/>
       <select className="fi" value={fp} onChange={e=>setFp(e.target.value)}><option value="">Todos los puestos</option><option>Puesto 1</option><option>Puesto 2</option><option>Puesto 3</option></select>
       <select className="fi" value={fd} onChange={e=>setFd(e.target.value)}><option value="">Entrada y salida</option><option value="entrada">Entrada</option><option value="salida">Salida</option></select>
-      <select className="fi" value={fTipo} onChange={e=>setFTipo(e.target.value)}><option value="">Todo</option><option value="vehiculo">Con vehiculo</option><option value="manual">Manuales</option></select>
+      <select className="fi" value={fTipo} onChange={e=>setFTipo(e.target.value)}><option value="">Todo</option><option value="vehiculo">Pasadas escaneadas</option><option value="manual">Manuales</option></select>
     </div>
     {fFecha&&<CmdErrBoundary><FichadasParaCorregir puesto={fp||null} desde={fFecha} hasta={fFecha} user={user} modo="panel" refrescar={list.length} onCambio={load}/></CmdErrBoundary>}
     {!loading&&coinc.length>0&&<div className="jo-wrap" style={{padding:"10px 12px"}}>
@@ -2670,7 +2725,7 @@ function Registros({defaultPuesto,user}){
     </div>}
     {loading?<Spin/>:<>
       {showSes&&sesFiltered.length>0&&<>
-        <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Ingresos con vehiculo — {sesFiltered.length}</div>
+        <div style={{fontFamily:"var(--fm)",fontSize:11,color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Pasadas escaneadas (con vehículo o a pie) — {sesFiltered.length}</div>
         <div className="tw" style={{marginBottom:16}}><table>
           <thead><tr><th>Hora</th><th>Dir.</th><th>Puesto</th><th>Patente</th><th>Quienes</th><th>Pers.</th><th>Deneg.</th>{canEdit&&<th></th>}</tr></thead>
           <tbody>{sesFiltered.map(s=>{
@@ -2679,7 +2734,7 @@ function Registros({defaultPuesto,user}){
               <td className="mn" style={{fontSize:12,color:"var(--tx2)"}}>{fmtTs(s.cerrada_at)}</td>
               <td><span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`}>{dirVerbo(s.puesto,s.direccion)}</span></td>
               <td style={{fontSize:12,color:"var(--tx2)"}}>{s.puesto}</td>
-              <td><span style={{fontFamily:"var(--fm)",fontWeight:600}}>{veh?veh.patente:"—"}</span></td>
+              <td><span style={{fontFamily:"var(--fm)",fontWeight:600}}>{veh?veh.patente:(esSesionAPie(s)?"🚶 A pie":"—")}</span></td>
               <td style={{color:"var(--tx2)",fontSize:12,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getPaxLabel(s.id)}</td>
               <td style={{fontFamily:"var(--fh)",fontSize:18,fontWeight:700}}>{s.total_personas}</td>
               <td>{(s.total_rechazados||0)>0?<span style={{color:"var(--rd)",fontWeight:600}}>{s.total_rechazados}</span>:<span style={{color:"var(--tx2)"}}>—</span>}</td>
@@ -5107,7 +5162,7 @@ function RecentSessions({puesto,onSelectSesion}){
       return <div key={s.id} className="sr" onClick={()=>onSelectSesion(s)}>
         <span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`}>{dirVerbo(puesto,s.direccion)}</span>
         <div style={{flex:1,minWidth:0}}>
-          <span style={{fontFamily:"var(--fm)",fontWeight:600,fontSize:13}}>{veh?veh.patente:"—"}</span>
+          <span style={{fontFamily:"var(--fm)",fontWeight:600,fontSize:13}}>{veh?veh.patente:(esSesionAPie(s)?"🚶 A pie":"—")}</span>
           <span style={{color:"var(--tx2)",fontSize:12,marginLeft:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getPaxStr(s.id)}</span>
         </div>
         <span style={{color:"var(--tx2)",fontSize:11,fontFamily:"var(--fm)",flexShrink:0}}>{fmtTs(s.cerrada_at)}</span>
@@ -5161,6 +5216,7 @@ function Puesto({user,pid}){
   };
   // Rev125: quien no figura en el Radar cargado en este puesto (o figura de franco) se consulta en vivo antes de decidir
   const completarRadar=async(dnis)=>{
+    if(cpForzadoActivo())return radarMap;
     const falt=dnis.filter(d=>{const x=radarDe(radarMap,d);return!x||!x.cpIngresoOk;});
     if(!falt.length)return radarMap;
     try{
@@ -5224,7 +5280,7 @@ function Puesto({user,pid}){
   const esMontanaP=effPuesto==="Puesto 2"||effPuesto==="Puesto 3";
   const manejoOk=(p)=>!!(p&&p.pills&&p.pills.some(x=>x.short==="MAN"&&x.color==="green"));
   const AVISO_MANEJO="⚠️ ATENCIÓN: NO HABILITADO PARA MANEJO EN MONTAÑA";
-  const conductor=(esMontanaP&&veh&&pax.length>0)?pax[0]:null;
+  const conductor=(esMontanaP&&veh&&!veh.data._aPie&&pax.length>0)?pax[0]:null;
   const conductorSinManejo=!!(conductor&&!manejoOk(conductor));
   const nombreDe=(p)=>p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI ${p.raw}`;
 
@@ -5328,7 +5384,7 @@ function Puesto({user,pid}){
     }
     setOffline(false); // la consulta funcionó → hay conexión
     found=data&&data[0];
-    const esConductor=esMontanaP&&!!veh&&pax.length===0; // el primero después del vehículo es quien maneja
+    const esConductor=esMontanaP&&!!veh&&!veh.data._aPie&&pax.length===0; // el primero después del vehículo es quien maneja
     // Arma la fila de una persona encontrada (habilitaciones, aviso de manejo, almuerzo arriba)
     const armar=(per,conductor,rm)=>{
       const rr=getHabPills("persona",per.id,habs,effPuesto,rm||radarMap,per.dni);
@@ -5384,7 +5440,7 @@ function Puesto({user,pid}){
     setPaxSnap([...pax]); // snapshot por si hay que copiar a la hoja alternativa
     setSaveStatus(null);
     const saveOnline=async()=>{
-      const r1=await db.ins("sesiones_acceso",{proyecto_id:pid,puesto:effPuesto,operador_id:user.id,vehiculo_id:veh.data.id||null,vehiculo_ok:veh.ok,vehiculo_razon:veh.data._noRegistrado?("No registrado: "+veh.data.patente):(veh.reason||null),direccion:d,total_personas:pax.length,total_aprobados:pax.filter(p=>p.ok).length,total_rechazados:pax.filter(p=>!p.ok).length});
+      const r1=await db.ins("sesiones_acceso",{proyecto_id:pid,puesto:effPuesto,operador_id:user.id,vehiculo_id:veh.data.id||null,vehiculo_ok:veh.ok,vehiculo_razon:veh.data._aPie?"A pie (sin vehículo)":(veh.data._noRegistrado?("No registrado: "+veh.data.patente):(veh.reason||null)),direccion:d,total_personas:pax.length,total_aprobados:pax.filter(p=>p.ok).length,total_rechazados:pax.filter(p=>!p.ok).length});
       if(!r1.ok||!r1.data||!r1.data[0])throw new Error("sesion: "+JSON.stringify(r1.data||{}).slice(0,200));
       if(pax.length>0){
         const r2=await db.ins("registros_acceso",pax.map((p,i)=>({sesion_id:r1.data[0].id,persona_id:p.person?p.person.id:null,dni_raw:p.raw,resultado:p.ok?"aprobado":"rechazado",motivo_rechazo:p.ok?null:p.reason,orden_escaneo:i+1})));
@@ -5430,6 +5486,8 @@ function Puesto({user,pid}){
     setDir(d);setSaving(false);setSaveStatus("online");setFase(F.D);
   };
   const nueva=()=>{setFase(F.V);setVeh(null);setPax([]);setPaxSnap([]);setVal("");setFlash(null);setPaxSugFrom(null);setSaveStatus(null);setRefreshKey(k=>k+1);};
+  // Rev127: gente que pasa a pie. Mismo flujo que con vehículo (escanear DNIs, ver habilitaciones, elegir sentido), sin patente.
+  const aPie=()=>{setVeh({data:{id:null,patente:"A PIE",tipo:"A pie",descripcion:"Sin vehículo",_aPie:true},ok:true,reason:null,pills:[]});setPax([]);setPaxSnap([]);setPaxSugFrom(null);setFlash(null);setVal("");setSaveStatus(null);setFase(F.P);};
   const dirLabel=dirVerbo(effPuesto,dir);
 
   // Admin sin puesto elegido: mostrar selector
@@ -5503,7 +5561,8 @@ function Puesto({user,pid}){
       </div>
       {flash&&<div className="fl fl-no"><div className="fll">{flash.label}</div><div style={{fontWeight:600,marginTop:2}}>{flash.sub}</div>{flash.reason&&<div style={{fontSize:13,color:"var(--rd)",marginTop:4}}>{flash.reason}</div>}</div>}
       {veh&&!veh.ok&&<div style={{marginTop:10,background:"rgba(239,68,68,.07)",border:"2px solid var(--rd)",borderRadius:8,padding:"16px 20px"}}><div style={{fontFamily:"var(--fh)",fontSize:24,fontWeight:800,color:"var(--rd)"}}>VEHICULO BLOQUEADO</div><div style={{fontFamily:"var(--fm)",fontSize:18,fontWeight:600,marginTop:4}}>{veh.data.patente}</div><div style={{fontSize:13,color:"var(--rd)",marginTop:6}}>{veh.reason}</div><button onClick={()=>setFase(F.P)} style={{marginTop:12,background:"none",border:"1px solid var(--bd)",color:"var(--tx2)",borderRadius:4,padding:"7px 16px",cursor:"pointer",fontSize:13}}>Registrar igualmente</button></div>}
-      <button className="btn-manual" onClick={()=>setShowManual(true)}>+ Registrar movimiento sin vehiculo</button>
+      <button className="btn-manual" style={{borderColor:"var(--acc2)",color:"var(--acc2)"}} onClick={aPie}>🚶 Pasan sin vehículo (a pie): escanear DNIs</button>
+      <button className="btn-manual" style={{opacity:.7,fontSize:11,marginTop:6}} onClick={()=>setShowManual(true)}>✍️ Movimiento manual sin escanear (buscar por nombre)</button>
     </>}
             {fase===F.P&&<>
       {paxSugFrom&&pax.length>0&&pax.some(p=>p._sugerido)&&<div style={{background:"rgba(139,92,246,.1)",border:"1px solid rgba(139,92,246,.4)",borderRadius:6,padding:"9px 14px",marginBottom:10,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
@@ -5601,7 +5660,7 @@ function Puesto({user,pid}){
         {/* Red de seguridad: el garitero ve EXACTO qué se va a registrar antes de elegir dirección */}
         <div style={{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:6,padding:"10px 14px",marginBottom:14}}>
           <div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Se va a registrar:</div>
-          {veh&&<div style={{fontFamily:"var(--fm)",fontSize:14,fontWeight:600,marginBottom:6}}>🚗 {veh.data.patente}{veh.data.descripcion&&!veh.data._noRegistrado?<span style={{fontSize:12,fontWeight:400,color:"var(--tx2)"}}> · {veh.data.descripcion}</span>:null}</div>}
+          {veh&&<div style={{fontFamily:"var(--fm)",fontSize:14,fontWeight:600,marginBottom:6}}>{veh.data._aPie?"🚶":"🚗"} {veh.data.patente}{veh.data.descripcion&&!veh.data._noRegistrado?<span style={{fontSize:12,fontWeight:400,color:"var(--tx2)"}}> · {veh.data.descripcion}</span>:null}</div>}
           {pax.length===0
             ?<div style={{fontSize:12,color:"var(--tx2)"}}>Sin pasajeros</div>
             :<div style={{maxHeight:160,overflowY:"auto"}}>{pax.map((p,i)=><div key={i} style={{fontSize:13,padding:"2px 0",color:p.ok?"var(--tx)":"var(--rd)"}}>· {p.person?`${p.person.nombre} ${p.person.apellido}`:`DNI ${p.raw}`}{!p.ok?" — bloqueado":""}{i===0&&conductor?" (conductor)":""}</div>)}</div>
@@ -5671,7 +5730,8 @@ function Puesto({user,pid}){
       </div>
       <div style={{display:"flex",gap:28,flexWrap:"wrap"}}><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Vehiculo</div><div style={{fontFamily:"var(--fm)",fontSize:20,fontWeight:600,marginTop:3}}>{veh&&veh.data.patente}</div></div><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Personas</div><div style={{fontFamily:"var(--fh)",fontSize:26,fontWeight:800,marginTop:2}}><span style={{color:"var(--gr)"}}>{(paxSnap.length?paxSnap:pax).filter(p=>p.ok).length}</span>{(paxSnap.length?paxSnap:pax).some(p=>!p.ok)&&<span style={{color:"var(--rd)",fontSize:22}}> / {(paxSnap.length?paxSnap:pax).filter(p=>!p.ok).length}x</span>}</div></div><div><div style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx2)",textTransform:"uppercase"}}>Tipo</div><div style={{marginTop:6}}><span className={`ld ld-${dir==="entrada"?"in":"out"}`} style={{fontSize:13}}>{dirLabel.toUpperCase()}</span></div></div></div></div>
       <button className="bnew" onClick={nueva}>+ Nuevo vehiculo</button>
-      <button className="btn-manual" onClick={()=>setShowManual(true)}>+ Registrar movimiento sin vehiculo</button>
+      <button className="btn-manual" style={{borderColor:"var(--acc2)",color:"var(--acc2)"}} onClick={aPie}>🚶 Pasan sin vehículo (a pie): escanear DNIs</button>
+      <button className="btn-manual" style={{opacity:.7,fontSize:11,marginTop:6}} onClick={()=>setShowManual(true)}>✍️ Movimiento manual sin escanear (buscar por nombre)</button>
     </>}
     <RecentSessions key={refreshKey} puesto={effPuesto} onSelectSesion={setDetalleSes}/>
     {warnSalidaComida&&<div className="mo"><div className="md">
@@ -5826,7 +5886,7 @@ function PublicDashboard({onBack,embedTab}){
     const habOk=(pid,tipo)=>habs.some(h=>h.entity_type==="persona"&&h.persona_id===pid&&h.tipo===tipo&&!h.suspendida&&(!h.fecha_hasta||(h.fecha_hasta+"").slice(0,10)>=today()));
     if(p&&p[0]){
       const shOk=habOk(p[0].id,"sh_ingreso");
-      const cpOk=!!(radarDe(radarMap,p[0].dni)&&radarDe(radarMap,p[0].dni).cpIngresoOk);
+      const cpOk=cpForzadoActivo()||!!(radarDe(radarMap,p[0].dni)&&radarDe(radarMap,p[0].dni).cpIngresoOk);
       setSearchResult({type:"persona",data:p[0],shOk,cpOk,estado:personaEstado(p[0].id,habs,radarMap,p[0].dni)});
       setSearching(false);return;
     }
@@ -5835,7 +5895,7 @@ function PublicDashboard({onBack,embedTab}){
     const found=(p2||[]).filter(x=>`${x.nombre} ${x.apellido}`.toLowerCase().includes(q.toLowerCase()));
     if(found.length===1){
       const shOk=habOk(found[0].id,"sh_ingreso");
-      const cpOk=!!(radarDe(radarMap,found[0].dni)&&radarDe(radarMap,found[0].dni).cpIngresoOk);
+      const cpOk=cpForzadoActivo()||!!(radarDe(radarMap,found[0].dni)&&radarDe(radarMap,found[0].dni).cpIngresoOk);
       setSearchResult({type:"persona",data:found[0],shOk,cpOk,estado:personaEstado(found[0].id,habs,radarMap,found[0].dni)});
     } else if(found.length>1){
       setSearchResult({type:"multiple",items:found});
@@ -6000,7 +6060,7 @@ function PublicDashboard({onBack,embedTab}){
             const habCheck=(tipo)=>{const h=habs.find(x=>x.entity_type==="persona"&&x.persona_id===pid&&x.tipo===tipo&&!x.suspendida&&(!x.fecha_hasta||(x.fecha_hasta+"").slice(0,10)>=today()));return h?{ok:true,fecha:h.fecha_hasta}:{ok:false};};
             const shIng=habCheck("sh_ingreso");const shCha=habCheck("sh_chalet");const shMan=habCheck("sh_manejo");
             const rr=radarDe(radarMap,dni);
-            const cpOk=!!(rr&&rr.cpIngresoOk);
+            const cpOk=cpForzadoActivo()||!!(rr&&rr.cpIngresoOk);
             const cpCod=rr?rr.codigo:"—";
             return <div style={{background:"var(--s1)",border:"1px solid var(--bd)",borderRadius:8,padding:"20px 24px"}}>
               <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
@@ -7279,6 +7339,16 @@ function App(){
     return()=>document.removeEventListener("keydown",onKey);
   },[]);
 
+  // Rev127: habilitación permanente de CP (app_config). Se lee al entrar y cada 2 minutos; al cambiar, se redibuja todo.
+  const[cpTick,setCpTick]=useState(0);
+  useEffect(()=>{CP_SUBS.add(setCpTick);return()=>{CP_SUBS.delete(setCpTick);};},[]);
+  useEffect(()=>{if(!user)return;cargarCpForzado();const i=setInterval(cargarCpForzado,120000);return()=>clearInterval(i);},[user]);
+  const desactivarCp=async()=>{
+    if(!confirm("¿Desactivar la habilitación permanente de CP?\n\nCP Ingreso vuelve a tomarse del Radar."))return;
+    const ok=await guardarCpForzado({activo:false,por:user.nombre||user.email||"",at:new Date().toISOString()},user.id);
+    if(!ok)alert("No se pudo guardar. Revisá la conexión.");
+  };
+
   const login=async p=>{
     setUser(p);
     setTab({puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi",admin_viandas:"vi",sobrestante:"jpd",jefe_obra:"jpd"}[p.rol]||"per");
@@ -7329,6 +7399,11 @@ function App(){
     {pid&&<div style={{background:"var(--s2)",borderBottom:"1px solid var(--bd)",padding:"5px 12px",display:"flex",alignItems:"center",gap:8,overflowX:"auto"}}><ChaletMini proyectoId={pid} user={user}/></div>}
     {/* Rev116: el aviso de ingresos sin área es solo para sobrestantes (no para jefe de obra). */}
     {user.rol==="sobrestante"&&<CmdErrBoundary><JoAvisoSinArea user={user}/></CmdErrBoundary>}
+    {user.rol==="admin"&&cpForzadoActivo()&&<div style={{background:"rgba(245,158,11,.16)",borderBottom:"2px solid var(--acc)",color:"var(--acc)",padding:"8px 20px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",fontSize:13}}>
+      <span style={{fontSize:18}}>⚠️</span>
+      <span style={{flex:1,minWidth:220}}><b>HABILITACIÓN PERMANENTE DE CP ACTIVADA</b> {CP_FORZADO.hasta?"hasta el "+cmdFmtDate(CP_FORZADO.hasta):"(sin fecha de fin)"}: CP Ingreso no se toma del Radar y figuran todos habilitados.{CP_FORZADO.por?" Activada por "+CP_FORZADO.por+(CP_FORZADO.at?" el "+fmtTs(CP_FORZADO.at):""):""}</span>
+      <button className="bsm" style={{flexShrink:0}} onClick={desactivarCp}>Desactivar</button>
+    </div>}
     {tabs.length>1&&<div className="nav grp">{NAV_GROUPS.map(g=>{
       const gt=tabs.filter(t=>g.ks.includes(t.k));
       if(!gt.length)return null;
