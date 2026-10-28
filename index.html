@@ -400,7 +400,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev130";
+const APP_REV="Rev131";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -614,13 +614,14 @@ const personaNivel=(id,habs,radarMap,dni)=>{
 };
 // Qué niveles entran en cada tarjeta/filtro de Personal
 const NIVEL_FILTRO={ingreso:["ing","cha","man"],chalet:["cha","man"],manejo:["man"],no:["no"]};
-// vehiculoEstado(id, habs) — Rev86: retorna "no" (sin sh_ingreso), "par" (sh_ingreso OK pero
-// sh_manejo no — desde Rev98 solo advierte, no bloquea en ningún puesto), "ok" (todo OK).
+// vehiculoEstado(id, habs) — retorna "no" (sin sh_ingreso), "par" (sh_ingreso OK pero Sub. Chalet suspendido o vencido),
+// "ok" (sh_ingreso OK y Sub. Chalet vigente o sin cargar). Rev131: sin cargar ya no es "parcial" (en el puesto pasa en verde);
+// suspendido no sube al chalet (P2/P3 lo bloquean); vencido solo da aviso.
 const vehiculoEstado=(id,habs)=>{
   const shIng=habSt(getHab("vehiculo",id,"sh_ingreso",habs));
   if(shIng!=="ok")return"no";
   const shMan=habSt(getHab("vehiculo",id,"sh_manejo",habs));
-  if(shMan!=="ok")return"par";
+  if(shMan==="sus"||shMan==="exp")return"par";
   return"ok";
 };
 const chkAuth=(type,id,habs)=>{
@@ -701,18 +702,23 @@ const getHabPills=(entityType,entityId,habs,puesto,radarMap,personaDni)=>{
       reason:blocks?("Falta: "+reasons.join(" + ")):null,
     };
   }
-  // vehiculo — Rev98: solo bloquea por S&H Ingreso en todos los puestos; Subir Chalet (sh_manejo) solo advierte.
+  // vehiculo — S&H Ingreso bloquea en todos los puestos.
+  // Rev131: Subir Chalet (sh_manejo) solo bloquea en P2/P3 si está SUSPENDIDA (la suspendió S&H a propósito).
+  // Sin cargar ("+ Agregar") o vigente → verde, pasa. Vencida → aviso naranja, no bloquea (como desde Rev98).
   const shIng=getStatus("sh_ingreso"),shMan=getStatus("sh_manejo");
-  const blocks=shIng!=="ok";
+  const chaSusp=!isP1&&shMan==="suspended";
+  const blocks=shIng!=="ok"||chaSusp;
   const reasons=[];
-  if(shIng!=="ok")reasons.push("S&H Ingreso");
+  if(shIng!=="ok")reasons.push("Falta: S&H Ingreso");
+  if(chaSusp)reasons.push("Subir a Chalet SUSPENDIDO por S&H");
   return{
     pills:[
       {label:"S&H Ingreso",short:"ING",color:shIng==="ok"?"green":"red"},
-      {label:"Subir Chalet",short:"CHA",color:shMan==="ok"?"green":"orange"},
+      {label:shMan==="suspended"?"Subir Chalet SUSPENDIDO":shMan==="expired"?"Subir Chalet vencido":"Subir Chalet",short:"CHA",
+        color:shMan==="ok"||shMan==="missing"?"green":chaSusp?"red":"orange"},
     ],
     blocks,
-    reason:blocks?("Falta: "+reasons.join(" + ")):null,
+    reason:blocks?reasons.join(" · "):null,
   };
 };
 
@@ -2450,7 +2456,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
     <div className="sg">
       <div className="sc"><div className="sv">{vehiculos.length}</div><div className="slb">Total</div></div>
       <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="ok"?"":"ok")} style={filterEst==="ok"?{borderColor:"var(--gr)"}:{}}><div className="sv" style={{color:"var(--gr)"}}>{vehiculos.filter(v=>vehiculoEstado(v.id,habs)==="ok").length}</div><div className="slb">Habilitados</div></div>
-      <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="par"?"":"par")} style={filterEst==="par"?{borderColor:"var(--acc)"}:{}}><div className="sv" style={{color:"var(--acc)"}}>{vehiculos.filter(v=>vehiculoEstado(v.id,habs)==="par").length}</div><div className="slb">Parciales</div></div>
+      <div className="sc sc-btn" title="Sub. Chalet suspendido (Puesto 2 y 3 lo bloquean) o vencido (solo aviso)" onClick={()=>setFilterEst(filterEst==="par"?"":"par")} style={filterEst==="par"?{borderColor:"var(--acc)"}:{}}><div className="sv" style={{color:"var(--acc)"}}>{vehiculos.filter(v=>vehiculoEstado(v.id,habs)==="par").length}</div><div className="slb">Parciales</div></div>
       <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="no"?"":"no")} style={filterEst==="no"?{borderColor:"var(--rd)"}:{}}><div className="sv" style={{color:"var(--rd)"}}>{vehiculos.filter(v=>vehiculoEstado(v.id,habs)==="no").length}</div><div className="slb">Bloqueados</div></div>
       <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="venc"?"":"venc")} title="Habilitaciones S&H que vencen en los próximos 3 días" style={{borderColor:filterEst==="venc"?"#FBBF24":(vProxVenc>0?"rgba(251,191,36,.5)":undefined),animation:vProxVenc>0&&filterEst!=="venc"?"pulseWarn 2s infinite":undefined}}>
         <div className="sv" style={{color:vProxVenc>0?"#FBBF24":"var(--tx2)"}}>{vProxVenc}</div>
@@ -2472,7 +2478,9 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
             <td style={{color:"var(--tx2)"}}>{v.capacidad?`${v.capacidad}p`:"—"}</td>
             <HabCell hab={getHab("vehiculo",v.id,"sh_ingreso",habs)} tipo="sh_ingreso" entityType="vehiculo" entityId={v.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load} onHabSaved={onHabSaved} tdClass="sh-c"/>
             <HabCell hab={getHab("vehiculo",v.id,"sh_manejo",habs)} tipo="sh_manejo" entityType="vehiculo" entityId={v.id} proyectoId={proyectoId} canEdit={canSH&&!readOnly} currentUserId={currentUserId} onRefresh={load} onHabSaved={onHabSaved}/>
-            <td>{est==="ok"?<span className="est-ok">ok</span>:est==="par"?<span className="est-par">parcial</span>:<span className="est-no">bloq.</span>}</td>
+            <td>{est==="ok"?<span className="est-ok">ok</span>:est==="par"?(habSt(getHab("vehiculo",v.id,"sh_manejo",habs))==="sus"
+              ?<span className="est-par" title="Sub. Chalet suspendido: entra por Puesto 1, pero Puesto 2 y 3 lo bloquean">no sube</span>
+              :<span className="est-par" title="Sub. Chalet vencido: en Puesto 2 y 3 sale un aviso, no se bloquea">parcial</span>):<span className="est-no">bloq.</span>}</td>
             {!readOnly&&<td><div style={{display:"flex",gap:5}}>
               {canEditVeh&&<button className="bsm" onClick={()=>{setEditV(v);setShowModal(true);}}>Editar</button>}
               {(userRole==="admin"||userRole==="sh")&&<button className="bsm bsm-r" onClick={()=>delV(v.id)}>x</button>}
@@ -5998,8 +6006,10 @@ function PublicDashboard({onBack,embedTab}){
         const{data:vhabs}=await db.sel("habilitaciones",{f:[["entity_type","eq","vehiculo"],["vehiculo_id","eq",v[0].id]]});
         const habVOk=(tipo)=>(vhabs||[]).some(h=>h.tipo===tipo&&!h.suspendida&&(!h.fecha_hasta||(h.fecha_hasta+"").slice(0,10)>=today()));
         const shOk=habVOk("sh_ingreso");
-        const chaletOk=habVOk("sh_manejo");
-        setSearchResult({type:"vehiculo",data:v[0],shOk,chaletOk});
+        // Rev131: Sub. Chalet sin cargar o vigente = habilitado; solo suspendido no sube; vencido = aviso
+        const hm=(vhabs||[]).find(h=>h.tipo==="sh_manejo");
+        const chaletSt=!hm?"ok":hm.suspendida?"susp":(hm.fecha_hasta&&(hm.fecha_hasta+"").slice(0,10)<today())?"venc":"ok";
+        setSearchResult({type:"vehiculo",data:v[0],shOk,chaletOk:chaletSt!=="susp",chaletSt});
       } else {
         setSearchResult({type:"nada"});
       }
@@ -6183,7 +6193,7 @@ function PublicDashboard({onBack,embedTab}){
               </div>
               <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
                 <div style={{padding:"8px 14px",background:"var(--s2)",borderRadius:4,fontSize:13}}><span style={{color:"var(--tx2)"}}>S&H Ingreso: </span><span style={{color:searchResult.shOk?"var(--gr)":"var(--rd)",fontWeight:600}}>{searchResult.shOk?"Habilitado":"No habilitado"}</span></div>
-                <div style={{padding:"8px 14px",background:"var(--s2)",borderRadius:4,fontSize:13}}><span style={{color:"var(--tx2)"}}>Sub. Chalet: </span><span style={{color:chaletOk?"var(--gr)":"var(--rd)",fontWeight:600}}>{chaletOk?"Habilitado":"No habilitado"}</span></div>
+                <div style={{padding:"8px 14px",background:"var(--s2)",borderRadius:4,fontSize:13}}><span style={{color:"var(--tx2)"}}>Sub. Chalet: </span><span style={{color:searchResult.chaletSt==="susp"?"var(--rd)":searchResult.chaletSt==="venc"?"var(--acc)":"var(--gr)",fontWeight:600}}>{searchResult.chaletSt==="susp"?"SUSPENDIDO (no sube)":searchResult.chaletSt==="venc"?"Vencido (aviso)":"Habilitado"}</span></div>
               </div>
             </div>;
           })()}
