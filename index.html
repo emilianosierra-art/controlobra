@@ -392,6 +392,46 @@ button.jo-fp:hover{filter:brightness(1.3)}
 .jo-chip{display:inline-flex;align-items:center;gap:4px;background:var(--s2);border:1px solid var(--bd);border-radius:12px;padding:2px 4px 2px 10px;font-size:12px}
 .jo-chip button{background:none;border:none;color:var(--tx3);cursor:pointer;font-size:14px;line-height:1;padding:0 4px}.jo-chip button:hover{color:var(--rd)}
 @media(max-width:700px){.jo-cal{max-width:none}.jo-mx .c1{min-width:120px}}
+/* Rev132: plato/tarjeta y bandeja/tarjeta uno al lado del otro en Escanear (Viandas) */
+.cmd-fijos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;align-items:stretch}
+.cmd-fijos .cmd-plato{margin-bottom:0}
+.cmd-fijos .cmd-plato.ok{flex-wrap:wrap}
+/* Rev132: "Últimos movimientos" del Puesto (antes los nombres se pisaban con la hora en pantallas angostas) */
+.srmov-m{flex:1;min-width:0;display:flex;align-items:baseline;gap:8px}
+.srmov-pat{font-family:var(--fm);font-weight:600;font-size:13px;flex-shrink:0}
+.srmov-pax{color:var(--tx2);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srmov-ts{color:var(--tx2);font-size:11px;font-family:var(--fm);flex-shrink:0}
+/* Rev132: celular — que nada se pise ni obligue a deslizar la página de costado */
+@media(max-width:600px){
+  .topbar{height:auto;min-height:48px;padding:6px 10px;gap:8px}
+  .brand{font-size:18px;line-height:1.15}
+  .nav.grp{flex-wrap:wrap;overflow-x:visible;padding:6px 8px;gap:6px}
+  .ngrp{border-bottom:1px solid var(--bd);border-radius:6px;max-width:100%}
+  .ngrp-b{flex-wrap:wrap}
+  .ngrp-t{padding:4px 9px 0;font-size:8px}
+  .ngrp .nb{padding:5px 9px 7px;font-size:12px;min-height:0}
+  .cmini{flex-wrap:wrap;row-gap:6px}
+  .ptit{font-size:22px}
+  .ph2{margin-bottom:12px}
+  .sg{gap:8px;margin-bottom:12px}
+  .sc{padding:10px 12px}
+  .sv{font-size:28px}
+  .tw{max-height:calc(100vh - 110px)}
+  input.fi{min-width:0}
+  /* Personal y Vehículos: la primera columna (persona / patente) queda fija al deslizar la tabla de costado */
+  .tw-fix1 tbody td:first-child,.tw-fix1 thead tr:first-child th:first-child{position:sticky;left:0;z-index:4;background:var(--s1)}
+  .tw-fix1 thead tr:first-child th:first-child{z-index:12;background:var(--s2)}
+  .tw-fix1 tbody td:first-child{max-width:140px}
+  .tw-fix1 .av{display:none}
+  .srmov-m{flex-direction:column;align-items:flex-start;gap:1px}
+  .srmov-pax{max-width:100%}
+  .mo{padding:8px}
+  .mh{padding:12px 16px}.mb{padding:16px}.mf{padding:0 16px 16px}
+}
+@media(max-width:420px){
+  .top-nom{display:none}
+  .cmd-fijos .cmd-plato{font-size:12px;padding:8px 10px}
+}
 </style>
 </head>
 <body>
@@ -400,7 +440,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev131";
+const APP_REV="Rev132";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -927,7 +967,7 @@ function ChaletMini({proyectoId,user}){
     <span style={{fontSize:9,color,opacity:.7}}>▾</span>
   </div>;
   return <>
-    <div style={{display:"flex",alignItems:"center",gap:6}}>
+    <div className="cmini" style={{display:"flex",alignItems:"center",gap:6}}>
       <TotalPill n={data.ep} label="EN PREDIO" sub="(campamento+camino+chalet)" color="#F59E0B" listKey="plp"/>
       <span style={{color:"var(--tx3)",fontSize:16,opacity:.35,margin:"0 2px"}}>│</span>
       <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginRight:1}}>CAM</span>
@@ -2278,7 +2318,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
       {filterEst&&<button className="bsm" onClick={()=>setFilterEst("")}>x Filtro activo</button>}
       {aviso&&<span style={{fontSize:12,color:aviso.startsWith("✓")?"var(--gr)":"var(--acc)",alignSelf:"center"}}>{aviso}</span>}
     </div>
-    {loading?<Spin/>:<div className="tw"><table>
+    {loading?<Spin/>:<div className="tw tw-fix1"><table>
       <thead>
         <tr>
           <th rowSpan={2} style={{verticalAlign:"bottom",borderRight:"1px solid var(--bd)",top:0}}>Persona</th>
@@ -2464,7 +2504,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
       </div>
     </div>
     <div className="fb"><input className="fi" placeholder="Buscar patente o descripcion..." value={filter} onChange={e=>setFilter(e.target.value)} style={{width:280}}/>{filterEst&&<button className="bsm" onClick={()=>setFilterEst("")}>x Filtro activo</button>}</div>
-    {loading?<Spin/>:<div className="tw"><table>
+    {loading?<Spin/>:<div className="tw tw-fix1"><table>
       <thead><tr><th>Patente</th><th>Tipo</th><th>Descripcion</th><th>Empresa</th><th>Cap.</th><th className="sh-h">S&H Ingreso</th><th className="sh-h" style={{borderLeft:"none"}}>Sub.Chalet</th><th>Estado</th>{!readOnly&&<th></th>}</tr></thead>
       <tbody>
         {filtered.length===0&&<tr><td colSpan={readOnly?8:9} style={{textAlign:"center",color:"var(--tx2)",padding:28}}>Sin vehiculos</td></tr>}
@@ -3213,12 +3253,19 @@ const cmdFetchComeChalet=async(fecha)=>{
   const{data:pers}=await db.sel("personas",{cols:"id,dni",inFilter:["id",personaIds]});
   return new Set((pers||[]).map(p=>p.dni).filter(Boolean));
 };
-// Plato/tarjeta: se entrega una sola vez y queda fijo para la persona (no es por día). Map dni → entregado_at.
-const cmdFetchPlatos=async()=>{
-  const{data}=await db.sel("viandas_plato",{cols:"dni,entregado_at",lim:5000});
+// Plato/tarjeta y (Rev132) bandeja/tarjeta: se entregan una sola vez y quedan fijos en la persona (no es por día).
+// Cada uno en su tabla (dni PK, entregado_at, entregado_por, puesto). Map dni → entregado_at.
+const CMD_FIJOS={
+  plato:  {tabla:"viandas_plato",  ico:"🍽",corto:"Plato",  txt:"plato / tarjeta",  lbl:"Plato/tarjeta",  o:"o"},
+  bandeja:{tabla:"viandas_bandeja",ico:"🍱",corto:"Bandeja",txt:"bandeja / tarjeta",lbl:"Bandeja/tarjeta",o:"a"},
+};
+const cmdFetchFijo=async(k)=>{
+  const{data}=await db.sel(CMD_FIJOS[k].tabla,{cols:"dni,entregado_at",lim:20000});
   const m={};(data||[]).forEach(r=>{m[r.dni]=r.entregado_at;});
   return m;
 };
+const cmdFetchPlatos=()=>cmdFetchFijo("plato");
+const cmdFetchBandejas=()=>cmdFetchFijo("bandeja");
 // Almuerzo y cena se pueden entregar más de una vez por persona por día (con aviso); desayuno y merienda, una sola.
 const CMD_REPETIBLES=['almuerzo','cena'];
 const cmdRepetible=(k)=>CMD_REPETIBLES.includes(k);
@@ -3435,7 +3482,7 @@ function CmdPrefixBar({prefix,togglePref}){
     </div>
   </div>;
 }
-function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,onTogglePlato,isAdmin,onOpenDieta,onPick,onDispatch,onUndispatch,canDispatch,isReadOnly,onAgregarComida,onAgregarPersona}){
+function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,onTogglePlato,bandejas,onToggleBandeja,isAdmin,onOpenDieta,onPick,onDispatch,onUndispatch,canDispatch,isReadOnly,onAgregarComida,onAgregarPersona}){
   const[q,setQ]=useState('');
   const[mealFilters,setMealFilters]=useState(new Set());
   const[locFilters,setLocFilters]=useState(new Set());
@@ -3452,7 +3499,7 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
   const toggleLoc=(l)=>setLocFilters(prev=>{const n=new Set(prev);if(n.has(l))n.delete(l);else n.add(l);return n;});
   const clearFilters=()=>{setMealFilters(new Set());setLocFilters(new Set());setStatusFilter(null);setDietaOnly(false);setChaletOnly(false);setAgregOnly(false);setQ('');};
   const chSet=chaletSet||new Set();
-  const pl=platos||{};
+  const pl=platos||{},bj=bandejas||{};
   const chaletCount=useMemo(()=>personas.filter(p=>chSet.has(p.dni)).length,[personas,chSet]);
   const agregCount=useMemo(()=>personas.filter(p=>p.agregado).length,[personas]);
   const toggleMealFor=(e,p,ckey)=>{
@@ -3546,7 +3593,7 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
         const dietaNote=dietaAplica?cmdGetDietaNote(dv):'';
         const dietaHasta=cmdGetDietaHasta(dv);
         const comeChalet=chSet.has(p.dni);
-        const tienePlato=!!pl[p.dni];
+        const tienePlato=!!pl[p.dni],tieneBandeja=!!bj[p.dni];
         const canClickPill=canDispatch&&!isReadOnly;
         return <div key={p.id} className={'cmd-row'+(dietaAplica?' dieta':'')}>
           <div className="info" onClick={()=>onPick&&onPick(p)} style={{cursor:onPick?'pointer':'default'}}>
@@ -3558,6 +3605,9 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
               {tienePlato
                 ?<span className="badgePlato" title={'Tiene plato/tarjeta desde '+fmtTs(pl[p.dni])} onClick={e=>{e.stopPropagation();onTogglePlato&&onTogglePlato(p);}}>🍽 Plato ✓</span>
                 :(onTogglePlato&&<span className="badgePlato no" title="Todavía no recibió plato/tarjeta — click para marcar la entrega" onClick={e=>{e.stopPropagation();onTogglePlato(p);}}>+ Plato/tarjeta</span>)}
+              {tieneBandeja
+                ?<span className="badgePlato" title={'Tiene bandeja/tarjeta desde '+fmtTs(bj[p.dni])} onClick={e=>{e.stopPropagation();onToggleBandeja&&onToggleBandeja(p);}}>🍱 Bandeja ✓</span>
+                :(onToggleBandeja&&<span className="badgePlato no" title="Todavía no recibió bandeja/tarjeta — click para marcar la entrega" onClick={e=>{e.stopPropagation();onToggleBandeja(p);}}>+ Bandeja/tarjeta</span>)}
               {p.letra&&<span className="letra" title={p.letraNom}>{p.letra}-{p.numero}</span>}
             </div>
             <div className="meta">DNI {p.dni} · {p.empresa}</div>
@@ -3590,7 +3640,7 @@ function CmdListado({personas,despachos,fecha,setFecha,dieta,chaletSet,platos,on
     }
   </div>;
 }
-function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,prefix,togglePref,onDispatch,onUndispatch,preloadPersona,clearPreload,fecha,isReadOnly,onAgregarComida,onAgregarPersona}){
+function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,bandejas,onToggleBandeja,prefix,togglePref,onDispatch,onUndispatch,preloadPersona,clearPreload,fecha,isReadOnly,onAgregarComida,onAgregarPersona}){
   const[dni,setDni]=useState('');
   const[personaSel,setPersona]=useState(null);
   // Siempre la versión actual del listado (si se le agrega una comida, la tarjeta se actualiza sola)
@@ -3650,7 +3700,6 @@ function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,prefix,toggl
   const hasDieta=cmdIsDietaActiveForDate(dv,fecha);
   const dietaNote=hasDieta?cmdGetDietaNote(dv):'';
   const dietaHasta=hasDieta?cmdGetDietaHasta(dv):'';
-  const platoAt=persona&&platos?platos[persona.dni]:null;
   return <div>
     <CmdPrefixBar prefix={prefix} togglePref={togglePref}/>
     <div className="cmd-scaninp">
@@ -3674,15 +3723,20 @@ function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,prefix,toggl
         {dietaNote&&<div style={{fontSize:12,fontWeight:600,letterSpacing:.2,textTransform:'none',opacity:.85}}>Nota: {dietaNote}</div>}
         {dietaHasta&&<div style={{fontSize:11,fontWeight:600,textTransform:'none',opacity:.75}}>⏱ aplica hasta {cmdFmtDate(dietaHasta)}</div>}
       </div>}
-      {platoAt
-        ?<div className="cmd-plato ok">
-          <span>✓ Ya tiene plato/tarjeta <span style={{opacity:.75,fontWeight:500}}>(desde {fmtTs(platoAt)})</span></span>
-          {onTogglePlato&&<button onClick={()=>onTogglePlato(persona)}>quitar</button>}
-        </div>
-        :(onTogglePlato&&<button className="cmd-plato pend" onClick={()=>onTogglePlato(persona)}>
-          ☐ Se entregó plato / tarjeta
-          <span style={{display:'block',fontSize:10,fontWeight:600,opacity:.8,marginTop:2,textTransform:'none',letterSpacing:0}}>Todavía no tiene · tocá cuando se lo entregues (queda fijo)</span>
-        </button>)}
+      {/* Rev132: plato/tarjeta y bandeja/tarjeta, uno al lado del otro; los dos quedan fijos en la persona */}
+      <div className="cmd-fijos">
+        {[["plato",platos,onTogglePlato],["bandeja",bandejas,onToggleBandeja]].map(([k,mapa,onT])=>{
+          const F=CMD_FIJOS[k],at=mapa?mapa[persona.dni]:null;
+          if(at)return <div key={k} className="cmd-plato ok">
+            <span>✓ Ya tiene {F.txt} <span style={{opacity:.75,fontWeight:500}}>(desde {fmtTs(at)})</span></span>
+            {onT&&<button onClick={()=>onT(persona)}>quitar</button>}
+          </div>;
+          return onT?<button key={k} className="cmd-plato pend" onClick={()=>onT(persona)}>
+            ☐ Se entregó {F.txt}
+            <span style={{display:'block',fontSize:10,fontWeight:600,opacity:.8,marginTop:2,textTransform:'none',letterSpacing:0}}>Todavía no tiene · tocá cuando se l{F.o} entregues (queda fij{F.o})</span>
+          </button>:null;
+        })}
+      </div>
       <div className="cmd-mgrid">
         {CMD_COMIDAS.map(c=>{
           const aplica=persona.comidas.includes(c.key);const cnt=dispCount(c.key);const disp=cnt>0;
@@ -4880,6 +4934,7 @@ function Comedor({user,proyectoId}){
   const[dieta,setDieta]=useState({});
   const[chaletSet,setChaletSet]=useState(new Set()); // DNIs de personas que comen en chalet hoy
   const[platos,setPlatos]=useState({}); // dni → entregado_at (plato/tarjeta, fijo por persona)
+  const[bandejas,setBandejas]=useState({}); // Rev132: dni → entregado_at (bandeja/tarjeta, fija por persona)
   const[loading,setLoading]=useState(true);
   const[prefix,setPrefix]=useState(()=>new Set());
   const[picked,setPicked]=useState(null);
@@ -4889,20 +4944,21 @@ function Comedor({user,proyectoId}){
 
   // Cargar personas del día + despachos del día + dieta + come_chalet + platos (todo desde Supabase)
   const loadAll=async()=>{
-    const[p,d,di,ch,pl,ag]=await Promise.all([
+    const[p,d,di,ch,pl,ag,bj]=await Promise.all([
       cmdFetchPersonasFecha(fecha),
       cmdFetchDespachos(fecha),
       cmdFetchDieta(),
       cmdFetchComeChalet(fecha),
       cmdFetchPlatos(),
       cmdFetchAgregados(fecha),
+      cmdFetchBandejas(),
     ]);
-    setPersonasRadar(p);setDespachosDia(d);setDieta(di);setChaletSet(ch);setPlatos(pl);setAgregados(ag);setLoading(false);
+    setPersonasRadar(p);setDespachosDia(d);setDieta(di);setChaletSet(ch);setPlatos(pl);setAgregados(ag);setBandejas(bj);setLoading(false);
   };
   // Poll cada 3s: refresca despachos + dieta + chaletSet + platos + agregados (el calendario del día no cambia intra-día)
   const loadSync=async()=>{
-    const[d,di,ch,pl,ag]=await Promise.all([cmdFetchDespachos(fecha),cmdFetchDieta(),cmdFetchComeChalet(fecha),cmdFetchPlatos(),cmdFetchAgregados(fecha)]);
-    setDespachosDia(d);setDieta(di);setChaletSet(ch);setPlatos(pl);setAgregados(ag);
+    const[d,di,ch,pl,ag,bj]=await Promise.all([cmdFetchDespachos(fecha),cmdFetchDieta(),cmdFetchComeChalet(fecha),cmdFetchPlatos(),cmdFetchAgregados(fecha),cmdFetchBandejas()]);
+    setDespachosDia(d);setDieta(di);setChaletSet(ch);setPlatos(pl);setAgregados(ag);setBandejas(bj);
   };
   useEffect(()=>{setLoading(true);loadAll();},[fecha]);
   useEffect(()=>{const i=setInterval(loadSync,3000);return()=>clearInterval(i);},[fecha]);
@@ -4980,23 +5036,27 @@ function Comedor({user,proyectoId}){
     setDieta(prev=>{const n={...prev};delete n[dni];return n;});
     showToast({msg:'Dieta quitada'});setDietaEditing(null);
   };
-  // Plato/tarjeta: cualquier usuario del comedor lo marca; quitarlo (por error) solo admin / admin_viandas.
-  const togglePlato=async(persona)=>{
+  // Plato/tarjeta y (Rev132) bandeja/tarjeta: cualquier usuario del comedor los marca; quitarlos (por error) solo
+  // admin / admin_viandas.
+  const toggleFijo=async(k,persona)=>{
+    const F=CMD_FIJOS[k],mapa=k==="bandeja"?bandejas:platos,setMapa=k==="bandeja"?setBandejas:setPlatos;
     const nom=persona.nombre+' '+persona.apellido;
-    if(platos[persona.dni]){
-      if(!canEditDieta){alert('Esta persona ya tiene plato/tarjeta registrado.\n\nSi fue un error, pedile a un admin de viandas que lo quite.');return;}
-      if(!confirm('¿Quitar el registro de plato/tarjeta de '+nom+'?'))return;
-      await db.del("viandas_plato",[["dni","eq",persona.dni]]);
-      setPlatos(prev=>{const n={...prev};delete n[persona.dni];return n;});
-      showToast({msg:'Plato/tarjeta quitado'});
+    if(mapa[persona.dni]){
+      if(!canEditDieta){alert('Esta persona ya tiene '+F.txt+' registrad'+F.o+'.\n\nSi fue un error, pedile a un admin de viandas que l'+F.o+' quite.');return;}
+      if(!confirm('¿Quitar el registro de '+F.txt+' de '+nom+'?'))return;
+      await db.del(F.tabla,[["dni","eq",persona.dni]]);
+      setMapa(prev=>{const n={...prev};delete n[persona.dni];return n;});
+      showToast({msg:F.lbl+' quitad'+F.o});
       return;
     }
-    if(!confirm('¿Confirmás que '+nom+' recibió plato/tarjeta?\n\nQueda registrado de acá en adelante.'))return;
-    const{ok}=await db.ins("viandas_plato",{dni:persona.dni,entregado_por:user.id,puesto:userPuesto||'ADMIN',entregado_at:new Date().toISOString()},true,"dni");
-    if(!ok){showToast({msg:'No se pudo registrar el plato/tarjeta (¿falta la tabla en Supabase?)',err:true});return;}
-    setPlatos(prev=>({...prev,[persona.dni]:new Date().toISOString()}));
-    showToast({msg:'🍽 Plato/tarjeta registrado → '+nom});
+    if(!confirm('¿Confirmás que '+nom+' recibió '+F.txt+'?\n\nQueda registrad'+F.o+' de acá en adelante.'))return;
+    const{ok}=await db.ins(F.tabla,{dni:persona.dni,entregado_por:user.id,puesto:userPuesto||'ADMIN',entregado_at:new Date().toISOString()},true,"dni");
+    if(!ok){showToast({msg:'No se pudo registrar '+F.txt+' (¿falta la tabla '+F.tabla+' en Supabase?)',err:true});return;}
+    setMapa(prev=>({...prev,[persona.dni]:new Date().toISOString()}));
+    showToast({msg:F.ico+' '+F.lbl+' registrad'+F.o+' → '+nom});
   };
+  const togglePlato=(p)=>toggleFijo("plato",p);
+  const toggleBandeja=(p)=>toggleFijo("bandeja",p);
   const verDia=(f)=>{setFecha(f);setSubtab('listado');};
   const togglePref=(k)=>setPrefix(prev=>{const n=new Set(prev);if(n.has(k))n.delete(k);else n.add(k);return n;});
   // Rev126: el contador de arriba es por PERSONAS (retiraron / tienen la comida), igual que "Pendientes". Antes mostraba
@@ -5081,9 +5141,9 @@ function Comedor({user,proyectoId}){
         // Admin viandas sin puesto elegido → pantalla de selección; luego pasa al escaneo real
         isAdminViandas&&!simuladoPuesto
           ?<CmdSeleccionPuesto onElegir={setSimuladoPuesto}/>
-          :<CmdEscanear personas={personasDia} despachos={despachosDia} dieta={dieta} platos={platos} onTogglePlato={togglePlato} prefix={prefix} togglePref={togglePref} onDispatch={addDespacho} onUndispatch={removeDespacho} preloadPersona={picked} clearPreload={()=>setPicked(null)} fecha={fecha} isReadOnly={isReadOnly} onAgregarComida={agregarComida} onAgregarPersona={setAgregando}/>
+          :<CmdEscanear personas={personasDia} despachos={despachosDia} dieta={dieta} platos={platos} onTogglePlato={togglePlato} bandejas={bandejas} onToggleBandeja={toggleBandeja} prefix={prefix} togglePref={togglePref} onDispatch={addDespacho} onUndispatch={removeDespacho} preloadPersona={picked} clearPreload={()=>setPicked(null)} fecha={fecha} isReadOnly={isReadOnly} onAgregarComida={agregarComida} onAgregarPersona={setAgregando}/>
       )}
-      {subtab==='listado'&&<CmdListado personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} dieta={dieta} chaletSet={chaletSet} platos={platos} onTogglePlato={togglePlato} isAdmin={canEditDieta} onOpenDieta={setDietaEditing} onPick={puedeEscanear?onPickFromList:null} onDispatch={addDespacho} onUndispatch={removeDespacho} canDispatch={!!userPuesto||isAdmin} isReadOnly={isReadOnly} onAgregarComida={agregarComida} onAgregarPersona={setAgregando}/>}
+      {subtab==='listado'&&<CmdListado personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} dieta={dieta} chaletSet={chaletSet} platos={platos} onTogglePlato={togglePlato} bandejas={bandejas} onToggleBandeja={toggleBandeja} isAdmin={canEditDieta} onOpenDieta={setDietaEditing} onPick={puedeEscanear?onPickFromList:null} onDispatch={addDespacho} onUndispatch={removeDespacho} canDispatch={!!userPuesto||isAdmin} isReadOnly={isReadOnly} onAgregarComida={agregarComida} onAgregarPersona={setAgregando}/>}
       {subtab==='reporte'&&<CmdReporte personas={personasDia} despachos={despachosDia} fecha={fecha} onVerDia={verDia} resInicio={resInicio} setResInicio={setResInicio} isAdmin={isAdmin}/>}
       {subtab==='pedido'&&verPedidos&&<CmdErrBoundary><CmdPedidoSemanal user={user} canEdit={isAdmin} showToast={showToast}/></CmdErrBoundary>}
       {subtab==='cert'&&verPedidos&&<CmdErrBoundary><CmdCertificados user={user} canEdit={isAdmin} showToast={showToast}/></CmdErrBoundary>}
@@ -5205,13 +5265,14 @@ function RecentSessions({puesto,onSelectSesion}){
     <div className="rt">Ultimos movimientos del dia en este puesto</div>
     {list.map(s=>{
       const veh=vehiculos[s.vehiculo_id];
-      return <div key={s.id} className="sr" onClick={()=>onSelectSesion(s)}>
+      return <div key={s.id} className="sr srmov" onClick={()=>onSelectSesion(s)}>
         <span className={`ld ld-${s.direccion==="entrada"?"in":"out"}`}>{dirVerbo(puesto,s.direccion)}</span>
-        <div style={{flex:1,minWidth:0}}>
-          <span style={{fontFamily:"var(--fm)",fontWeight:600,fontSize:13}}>{veh?veh.patente:(esSesionAPie(s)?"🚶 A pie":"—")}</span>
-          <span style={{color:"var(--tx2)",fontSize:12,marginLeft:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{getPaxStr(s.id)}</span>
+        {/* Rev132: los nombres se cortan con "…" en vez de pisar la hora (en el celu van debajo de la patente) */}
+        <div className="srmov-m">
+          <span className="srmov-pat">{veh?veh.patente:(esSesionAPie(s)?"🚶 A pie":"—")}</span>
+          <span className="srmov-pax">{getPaxStr(s.id)}</span>
         </div>
-        <span style={{color:"var(--tx2)",fontSize:11,fontFamily:"var(--fm)",flexShrink:0}}>{fmtTs(s.cerrada_at)}</span>
+        <span className="srmov-ts">{fmtTs(s.cerrada_at)}</span>
       </div>;
     })}
   </>;
@@ -7492,7 +7553,7 @@ function App(){
     <div className="topbar">
       <div className="brand">CONTROL<span>OBRA</span> <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3}}>{APP_REV}</span></div>
       <div className="tr" style={{gap:8,flexWrap:"nowrap"}}>
-        <span style={{fontSize:12,color:"var(--tx2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:80}}>{user.nombre}</span>
+        <span className="top-nom" style={{fontSize:12,color:"var(--tx2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:80}}>{user.nombre}</span>
         <span className="rol" style={{flexShrink:0}}>{user.rol==="puesto"?user.puesto_nombre||"Puesto":(ROL_LBL[user.rol]||user.rol).toUpperCase()}</span>
         <button className="btn-out" onClick={logout} style={{flexShrink:0}}>Salir</button>
       </div>
