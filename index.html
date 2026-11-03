@@ -392,9 +392,6 @@ button.jo-fp:hover{filter:brightness(1.3)}
 .jo-chip{display:inline-flex;align-items:center;gap:4px;background:var(--s2);border:1px solid var(--bd);border-radius:12px;padding:2px 4px 2px 10px;font-size:12px}
 .jo-chip button{background:none;border:none;color:var(--tx3);cursor:pointer;font-size:14px;line-height:1;padding:0 4px}.jo-chip button:hover{color:var(--rd)}
 @media(max-width:700px){.jo-cal{max-width:none}.jo-mx .c1{min-width:120px}}
-/* Rev133: parte diario por categoría → empresa o área → rol */
-.jo-mx tr.cat td,.jo-mx tr.cat td.c1{background:var(--s2);font-family:var(--fh);font-weight:700;text-transform:uppercase;letter-spacing:.05em;font-size:12px;color:var(--acc);border-top:2px solid var(--bd)}
-.jo-mx tr.rol td{border-bottom-color:rgba(42,47,66,.3)}
 /* Rev132: plato/tarjeta y bandeja/tarjeta uno al lado del otro en Escanear (Viandas) */
 .cmd-fijos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;align-items:stretch}
 .cmd-fijos .cmd-plato{margin-bottom:0}
@@ -443,7 +440,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev133";
+const APP_REV="Rev134";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -781,58 +778,18 @@ function Clock(){
 const EMP_ALIAS={"LAGUNAS DE RADAL":"LAGUNAS DEL RADAL","CLEANLIFE":"CLEANLIF","FISHER":"FISCHER","POWER EM":"POWEREM","RSV DIVISION":"RSV"};
 const EMP_PREFIJOS=["ASESOR","INSPECTOR","CEBALLOS"]; // "ASESOR AMBIENTE", "CEBALLOS REGADOR"… van con la empresa base
 const empNorm=(x)=>String(x||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9]+/g," ").trim();
-// Rev133: desde la limpieza de la base, el personal propio figura como empresa OBRAS Y SISTEMAS y el área va en el cargo
-// (ej. JERARQUICOS), así que los jerárquicos se reconocen también por el cargo.
-const empresaGrupo=(emp,cargo)=>{
+const empresaGrupo=(emp)=>{
   const raw=String(emp||"").trim();
   if(!raw)return"Sin empresa";
   const full=empNorm(raw);
-  if(/^(OBRAS Y SISTEMAS|OYS)( |$)/.test(full))return/\b(JERARQ[A-Z]*|JER|GERENCIA)\b/.test(full+" "+empNorm(cargo))?"OBRAS Y SISTEMAS - JERÁRQUICOS":"OBRAS Y SISTEMAS";
+  if(/^(OBRAS Y SISTEMAS|OYS)( |$)/.test(full))return/\b(JERARQ[A-Z]*|JER|GERENCIA)\b/.test(full)?"OBRAS Y SISTEMAS - JERÁRQUICOS":"OBRAS Y SISTEMAS";
   const x=empNorm(raw.split(/\s+-\s+/)[0]).replace(/ (S ?R ?L|S ?A)$/,"").trim();
   if(!x)return"Sin empresa";
   const pre=EMP_PREFIJOS.find(q=>x===q||x.startsWith(q+" "));
   return pre||EMP_ALIAS[x]||x;
 };
-// Rev133: limpieza de empresas (la misma regla que se usó para limpiar la base el 03/11/2026). Todo en MAYÚSCULAS sin
-// tildes (la Ñ queda), solo la empresa (lo que va después de " - " pasa al cargo, así no se pierde: el parte diario sugiere
-// áreas con el cargo del personal propio), OyS → OBRAS Y SISTEMAS, sin SRL/SA y variantes de una misma empresa unificadas.
-// Se aplica al guardar en Personal y en "🧹 Limpiar empresas" (para lo que entra desde el sheet de habilitaciones).
-const txtMay=(x)=>String(x==null?"":x).replace(/[ñÑ]/g,"\u0001").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/\u0001/g,"Ñ").toUpperCase().replace(/\s+/g," ").trim();
-const EMP_LIMPIA_ALIAS={"LAGUNAS DE RADAL":"LAGUNAS DEL RADAL","FISHER":"FISCHER","POWER EM":"POWEREM","RSV DIVISION":"RSV",
-  "SECRETEARIA DE AMBIENTE":"SECRETARIA DE AMBIENTE","CLEANLIFE":"CLEANLIF","ELEMEC":"TECNICA ELEMEC","RV":"RIO VILLEGAS",
-  "GOYE GERARDO":"GOYE","GOYE MATIAS":"GOYE"};
-const EMP_LIMPIA_ESPECIAL={"VEHICULO - PERRI (ALQUILER)":["VEHICULO","ALQUILER"],"REMIS - RV":["RIO VILLEGAS","REMIS"]};
-const limpiarEmpresa=(empresa,cargo)=>{
-  const r=txtMay(empresa),c0=txtMay(cargo);
-  let emp=r,suf="";
-  if(r&&EMP_LIMPIA_ESPECIAL[r])[emp,suf]=EMP_LIMPIA_ESPECIAL[r];
-  else if(r){
-    const m=r.match(/^(.*?)\s-\s(.*)$/);
-    let base=m?m[1].trim():r;suf=m?m[2].trim():"";
-    const o=base.match(/^(OBRAS Y SISTEMAS|OYS)( |$)(.*)$/);
-    if(o){
-      emp="OBRAS Y SISTEMAS";
-      suf=(suf||o[3].trim()).replace(/^JER$/,"JERARQUICOS").replace(/^JERARQUICO\b(?!S)/,"JERARQUICOS");
-    }else{
-      base=base.replace(/\s+(S\.?\s?R\.?\s?L\.?|S\.?\s?A\.?)$/,"").trim();
-      if(base.startsWith("CEBALLOS ")){suf=suf||base.slice(9);base="CEBALLOS";}
-      emp=EMP_LIMPIA_ALIAS[base]||base;
-    }
-  }
-  return{empresa:emp||(empresa==null?null:""),cargo:(c0||suf)||(cargo==null?null:"")};
-};
-// ¿Qué le cambiaría la limpieza a una persona? null = nada.
-const limpiezaDe=(p)=>{
-  const le=limpiarEmpresa(p.empresa,p.cargo),n=txtMay(p.nombre),a=txtMay(p.apellido);
-  const c={};
-  if((le.empresa||"")!==(p.empresa||""))c.empresa=le.empresa;
-  if((le.cargo||"")!==(p.cargo||""))c.cargo=le.cargo;
-  if(n!==(p.nombre||""))c.nombre=n;
-  if(a!==(p.apellido||""))c.apellido=a;
-  return Object.keys(c).length?c:null;
-};
 function ListaFiltrada({items,tipo,titulo,onClose,onRemove,onExcel}){
-  const gk=(x)=>empresaGrupo(x.empresa,x.cargo);
+  const gk=(x)=>empresaGrupo(x.empresa);
   const cuentaEmp={};items.forEach(x=>{const k=gk(x);cuentaEmp[k]=(cuentaEmp[k]||0)+1;});
   const empresas=Object.keys(cuentaEmp).sort((a,b)=>a.localeCompare(b,"es"));
   const[activas,setActivas]=useState(()=>{
@@ -907,7 +864,7 @@ function ChaletMini({proyectoId,user}){
       const allPIds=Array.from(new Set([...persIdsChalet,...persIdsCamino,...persIdsPredio])).filter(isUUID);
       const allVIds=[...vehIdsChalet,...vehIdsCamino].filter(isUUID);
       const[{data:pers},{data:vehs}]=await Promise.all([
-        allPIds.length?db.sel("personas",{cols:"id,nombre,apellido,empresa,cargo,dni"}):{data:[]},
+        allPIds.length?db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"}):{data:[]},
         allVIds.length?db.sel("vehiculos",{cols:"id,patente,descripcion,tipo,empresa"}):{data:[]},
       ]);
       const persMap={};(pers||[]).forEach(p=>{persMap[p.id]=p;});
@@ -979,14 +936,14 @@ function ChaletMini({proyectoId,user}){
       const plp=data.plp||[],plc=data.plc||[],plm=data.plm||[];
       const enCh=new Set(plc.map(x=>x.id)),enCam=new Set(plm.map(x=>x.id));
       const donde=(x)=>enCh.has(x.id)?"Chalet":(enCam.has(x.id)?"Camino (P2 → P3)":"Campamento o caminos");
-      const orden=(a,b)=>empresaGrupo(a.empresa,a.cargo).localeCompare(empresaGrupo(b.empresa,b.cargo),"es")||`${a.apellido} ${a.nombre}`.localeCompare(`${b.apellido} ${b.nombre}`,"es");
+      const orden=(a,b)=>empresaGrupo(a.empresa).localeCompare(empresaGrupo(b.empresa),"es")||`${a.apellido} ${a.nombre}`.localeCompare(`${b.apellido} ${b.nombre}`,"es");
       const enc=["Apellido","Nombre","DNI","Empresa","Empresa (como figura en Personal)"];
       const hoja=(lista,conDonde)=>{
         const rows=[conDonde?[...enc,"Dónde está"]:enc];
-        [...lista].sort(orden).forEach(x=>{const f=[x.apellido||"",x.nombre||"",x.dni||"",empresaGrupo(x.empresa,x.cargo),x.empresa||""];rows.push(conDonde?[...f,donde(x)]:f);});
+        [...lista].sort(orden).forEach(x=>{const f=[x.apellido||"",x.nombre||"",x.dni||"",empresaGrupo(x.empresa),x.empresa||""];rows.push(conDonde?[...f,donde(x)]:f);});
         const ws=XLSX.utils.aoa_to_sheet(rows);ws["!cols"]=[{wch:20},{wch:20},{wch:12},{wch:32},{wch:38},{wch:22}];return ws;
       };
-      const res={};const sumar=(lista,k)=>lista.forEach(x=>{const e=empresaGrupo(x.empresa,x.cargo);(res[e]=res[e]||{predio:0,camino:0,chalet:0})[k]++;});
+      const res={};const sumar=(lista,k)=>lista.forEach(x=>{const e=empresaGrupo(x.empresa);(res[e]=res[e]||{predio:0,camino:0,chalet:0})[k]++;});
       sumar(plp,"predio");sumar(plm,"camino");sumar(plc,"chalet");
       const rr=[["Empresa","En predio (campamento+camino+chalet)","En camino","En chalet"]];
       Object.keys(res).sort((a,b)=>res[b].predio-res[a].predio||a.localeCompare(b,"es")).forEach(e=>rr.push([e,res[e].predio,res[e].camino,res[e].chalet]));
@@ -1374,7 +1331,7 @@ function ChaletCounter({proyectoId}){
     const allPersIds=[...persIdsChalet,...persIdsCamino].filter(isUUID);
     let persMap={};
     if(allPersIds.length>0){
-      const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,cargo,dni"});
+      const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"});
       (pers||[]).forEach(p=>{persMap[p.id]=p;});
     }
     setPersonas(persIdsChalet.map(k=>persMap[k]||synthPer(k)));
@@ -1716,21 +1673,13 @@ function HabMasivaModal({proyectoId,currentUserId,habs,onClose,onSaved}){
           </div>
           <button className="bsm" onClick={toggleAll}>{personas.every(p=>selected[p.id])?"Quitar todos":"Seleccionar todos"}</button>
         </div>
-        {/* Rev133: en empresas grandes (ej. OBRAS Y SISTEMAS) se puede elegir solo un cargo */}
-        {(()=>{const cnt={};personas.forEach(p=>{const c=(p.cargo||"").trim()||"(sin cargo)";cnt[c]=(cnt[c]||0)+1;});
-          const l=Object.entries(cnt).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"es"));
-          if(l.length<2)return null;
-          return <div style={{display:"flex",flexWrap:"wrap",gap:5,alignItems:"center",marginBottom:10}}>
-            <span style={{fontSize:11,color:"var(--tx3)"}}>Elegir solo:</span>
-            {l.map(([c,n])=><button key={c} className="bsm" style={{fontSize:11,padding:"3px 8px"}} onClick={()=>{const s={};personas.forEach(p=>{s[p.id]=((p.cargo||"").trim()||"(sin cargo)")===c;});setSelected(s);}}>{c} ({n})</button>)}
-          </div>;})()}
         <div className="cbl">
           {personas.map(p=>{
             const st=habSt(getHab("persona",p.id,tipo,habs));
             return <div key={p.id} className="cbl-item" onClick={()=>setSelected(s=>({...s,[p.id]:!s[p.id]}))}>
               <input type="checkbox" checked={!!selected[p.id]} readOnly/>
               <div className="av">{ini(`${p.nombre} ${p.apellido}`)}</div>
-              <div style={{flex:1}}><div style={{fontWeight:500}}>{p.nombre} {p.apellido}</div><div style={{fontSize:11,color:"var(--tx2)"}}>DNI {p.dni}{p.cargo?` · ${p.cargo}`:""}</div></div>
+              <div style={{flex:1}}><div style={{fontWeight:500}}>{p.nombre} {p.apellido}</div><div style={{fontSize:11,color:"var(--tx2)"}}>DNI {p.dni}</div></div>
               {st!=="none"&&<span className={`hc hc-${st}`} style={{fontSize:10}}>{st==="ok"?"actual":st==="exp"?"venc":"susp"}</span>}
             </div>;
           })}
@@ -2217,7 +2166,6 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const fijar=(id)=>{if(id)setFijos(s=>{if(s.has(id))return s;const n=new Set(s);n.add(id);return n;});};
   useEffect(()=>{setFijos(new Set());},[filter,filterEst]);
   const[aviso,setAviso]=useState(null);
-  const[verLimpieza,setVerLimpieza]=useState(false);
   // Rev130: después de un alta (o si el DNI ya existía) la lista muestra a esa persona, lista para habilitar.
   // Antes se recargaba con la búsqueda/filtro anterior y parecía que la persona "desaparecía".
   const verPersona=(dni,msg)=>{setFilter(String(dni||""));setFilterEst("");setAviso(msg||null);};
@@ -2278,8 +2226,6 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   useEffect(()=>{const i=setInterval(()=>{refreshRadar();},60*60*1000);return()=>clearInterval(i);},[]);
   const saveP=async f=>{
     f={...f,dni:normDni(f.dni)}; // sin espacios y en mayúsculas (DNI de extranjeros con letras)
-    // Rev133: nombre y apellido en mayúsculas; solo la empresa (lo de después del guion va al cargo)
-    {const le=limpiarEmpresa(f.empresa,f.cargo);f={...f,nombre:txtMay(f.nombre),apellido:txtMay(f.apellido),empresa:le.empresa,cargo:le.cargo};}
     if(editP){
       const{ok,data}=await db.upd("personas",f,[["id","eq",editP.id]]);
       if(!ok){alert("No se pudo actualizar la persona.\n\nDetalle: "+JSON.stringify(data));return;}
@@ -2342,8 +2288,6 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const btns=[];
   if(!readOnly&&(canSH||canCP))btns.push(<button key="add" className="badd" onClick={()=>{setEditP(null);setShowModal(true);}}>+ Nuevo</button>);
   if(canSH)btns.push(<button key="mas" className="badd" style={{background:"var(--acc2)",marginLeft:6}} onClick={()=>setShowMasivo(true)}>Hab. masiva por empresa</button>);
-  const nLimpiar=userRole==="admin"?personas.filter(p=>limpiezaDe(p)).length:0;
-  if(nLimpiar>0)btns.push(<button key="limp" className="bsm" style={{marginLeft:6,padding:"8px 12px"}} onClick={()=>setVerLimpieza(true)} title="Personas con la empresa o el nombre sin limpiar (por ejemplo, las que entran desde el sheet de habilitaciones)">🧹 Limpiar empresas ({nLimpiar})</button>);
   if(userRole==="admin")btns.push(<button key="todo" className="badd" style={{background:"rgba(16,185,129,.2)",border:"1px solid var(--gr)",color:"var(--gr)",marginLeft:6}} onClick={()=>setShowMasivoTodo(true)}>⭐ Habilitar todo</button>);
   return <div>
     <div className="ph2"><div className="ptit"><span>Personal</span>{readOnly&&<span style={{fontSize:14,fontWeight:400,color:"var(--tx2)",marginLeft:10}}>solo lectura</span>}</div><div style={{display:"flex",gap:6}}>{btns}</div></div>
@@ -2415,48 +2359,9 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
     {showModal&&<PersonModal p={editP} onClose={()=>setShowModal(false)} onSave={saveP} onVer={x=>verPersona(x.dni,"Ya estaba dada de alta"+(x.empresa?" ("+x.empresa+")":"")+" — si cambió de empresa, usá Editar")}/>}
     {detalleP&&<PersonaDetalleModal persona={detalleP} proyectoId={proyectoId} onClose={()=>setDetalleP(null)}/>}
     {registroP&&user&&<RegistroManualAcceso persona={registroP} user={user} proyectoId={proyectoId} onClose={()=>setRegistroP(null)} onSaved={()=>setRegistroP(null)}/>}
-    {verLimpieza&&<LimpiarEmpresasModal personas={personas} onClose={()=>setVerLimpieza(false)} onDone={()=>{setVerLimpieza(false);load();}}/>}
     {showMasivoTodo&&<HabTodoModal proyectoId={proyectoId} currentUserId={currentUserId} tipo="persona" porNombre={user&&(user.nombre||user.email)} onClose={()=>setShowMasivoTodo(false)} onSaved={load}/>}
     {showMasivo&&<HabMasivaModal proyectoId={proyectoId} currentUserId={currentUserId} habs={habs} onClose={()=>setShowMasivo(false)} onSaved={load}/>}
   </div>;
-}
-
-// Rev133: limpia empresa / cargo / nombre de quienes todavía no están limpios (lo que entra desde el sheet viene tal cual).
-function LimpiarEmpresasModal({personas,onClose,onDone}){
-  const lista=useMemo(()=>personas.map(p=>({p,c:limpiezaDe(p)})).filter(x=>x.c).sort((a,b)=>joPorApe(a.p,b.p)),[personas]);
-  const[prog,setProg]=useState(null); // {hechas, errores}
-  const aplicar=async()=>{
-    if(!confirm(`Se van a corregir ${lista.length} personas. ¿Seguir?`))return;
-    let hechas=0,errores=0;setProg({hechas,errores});
-    for(let i=0;i<lista.length;i+=5){
-      const r=await Promise.all(lista.slice(i,i+5).map(({p,c})=>db.upd("personas",c,[["id","eq",p.id]])));
-      r.forEach(x=>{if(x.ok)hechas++;else errores++;});setProg({hechas,errores});
-    }
-    if(errores)alert(`Listo, pero ${errores} no se pudieron guardar. Revisá la conexión y probá de nuevo.`);
-    onDone();
-  };
-  const fl=(a,b)=>(a||"")===(b||"")?<span style={{color:"var(--tx3)"}}>{a||"—"}</span>:<><s style={{color:"var(--tx3)"}}>{a||"—"}</s> → <b>{b||"—"}</b></>;
-  return <div className="mo"><div className="md md-lg" style={{maxWidth:820}}>
-    <div className="mh"><div className="mt">🧹 Limpiar empresas ({lista.length})</div><button className="mc" onClick={onClose}>x</button></div>
-    <div className="mb">
-      <div style={{fontSize:12,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Todo en mayúsculas y solo la empresa: lo que va después del guion pasa al cargo (ej. OBRAS Y SISTEMAS - CHOFER → empresa OBRAS Y SISTEMAS, cargo CHOFER). Es la misma regla de la limpieza de la base.</div>
-      <div className="tw" style={{maxHeight:"50vh"}}><table style={{minWidth:0}}>
-        <thead><tr><th>Persona</th><th>DNI</th><th>Empresa</th><th>Cargo</th></tr></thead>
-        <tbody>{lista.slice(0,300).map(({p,c})=><tr key={p.id}>
-          <td style={{fontSize:12}}>{c.apellido!==undefined||c.nombre!==undefined?fl(`${p.apellido||""}, ${p.nombre||""}`,`${c.apellido!==undefined?c.apellido:p.apellido||""}, ${c.nombre!==undefined?c.nombre:p.nombre||""}`):`${p.apellido}, ${p.nombre}`}</td>
-          <td className="mn">{p.dni}</td>
-          <td style={{fontSize:12}}>{fl(p.empresa,c.empresa!==undefined?c.empresa:p.empresa)}</td>
-          <td style={{fontSize:12}}>{fl(p.cargo,c.cargo!==undefined?c.cargo:p.cargo)}</td>
-        </tr>)}</tbody>
-      </table></div>
-      {lista.length>300&&<div style={{fontSize:11,color:"var(--tx3)",marginTop:6}}>Se muestran 300 de {lista.length}.</div>}
-      {prog&&<div style={{marginTop:10,fontSize:13}}>Guardando… {prog.hechas+prog.errores} de {lista.length}{prog.errores?` · ${prog.errores} con error`:""}</div>}
-    </div>
-    <div className="mf">
-      <button className="bcanc" onClick={onClose} disabled={!!prog}>Cancelar</button>
-      <button className="bp" onClick={aplicar} disabled={!!prog||!lista.length}>{prog?"Guardando…":`Corregir ${lista.length}`}</button>
-    </div>
-  </div></div>;
 }
 
 function PersonModal({p,onClose,onSave,onVer}){
@@ -2684,7 +2589,7 @@ function SesionDetalle({ses,onClose,onInverted,soloVer}){
       if(r){
         setRegs(r);
         const ids=r.filter(x=>x.persona_id).map(x=>x.persona_id);
-        if(ids.length){const{data:p}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,cargo,dni"});setPers((p||[]).filter(x=>ids.includes(x.id)));}
+        if(ids.length){const{data:p}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"});setPers((p||[]).filter(x=>ids.includes(x.id)));}
       }
       if(v&&v[0])setVeh(v[0]);
       setLoading(false);
@@ -3213,7 +3118,7 @@ function ConteoViandasChalet({user,proyectoId}){
     const dm={};Object.entries(di||{}).forEach(([k,v])=>{dm[normDni(k)]=v;});setDieta(dm);
     const pids=items.map(x=>x.persona_id);
     if(pids.length>0){
-      const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,cargo,dni",inFilter:["id",pids]});
+      const{data:pers}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,dni",inFilter:["id",pids]});
       const pm={};(pers||[]).forEach(p=>{pm[p.id]=p;});
       setPersonasMap(pm);
     }else setPersonasMap({});
@@ -5544,7 +5449,7 @@ function Puesto({user,pid}){
             // Comida de hoy leída en el momento (la decisión de P2 tiene que valer en P3, aunque la memoria
             // de este puesto tenga hasta 30 s de atraso)
             const[{data:pers},{data:cds}]=await Promise.all([
-              db.sel("personas",{cols:"id,nombre,apellido,empresa,cargo,dni",inFilter:["id",pids]}),
+              db.sel("personas",{cols:"id,nombre,apellido,empresa,dni",inFilter:["id",pids]}),
               db.sel("comidas_diarias",{f:[["fecha","eq",todayStr],["tipo","eq","almuerzo"]],inFilter:["persona_id",pids]}),
             ]);
             const personasMap={};(pers||[]).forEach(p=>{personasMap[p.id]=p;});
@@ -6079,7 +5984,7 @@ function PublicDashboard({onBack,embedTab}){
     const allPersIds=Array.from(new Set([...persIdsChalet,...persIdsCamino,...persIdsPredio])).filter(isUUID);
     const allVehIds=[...vehIdsChalet,...vehIdsCamino].filter(isUUID);
     const[{data:pers},{data:vehs}]=await Promise.all([
-      allPersIds.length?db.sel("personas",{cols:"id,nombre,apellido,empresa,cargo,dni"}):{data:[]},
+      allPersIds.length?db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"}):{data:[]},
       allVehIds.length?db.sel("vehiculos",{cols:"id,patente,descripcion,tipo,empresa"}):{data:[]},
     ]);
     const persMap={};(pers||[]).forEach(p=>{persMap[p.id]=p;});
@@ -6369,20 +6274,6 @@ function PublicDashboard({onBack,embedTab}){
 // obra.jo_area_personas (PK persona_id → area_id).
 // "Estuvo ese día" = fichó en algún puesto ese día, o ya estaba adentro del predio al empezar el día (su última
 // fichada anterior no fue una salida por Puesto 1). Es el mismo criterio que el conteo EN PREDIO.
-// Rev133: categorías (fijas) y roles del parte diario.
-const JO_SQL_V2=`ALTER TABLE obra.jo_areas ADD COLUMN IF NOT EXISTS categoria text CHECK (categoria IN ('sub_prod','sub_gen','sub_com','oys'));
-UPDATE obra.jo_areas SET categoria='oys' WHERE tipo='area' AND categoria IS NULL;
-CREATE TABLE IF NOT EXISTS obra.jo_roles (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  area_id uuid NOT NULL REFERENCES obra.jo_areas(id) ON DELETE CASCADE,
-  nombre text NOT NULL,
-  creado_por uuid,
-  creado_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS jo_roles_area_idx ON obra.jo_roles(area_id);
-ALTER TABLE obra.jo_area_personas ADD COLUMN IF NOT EXISTS rol_id uuid REFERENCES obra.jo_roles(id) ON DELETE SET NULL;
-GRANT SELECT, INSERT, UPDATE, DELETE ON obra.jo_roles TO authenticated;
-NOTIFY pgrst, 'reload schema';`;
 const JO_SQL=`CREATE TABLE IF NOT EXISTS obra.jo_areas (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   nombre text NOT NULL,
@@ -6404,23 +6295,7 @@ CREATE TABLE IF NOT EXISTS obra.jo_area_personas (
 CREATE INDEX IF NOT EXISTS jo_area_personas_area_idx ON obra.jo_area_personas(area_id);
 GRANT SELECT, INSERT, UPDATE, DELETE ON obra.jo_areas TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON obra.jo_area_personas TO authenticated;
-ALTER TABLE obra.jo_areas ADD COLUMN IF NOT EXISTS fuente text NOT NULL DEFAULT 'p1' CHECK (fuente IN ('p1','p2'));
-${JO_SQL_V2}`;
-// Rev133: categorías fijas del parte diario. Las de subcontratos tienen empresas; Obras y Sistemas, áreas. Dentro de cada
-// empresa o área van los roles. Empresas, áreas y roles los arma el sobrestante / jefe de obra. jo_areas.categoria
-// (null = todavía sin ubicar; las áreas viejas de tipo "area" cuentan como Obras y Sistemas).
-const JO_CATS=[
-  {k:"sub_prod",t:"Subcontratos producción",u:"empresa"},
-  {k:"sub_gen",t:"Subcontratos generales",u:"empresa"},
-  {k:"sub_com",t:"Subcontratos comitente",u:"empresa"},
-  {k:"oys",t:"Obras y Sistemas",u:"área"},
-];
-const JO_CAT_SIN={k:null,t:"Sin categoría",u:"empresa"};
-const joCat=(a)=>a?(a.categoria||(a.tipo==="area"?"oys":null)):null;
-const joCatInfo=(k)=>JO_CATS.find(c=>c.k===k)||JO_CAT_SIN;
-const joGruposCat=(areas)=>[...JO_CATS,JO_CAT_SIN].map(c=>({...c,areas:areas.filter(a=>joCat(a)===c.k)})).filter(g=>g.areas.length);
-const joOpts=(areas,cnt)=>joGruposCat(areas).map(g=><optgroup key={g.k||"_sin"} label={g.t}>{g.areas.map(a=><option key={a.id} value={a.id}>{a.nombre}{cnt?` (${cnt(a)})`:""}</option>)}</optgroup>);
-let JO_V2=false; // ya se corrió el SQL de categorías y roles
+ALTER TABLE obra.jo_areas ADD COLUMN IF NOT EXISTS fuente text NOT NULL DEFAULT 'p1' CHECK (fuente IN ('p1','p2'));`;
 const JO_TIPOS={empresa:"Empresas subcontratistas",area:"Áreas de Obras y Sistemas"};
 // Listado inicial (pedido del 13/10/2026): [nombre, tipo, fila del Excel, palabras para sugerir personas].
 // En todas: nombre en la columna D y día 1 en F … día 31 en AJ.
@@ -6480,30 +6355,22 @@ const joAvisoRadar=(x,pid,radarD)=>{
 };
 
 const joFetchBase=async()=>{
-  const[a,m2,p,r]=await Promise.all([
-    db.sel("jo_areas",{ord:"nombre.asc",lim:2000}),
-    dbSelAll("jo_area_personas",{cols:"persona_id,area_id,rol_id",ord:"persona_id.asc"}),
+  const[a,m,p]=await Promise.all([
+    db.sel("jo_areas",{ord:"fila.asc.nullslast,nombre.asc",lim:2000}),
+    dbSelAll("jo_area_personas",{cols:"persona_id,area_id",ord:"persona_id.asc"}),
     dbSelAll("personas",{cols:"id,dni,nombre,apellido,empresa,cargo,deleted_at",ord:"id.asc"}),
-    db.sel("jo_roles",{ord:"nombre.asc",lim:5000}),
   ]);
-  // Rev133: sin el SQL de categorías y roles (columna rol_id, tabla jo_roles) se sigue trabajando como antes, sin roles.
-  const m=m2.data?m2:await dbSelAll("jo_area_personas",{cols:"persona_id,area_id",ord:"persona_id.asc"});
   if(a.data===null||m.data===null)return{falta:true}; // tablas sin crear o sin GRANT
-  JO_V2=!!(m2.data&&r.data)&&(!a.data.length||Object.prototype.hasOwnProperty.call(a.data[0],"categoria"));
-  return{areas:a.data,miembros:m.data,personas:p.data||[],roles:JO_V2?r.data:[],v2:JO_V2};
+  return{areas:a.data,miembros:m.data,personas:p.data||[]};
 };
-// Todo lo que se necesita de las áreas: quién está en cada una (y con qué rol), quién no tiene área y las sugerencias.
+// Todo lo que se necesita de las áreas: quién está en cada una, quién no tiene área y las sugerencias por empresa.
 const joDerivar=(base)=>{
   if(!base||base.falta)return null;
-  const areasById={},personasById={},areaDe={},porArea={},match={},sugeridasDe={},rolesById={},rolesDe={},rolDe={},porRol={};
+  const areasById={},personasById={},areaDe={},porArea={},match={},sugeridasDe={};
   base.areas.forEach(a=>{areasById[a.id]=a;});
   base.personas.forEach(p=>{personasById[p.id]=p;});
-  (base.roles||[]).forEach(r=>{if(!areasById[r.area_id])return;rolesById[r.id]=r;(rolesDe[r.area_id]=rolesDe[r.area_id]||[]).push(r);});
-  Object.values(rolesDe).forEach(l=>l.sort((x,y)=>x.nombre.localeCompare(y.nombre,"es")));
   base.miembros.forEach(m=>{if(!areasById[m.area_id])return;areaDe[m.persona_id]=m.area_id;
-    const p=personasById[m.persona_id];if(p)(porArea[m.area_id]=porArea[m.area_id]||[]).push(p);
-    const rr=m.rol_id&&rolesById[m.rol_id];
-    if(rr&&rr.area_id===m.area_id){rolDe[m.persona_id]=m.rol_id;if(p)(porRol[m.rol_id]=porRol[m.rol_id]||[]).push(p);}});
+    const p=personasById[m.persona_id];if(p)(porArea[m.area_id]=porArea[m.area_id]||[]).push(p);});
   const activos=base.personas.filter(p=>!p.deleted_at);
   const claves=base.areas.map(a=>({id:a.id,k:joClaves(a)}));
   const sinArea=[];
@@ -6515,38 +6382,16 @@ const joDerivar=(base)=>{
     if(ids.length){match[p.id]=ids;ids.forEach(id=>(sugeridasDe[id]=sugeridasDe[id]||[]).push(p));}
   });
   Object.values(porArea).forEach(l=>l.sort(joPorApe));
-  Object.values(porRol).forEach(l=>l.sort(joPorApe));
   Object.values(sugeridasDe).forEach(l=>l.sort(joPorApe));
   sinArea.sort(joPorApe);
-  return{areasById,personasById,areaDe,porArea,activos,sinArea,match,sugeridasDe,rolesById,rolesDe,rolDe,porRol,v2:!!base.v2};
-};
-// Rev133: nombres sugeridos al crear una empresa (empresas de Personal) o un área de O&S (cargos del personal propio),
-// de quienes todavía no tienen área, con cuántas personas son.
-const joSugNombres=(d,cat)=>{
-  if(!d)return[];
-  const usados=new Set(Object.values(d.areasById).map(a=>joNorm(a.nombre)));
-  const c={};
-  d.sinArea.forEach(p=>{
-    const le=limpiarEmpresa(p.empresa,p.cargo),oys=le.empresa==="OBRAS Y SISTEMAS";
-    if((cat==="oys")!==oys)return;
-    const k=oys?(le.cargo||""):(le.empresa||"");if(!k)return;
-    c[k]=(c[k]||0)+1;
-  });
-  return Object.entries(c).filter(([k])=>!usados.has(joNorm(k))).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"es"));
+  return{areasById,personasById,areaDe,porArea,activos,sinArea,match,sugeridasDe};
 };
 // Asigna personas a un área. Si ya estaban en otra, se mueven (una persona está en una sola área).
 const joAsignar=async(ids,areaId,user)=>{
   if(!ids.length)return true;
   const now=new Date().toISOString();
-  // Rev133: al cambiar de área, el rol se borra (los roles son de cada área)
-  const{ok}=await db.ins("jo_area_personas",ids.map(pid=>({persona_id:pid,area_id:areaId,agregado_por:user.id,agregado_at:now,...(JO_V2?{rol_id:null}:{})})),true,"persona_id");
+  const{ok}=await db.ins("jo_area_personas",ids.map(pid=>({persona_id:pid,area_id:areaId,agregado_por:user.id,agregado_at:now})),true,"persona_id");
   if(!ok)alert("No se pudo guardar. Revisá la conexión.");
-  return ok;
-};
-const joPonerRol=async(ids,rolId)=>{
-  let ok=true;
-  for(let i=0;i<ids.length;i+=50){const r=await db.upd("jo_area_personas",{rol_id:rolId||null},[["persona_id","in",`(${ids.slice(i,i+50).join(",")})`]]);if(!r.ok)ok=false;}
-  if(!ok)alert("No se pudo guardar el rol. Revisá la conexión.");
   return ok;
 };
 const joQuitar=async(ids)=>{
@@ -6635,16 +6480,6 @@ function JoFaltaSql(){
   </div>;
 }
 
-function JoFaltaSqlV2(){
-  const copiar=async()=>{try{await navigator.clipboard.writeText(JO_SQL_V2);alert("SQL copiado");}catch(e){prompt("Copiá el SQL:",JO_SQL_V2);}};
-  return <div className="jo-wrap" style={{borderColor:"rgba(245,158,11,.5)"}}>
-    <div className="jo-h" style={{color:"var(--acc)"}}>⚠️ Falta un paso para usar categorías y roles</div>
-    <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Un admin tiene que correr este SQL una sola vez en Supabase (SQL Editor). Después recargá la página. Mientras tanto todo funciona como antes, pero sin categorías ni roles.</div>
-    <pre className="jo-pre">{JO_SQL_V2}</pre>
-    <button className="bsm" style={{marginTop:8}} onClick={copiar}>📋 Copiar SQL</button>
-  </div>;
-}
-
 function JoPersonaChk({p,on,onToggle,extra}){
   return <label className={`jo-chk${on?" on":""}`}>
     <input type="checkbox" checked={on} onChange={onToggle}/>
@@ -6657,28 +6492,34 @@ function JoPersonaChk({p,on,onToggle,extra}){
   </label>;
 }
 
-function JoAreaModal({area,areas,d,nPersonas,nombreInicial,catInicial,user,onClose,onSaved,onDeleted}){
-  // Rev133: ya no se elige la fila del Excel (el parte sale como listado). Se elige la categoría y se sugieren nombres
-  // según Personal: empresas (subcontratos) o cargos del personal propio (áreas de Obras y Sistemas).
+function JoAreaModal({area,areas,nPersonas,nombreInicial,user,onClose,onSaved,onDeleted}){
+  // Desde "Personas sin área" llega el nombre del grupo: si es personal propio ("OBRAS Y SISTEMAS - X") se propone área "X".
+  const iniOys=!area&&joEsOys(nombreInicial);
+  const nomIni=iniOys?(String(nombreInicial).replace(/^\s*(obras y sistemas|oys)\s*-?\s*/i,"").trim()||nombreInicial):(nombreInicial||"");
   const nueva=!area;
-  const[nombre,setNombre]=useState(area?area.nombre:(nombreInicial||""));
-  const[cat,setCat]=useState(area?(joCat(area)||""):(catInicial||""));
-  const[claves,setClaves]=useState(area?(area.claves||""):"");
+  const[nombre,setNombre]=useState(area?area.nombre:nomIni);
+  const[tipo,setTipo]=useState(area?area.tipo:(iniOys?"area":"empresa"));
+  const[celda,setCelda]=useState(area?joCeldaNom(area):"");
+  const[col1,setCol1]=useState(area?(area.col_dia1||"F"):"F");
+  const[claves,setClaves]=useState(area?(area.claves||""):nomIni);
   const[busy,setBusy]=useState(false);
-  const esOys=cat==="oys";
-  const sugs=nueva?joSugNombres(d,cat||null).slice(0,30):[];
-  const nom=txtMay(nombre);
-  const repetida=!!nom&&areas.some(a=>(!area||a.id!==area.id)&&joNorm(a.nombre)===joNorm(nom));
-  const falta=[!nom&&"nombre",JO_V2&&nueva&&!cat&&"categoría"].filter(Boolean);
+  const pc=joParseCelda(celda);
+  const c1=String(col1||"").trim().toUpperCase();
+  const c1ok=/^[A-Z]{1,3}$/.test(c1);
+  const prev=pc&&c1ok?{fila:pc.fila,col_nombre:pc.col,col_dia1:c1}:null;
+  const otras=areas.filter(a=>!area||a.id!==area.id);
+  const choca=pc?otras.filter(a=>a.fila===pc.fila):[];
+  const falta=[!nombre.trim()&&"nombre",!pc&&"celda del nombre (ej. D47)",!c1ok&&"columna del día 1 (ej. F)"].filter(Boolean);
   const guardar=async()=>{
     if(falta.length)return;
-    if(repetida&&!confirm(`Ya hay una empresa o área "${nom}". ¿Guardar igual?`))return;
+    if(choca.length&&!confirm(`La fila ${pc.fila} ya la usa ${choca.map(a=>a.nombre).join(", ")}. Si quedan en la misma fila, en el Excel se pisan. ¿Guardar igual?`))return;
     setBusy(true);
-    const payload={nombre:nom,tipo:esOys?"area":"empresa",claves:claves.trim()||null,actualizado_at:new Date().toISOString(),...(JO_V2?{categoria:cat||null}:{})};
+    const payload={nombre:nombre.trim(),tipo,fila:pc.fila,col_nombre:pc.col,col_dia1:c1,claves:claves.trim()||null,actualizado_at:new Date().toISOString()};
     const r=nueva?await db.ins("jo_areas",{...payload,creado_por:user.id}):await db.upd("jo_areas",payload,[["id","eq",area.id]]);
     setBusy(false);
     if(!r.ok){alert("No se pudo guardar. Revisá la conexión.");return;}
-    onSaved(Array.isArray(r.data)&&r.data[0]?r.data[0]:{...area,...payload});
+    const fila=Array.isArray(r.data)&&r.data[0]?r.data[0]:{...area,...payload};
+    onSaved(fila);
   };
   const eliminar=async()=>{
     if(!confirm(`¿Eliminar "${area.nombre}"?${nPersonas?` Sus ${nPersonas} personas quedan sin área.`:""}`))return;
@@ -6686,24 +6527,28 @@ function JoAreaModal({area,areas,d,nPersonas,nombreInicial,catInicial,user,onClo
     onDeleted();
   };
   return <div className="mo"><div className="md md-lg">
-    <div className="mh"><div className="mt">{nueva?"Crear empresa o área":"Editar empresa o área"}</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mh"><div className="mt">{nueva?"Crear área o empresa":"Editar área o empresa"}</div><button className="mc" onClick={onClose}>x</button></div>
     <div className="mb">
-      <div className="f"><label>Categoría{JO_V2&&nueva?" *":""}</label>
-        <select value={cat} onChange={e=>setCat(e.target.value)}>
-          <option value="">— Sin categoría —</option>
-          {JO_CATS.map(c=><option key={c.k} value={c.k}>{c.t}</option>)}
-        </select>
-        {!JO_V2&&<div style={{fontSize:11,color:"var(--acc)",marginTop:4}}>La categoría queda guardada recién cuando se corra el SQL de categorías y roles (aviso arriba, en "Áreas o subcontratos").</div>}
+      <div className="f"><label>Nombre (es lo que va al Excel) *</label><input value={nombre} onChange={e=>setNombre(e.target.value)} placeholder="Ej: ALUSA o Producción" autoFocus/></div>
+      <div className="f"><label>Tipo</label><select value={tipo} onChange={e=>setTipo(e.target.value)}><option value="empresa">Empresa subcontratista</option><option value="area">Área de Obras y Sistemas</option></select></div>
+      <div className="jo-wrap" style={{background:"var(--s2)"}}>
+        <div className="jo-h" style={{marginBottom:6}}>📍 Dónde se vuelca en el Excel del parte diario</div>
+        {nueva
+          ?<div style={{fontSize:12,color:"var(--tx2)",marginBottom:10}}>¿En qué fila del Excel va? Poné la celda donde va el nombre y la columna del día 1; los demás días siguen hacia la derecha.</div>
+          :<div style={{fontSize:12,color:"var(--tx2)",marginBottom:10}}>Hoy está configurado: <strong style={{color:"var(--tx)"}}>{joUbicTxt(area)}</strong>. Si hace falta, cambialo acá.</div>}
+        <div className="row2">
+          <div className="f"><label>Celda del nombre *</label><input value={celda} onChange={e=>setCelda(e.target.value.toUpperCase())} placeholder="Ej: D47"/></div>
+          <div className="f"><label>Columna del día 1 *</label><input value={col1} onChange={e=>setCol1(e.target.value.toUpperCase())} placeholder="F"/></div>
+        </div>
+        {prev
+          ?<div style={{fontSize:12,color:"var(--gr)",fontFamily:"var(--fm)"}}>→ {joUbicTxt(prev)}</div>
+          :<div style={{fontSize:12,color:"var(--tx3)"}}>La celda es letra + número (ej. D47) y la columna, solo letras (ej. F).</div>}
+        {choca.length>0&&<div className="warn" style={{marginTop:8,marginBottom:0}}>⚠ La fila {pc.fila} ya la usa {choca.map(a=>a.nombre).join(", ")}.</div>}
+        <div style={{fontSize:11,color:"var(--tx3)",marginTop:8}}>Filas ya usadas por otras áreas: {joRangos(otras.map(a=>a.fila))||"ninguna"}</div>
       </div>
-      <div className="f"><label>{esOys?"Nombre del área":"Nombre de la empresa"} *</label><input value={nombre} onChange={e=>setNombre(e.target.value)} placeholder={esOys?"Ej: JERARQUICOS":"Ej: TECNICA ELEMEC"} autoFocus/></div>
-      {repetida&&<div className="warn" style={{fontSize:12}}>⚠ Ya hay una empresa o área con ese nombre.</div>}
-      {sugs.length>0&&<div style={{marginBottom:14}}>
-        <div style={{fontSize:11,color:"var(--tx2)",marginBottom:6}}>💡 Sugeridas según Personal ({esOys?"cargos del personal de Obras y Sistemas":"empresas"} de quienes todavía no tienen área). Tocá una para usarla:</div>
-        <div style={{display:"flex",flexWrap:"wrap",gap:5}}>{sugs.map(([k,n])=><button key={k} className="bsm" style={{fontSize:11,padding:"3px 8px",borderColor:nom===k?"var(--acc)":undefined,color:nom===k?"var(--acc)":undefined}} onClick={()=>setNombre(k)}>{k} <span style={{color:"var(--tx3)"}}>({n})</span></button>)}</div>
-      </div>}
-      <div className="f"><label>Sugerir personas {esOys?"cuyo cargo":"cuya empresa"} diga… (separar con comas)</label>
-        <input value={claves} onChange={e=>setClaves(e.target.value)} placeholder={nom?`${nom} (si lo dejás vacío se usa el nombre)`:"Ej: ALUSA, SUBCONTRATO ALUSA"}/>
-        <div style={{fontSize:11,color:"var(--tx3)",marginTop:4}}>Se compara con la empresa de cada persona en Personal (y, en el personal de Obras y Sistemas, con el cargo), sin importar mayúsculas ni tildes. Si lo dejás vacío se usa el nombre.</div>
+      <div className="f"><label>Sugerir personas cuya empresa diga… (separar con comas)</label>
+        <input value={claves} onChange={e=>setClaves(e.target.value)} placeholder={nombre?`${nombre} (si lo dejás vacío se usa el nombre)`:"Ej: ALUSA, SUBCONTRATO ALUSA"}/>
+        <div style={{fontSize:11,color:"var(--tx3)",marginTop:4}}>Se compara con la empresa de cada persona en Personal, sin importar mayúsculas ni tildes. Si lo dejás vacío se usa el nombre.</div>
       </div>
       {falta.length>0&&<div style={{fontSize:12,color:"var(--tx3)"}}>Falta completar: {falta.join(", ")}</div>}
     </div>
@@ -6718,13 +6563,8 @@ function JoAreaModal({area,areas,d,nPersonas,nombreInicial,catInicial,user,onClo
 function JoAreaDetalle({area,d,user,onClose,onChanged,onEditar}){
   const miembros=d.porArea[area.id]||[];
   const sug=d.sugeridasDe[area.id]||[];
-  const roles=d.rolesDe[area.id]||[];
-  const ci=joCatInfo(joCat(area));
-  const esArea=ci.u==="área";
   const[q,setQ]=useState("");
-  const[tild,setTild]=useState(()=>new Set());
-  const[rolMas,setRolMas]=useState("");
-  const[nuevoRol,setNuevoRol]=useState("");
+  const[quitar,setQuitar]=useState(()=>new Set());
   const[tab,setTab]=useState(sug.length?"sug":"bus");
   const[qb,setQb]=useState("");
   const[marc,setMarc]=useState(()=>new Set());
@@ -6744,71 +6584,24 @@ function JoAreaDetalle({area,d,user,onClose,onChanged,onEditar}){
     if(ok){setMarc(new Set());onChanged();}
   };
   const sacar=async()=>{
-    const ids=[...tild];if(!ids.length)return;
+    const ids=[...quitar];if(!ids.length)return;
     if(!confirm(`¿Sacar ${ids.length} ${ids.length===1?"persona":"personas"} de ${area.nombre}? Quedan sin área.`))return;
-    setBusy(true);await joQuitar(ids);setBusy(false);setTild(new Set());onChanged();
+    setBusy(true);await joQuitar(ids);setBusy(false);setQuitar(new Set());onChanged();
   };
-  // Rev133: roles de esta empresa o área (los arma el sobrestante, sin sugerencias)
-  const ponerRol=async(ids,rid)=>{if(!ids.length)return;setBusy(true);const ok=await joPonerRol(ids,rid);setBusy(false);if(ok){setTild(new Set());setRolMas("");onChanged();}};
-  const crearRol=async()=>{
-    const n=txtMay(nuevoRol);if(!n)return;
-    if(roles.some(r=>joNorm(r.nombre)===joNorm(n))){alert("Ya hay un rol con ese nombre.");return;}
-    setBusy(true);const r=await db.ins("jo_roles",{area_id:area.id,nombre:n,creado_por:user.id});setBusy(false);
-    if(!r.ok){alert("No se pudo crear el rol. Revisá la conexión.");return;}
-    setNuevoRol("");onChanged();
-  };
-  const renombrarRol=async(r)=>{
-    const n=txtMay(prompt("Nombre del rol:",r.nombre)||"");if(!n||n===r.nombre)return;
-    if(roles.some(x=>x.id!==r.id&&joNorm(x.nombre)===joNorm(n))){alert("Ya hay un rol con ese nombre.");return;}
-    setBusy(true);const res=await db.upd("jo_roles",{nombre:n},[["id","eq",r.id]]);setBusy(false);
-    if(!res.ok){alert("No se pudo guardar. Revisá la conexión.");return;}
-    onChanged();
-  };
-  const borrarRol=async(r)=>{
-    const n=(d.porRol[r.id]||[]).length;
-    if(!confirm(`¿Eliminar el rol "${r.nombre}"?${n?` ${n===1?"La persona que lo tiene queda":`Las ${n} personas que lo tienen quedan`} en ${area.nombre} sin rol.`:""}`))return;
-    setBusy(true);await db.del("jo_roles",[["id","eq",r.id]]);setBusy(false);onChanged();
-  };
-  const sinRol=miembros.filter(p=>!d.rolDe[p.id]).length;
   return <div className="mo"><div className="md md-lg" style={{maxWidth:760}}>
-    <div className="mh"><div className="mt">{area.nombre} <span style={{fontSize:12,color:"var(--tx3)",fontFamily:"var(--fm)",textTransform:"none",letterSpacing:0}}>· {ci.t}</span></div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mh"><div className="mt">{area.nombre} <span style={{fontSize:12,color:"var(--tx3)",fontFamily:"var(--fm)",textTransform:"none",letterSpacing:0}}>· {area.tipo==="area"?"área de O&S":"subcontrato"}</span></div><button className="mc" onClick={onClose}>x</button></div>
     <div className="mb">
-      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:14,fontSize:12,color:"var(--tx2)"}}>
-        <span>📂 {ci.t}</span>
-        <button className="bsm" onClick={onEditar}>✏️ Editar nombre / categoría</button>
+      <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:16,fontSize:12,color:"var(--tx2)"}}>
+        <span>📍 Excel: <strong style={{color:area.fila?"var(--tx)":"var(--acc)"}}>{joUbicTxt(area)}</strong></span>
+        <button className="bsm" onClick={onEditar}>✏️ Editar nombre / celda</button>
       </div>
 
-      {d.v2?<div className="jo-wrap" style={{background:"var(--s2)",padding:"10px 12px"}}>
-        <div className="jo-h" style={{marginBottom:6}}>Roles <span style={{color:"var(--tx3)"}}>· {roles.length}</span></div>
-        {roles.length===0&&<div style={{fontSize:12,color:"var(--tx3)",marginBottom:8}}>Todavía no tiene roles. Creá los que necesites (ej. OFICIAL, AYUDANTE) y después ponéselos a cada persona abajo.</div>}
-        {roles.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
-          {roles.map(r=><span key={r.id} className="jo-chip">{r.nombre} <b style={{color:"var(--tx2)",margin:"0 2px 0 4px"}}>{(d.porRol[r.id]||[]).length}</b><button title="Cambiar el nombre" onClick={()=>renombrarRol(r)} disabled={busy}>✏️</button><button title="Eliminar el rol" onClick={()=>borrarRol(r)} disabled={busy}>×</button></span>)}
-          {sinRol>0&&<span className="jo-chip" style={{opacity:.7,paddingRight:10}}>sin rol <b style={{marginLeft:4}}>{sinRol}</b></span>}
-        </div>}
-        <div style={{display:"flex",gap:6}}>
-          <input className="fi" style={{flex:1}} placeholder="Nuevo rol (ej. OFICIAL)" value={nuevoRol} onChange={e=>setNuevoRol(e.target.value)} onKeyDown={e=>e.key==="Enter"&&crearRol()}/>
-          <button className="bsm" onClick={crearRol} disabled={busy||!nuevoRol.trim()}>+ Agregar rol</button>
-        </div>
-      </div>:<div className="warn" style={{fontSize:12}}>Para usar roles falta correr el SQL de categorías y roles (aviso arriba, en "Áreas o subcontratos").</div>}
-
-      <div className="jo-h">Personas en {esArea?"el área":"la empresa"} <span style={{color:"var(--tx)"}}>({miembros.length})</span></div>
+      <div className="jo-h">Personas en {area.tipo==="area"?"el área":"la empresa"} <span style={{color:"var(--tx)"}}>({miembros.length})</span></div>
       {miembros.length>8&&<input className="fi" style={{width:"100%",marginBottom:8}} placeholder="Filtrar por nombre, DNI o empresa..." value={q} onChange={e=>setQ(e.target.value)}/>}
       {miembros.length===0
         ?<div style={{fontSize:13,color:"var(--tx3)",marginBottom:14}}>Todavía no tiene personas. Agregalas abajo.</div>
-        :<div className="jo-scroll" style={{maxHeight:260,marginBottom:8}}>{miembrosF.map(p=><JoPersonaChk key={p.id} p={p} on={tild.has(p.id)} onToggle={()=>tog(tild,setTild,p.id)}
-          extra={d.v2&&roles.length>0?<select className="fi" style={{padding:"3px 6px",fontSize:12,maxWidth:150,minWidth:0}} value={d.rolDe[p.id]||""} disabled={busy} onClick={e=>e.stopPropagation()} onChange={e=>ponerRol([p.id],e.target.value)} title="Rol">
-            <option value="">— sin rol —</option>{roles.map(r=><option key={r.id} value={r.id}>{r.nombre}</option>)}
-          </select>:null}/>)}</div>}
-      {tild.size>0&&<div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:14}}>
-        <span style={{fontSize:12,color:"var(--tx2)"}}>{tild.size} tildada{tild.size===1?"":"s"}:</span>
-        {d.v2&&roles.length>0&&<>
-          <select className="fi" style={{padding:"4px 8px",fontSize:12,minWidth:0}} value={rolMas} onChange={e=>setRolMas(e.target.value)}>
-            <option value="">Elegí un rol…</option><option value="_sin">— sin rol —</option>{roles.map(r=><option key={r.id} value={r.id}>{r.nombre}</option>)}
-          </select>
-          <button className="bsm" disabled={!rolMas||busy} onClick={()=>ponerRol([...tild],rolMas==="_sin"?null:rolMas)}>Poner rol</button>
-        </>}
-        <button className="bsm bsm-r" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.4)"}} onClick={sacar} disabled={busy}>Sacar de {esArea?"el área":"la empresa"}</button>
-      </div>}
+        :<div className="jo-scroll" style={{maxHeight:240,marginBottom:8}}>{miembrosF.map(p=><JoPersonaChk key={p.id} p={p} on={quitar.has(p.id)} onToggle={()=>tog(quitar,setQuitar,p.id)}/>)}</div>}
+      {quitar.size>0&&<button className="bsm bsm-r" style={{marginBottom:14,color:"var(--rd)",borderColor:"rgba(239,68,68,.4)"}} onClick={sacar} disabled={busy}>Sacar {quitar.size} tildada{quitar.size===1?"":"s"} del área</button>}
 
       <div className="jo-h" style={{marginTop:10}}>Agregar personas</div>
       <div className="jo-tabs">
@@ -6816,7 +6609,7 @@ function JoAreaDetalle({area,d,user,onClose,onChanged,onEditar}){
         <button className={`jo-tab${tab==="bus"?" on":""}`} onClick={()=>setTab("bus")}>🔎 Buscar en toda la base</button>
       </div>
       {tab==="sug"
-        ?<div style={{fontSize:12,color:"var(--tx2)",marginBottom:8}}>Personas <strong>sin área</strong> cuya {esArea?"empresa o cargo":"empresa"} en Personal dice: <span style={{fontFamily:"var(--fm)",color:"var(--tx)"}}>{joClaves(area).join(" / ")}</span>. <a href="#" onClick={e=>{e.preventDefault();onEditar();}} style={{color:"var(--acc2)"}}>Cambiar palabras</a></div>
+        ?<div style={{fontSize:12,color:"var(--tx2)",marginBottom:8}}>Personas <strong>sin área</strong> cuya empresa en Personal dice: <span style={{fontFamily:"var(--fm)",color:"var(--tx)"}}>{joClaves(area).join(" / ")}</span>. <a href="#" onClick={e=>{e.preventDefault();onEditar();}} style={{color:"var(--acc2)"}}>Cambiar palabras</a></div>
         :<input className="fi" style={{width:"100%",marginBottom:8}} placeholder="Buscar nombre, DNI o empresa..." value={qb} onChange={e=>setQb(e.target.value)} autoFocus/>}
       {tab==="bus"&&qb.trim().length<2
         ?<div style={{fontSize:12,color:"var(--tx3)",padding:"6px 2px"}}>Escribí al menos 2 letras o números. Si la persona ya está en otra área, al agregarla se mueve a esta.</div>
@@ -6849,11 +6642,8 @@ function JoSinAreaModal({d,areas,user,onClose,onChanged,onCrear}){
   const[busy,setBusy]=useState(false);
   const lista=joFiltra(d.sinArea,q);
   const grupos=useMemo(()=>{
-    // Rev133: por empresa (ya limpia); el personal propio, por cargo (es lo que después se usa como área)
-    const g={},meta={};lista.forEach(p=>{const le=limpiarEmpresa(p.empresa,p.cargo),oys=le.empresa==="OBRAS Y SISTEMAS";
-      const k=oys?`OBRAS Y SISTEMAS · ${le.cargo||"SIN CARGO"}`:(le.empresa||"(sin empresa)");
-      (g[k]=g[k]||[]).push(p);if(!meta[k])meta[k]={nombre:oys?(le.cargo||""):(le.empresa||""),cat:oys?"oys":null};});
-    return Object.entries(g).map(([k,ps])=>[k,ps,meta[k]]).sort((a,b)=>b[1].length-a[1].length||a[0].localeCompare(b[0],"es"));
+    const g={};lista.forEach(p=>{const k=(p.empresa||"").trim()||"(sin empresa)";(g[k]=g[k]||[]).push(p);});
+    return Object.entries(g).sort((a,b)=>b[1].length-a[1].length||a[0].localeCompare(b[0],"es"));
   },[lista]);
   const togP=(id)=>{const n=new Set(marc);n.has(id)?n.delete(id):n.add(id);setMarc(n);};
   const togG=(ps)=>{const n=new Set(marc);const todas=ps.every(p=>n.has(p.id));ps.forEach(p=>todas?n.delete(p.id):n.add(p.id));setMarc(n);};
@@ -6869,11 +6659,11 @@ function JoSinAreaModal({d,areas,user,onClose,onChanged,onCrear}){
       <input className="fi" style={{width:"100%",marginBottom:10}} placeholder="Buscar nombre, DNI o empresa..." value={q} onChange={e=>setQ(e.target.value)}/>
       <div style={{maxHeight:"52vh",overflowY:"auto"}}>
         {grupos.length===0&&<div style={{fontSize:13,color:"var(--tx3)",padding:12}}>{d.sinArea.length?"Nadie coincide con la búsqueda.":"🎉 Todas las personas activas tienen área."}</div>}
-        {grupos.map(([emp,ps,mt])=><div key={emp} style={{marginBottom:10}}>
+        {grupos.map(([emp,ps])=><div key={emp} style={{marginBottom:10}}>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",padding:"6px 4px",borderBottom:"1px solid var(--bd)",marginBottom:4}}>
             <strong style={{flex:1,minWidth:160}}>{emp} <span style={{color:"var(--tx3)",fontWeight:400}}>· {ps.length}</span></strong>
             <button className="bsm" onClick={()=>togG(ps)}>{ps.every(p=>marc.has(p.id))?"Destildar":"Tildar"} grupo</button>
-            {mt.nombre&&<button className="bsm" onClick={()=>onCrear(mt.nombre,mt.cat)}>+ Crear {mt.cat==="oys"?"área":"empresa"} {mt.nombre}</button>}
+            {emp!=="(sin empresa)"&&<button className="bsm" onClick={()=>onCrear(emp)}>+ Crear {joEsOys(emp)?"área":"empresa"} con este nombre</button>}
           </div>
           {ps.map(p=>{const m=(d.match[p.id]||[]).map(id=>(d.areasById[id]||{}).nombre).filter(Boolean);
             return <JoPersonaChk key={p.id} p={p} on={marc.has(p.id)} onToggle={()=>togP(p.id)} extra={m.length?<span className="jo-sug" title="Coincide por empresa">💡 {m.slice(0,2).join(", ")}{m.length>2?"…":""}</span>:null}/>;})}
@@ -6883,8 +6673,8 @@ function JoSinAreaModal({d,areas,user,onClose,onChanged,onCrear}){
     <div className="mf" style={{alignItems:"center",flexWrap:"wrap"}}>
       <span style={{fontSize:13,color:"var(--tx2)"}}>{marc.size} tildada{marc.size===1?"":"s"} →</span>
       <select className="fi" style={{flex:1,minWidth:180}} value={dest} onChange={e=>setDest(e.target.value)}>
-        <option value="">Elegí la empresa o área…</option>
-        {joOpts(areas)}
+        <option value="">Elegí el área o empresa…</option>
+        {["empresa","area"].map(t=><optgroup key={t} label={JO_TIPOS[t]}>{areas.filter(a=>a.tipo===t).map(a=><option key={a.id} value={a.id}>{a.nombre}</option>)}</optgroup>)}
       </select>
       <button className="badd" onClick={asignar} disabled={busy||!dest||!marc.size} style={{opacity:busy||!dest||!marc.size?.5:1}}>{busy?"Guardando…":"Agregar"}</button>
     </div>
@@ -6895,10 +6685,9 @@ function JoAreas({user}){
   const[base,setBase]=useState(null);
   const[filtro,setFiltro]=useState("");
   const[verId,setVerId]=useState(null);
-  const[editar,setEditar]=useState(null); // null | {area?, nombre?, cat?}
+  const[editar,setEditar]=useState(null); // null | {area?, nombre?}
   const[verSin,setVerSin]=useState(false);
   const[sembrando,setSembrando]=useState(false);
-  const[ubicando,setUbicando]=useState(null);
   const load=useCallback(async()=>{setBase(await joFetchBase());},[]);
   useEffect(()=>{load();},[load]);
   const d=useMemo(()=>joDerivar(base),[base]);
@@ -6906,62 +6695,44 @@ function JoAreas({user}){
   if(base.falta)return <div><div className="ph2"><div className="ptit">Áreas <span>o subcontratos</span></div></div><JoFaltaSql/></div>;
   const areas=base.areas;
   const sembrar=async()=>{
-    if(!confirm(`Se cargan ${JO_SEED.length} áreas y empresas (las de Obras y Sistemas en su categoría; las empresas, sin categoría para que las ubiques). Después se pueden editar. ¿Seguir?`))return;
+    if(!confirm(`Se cargan ${JO_SEED.length} áreas y empresas con su fila del Excel (nombre en D; día 1 en F … día 31 en AJ). Después se pueden editar. ¿Seguir?`))return;
     setSembrando(true);
-    const{ok}=await db.ins("jo_areas",JO_SEED.map(([nombre,tipo,fila,claves])=>({nombre,tipo,fila,col_nombre:"D",col_dia1:"F",claves:claves||null,creado_por:user.id,...(JO_V2&&tipo==="area"?{categoria:"oys"}:{})})));
+    const{ok}=await db.ins("jo_areas",JO_SEED.map(([nombre,tipo,fila,claves])=>({nombre,tipo,fila,col_nombre:"D",col_dia1:"F",claves:claves||null,creado_por:user.id})));
     setSembrando(false);
     if(!ok)alert("No se pudo cargar el listado. Revisá la conexión.");
     load();
   };
-  // Rev133: ubicar una empresa sin categoría directo desde la lista
-  const ubicar=async(a,cat)=>{
-    if(!cat)return;setUbicando(a.id);
-    const r=await db.upd("jo_areas",{categoria:cat,tipo:cat==="oys"?"area":"empresa",actualizado_at:new Date().toISOString()},[["id","eq",a.id]]);
-    setUbicando(null);if(!r.ok){alert("No se pudo guardar. Revisá la conexión.");return;}
-    load();
-  };
   const f=joNorm(filtro);
   const vis=areas.filter(a=>!f||joNorm(a.nombre).includes(f));
-  const gs=joGruposCat(vis);
-  const gSin=gs.find(g=>g.k===null);
-  const orden=gSin?[gSin,...gs.filter(g=>g.k!==null)]:gs;
-  const nSinCat=areas.filter(a=>joCat(a)===null).length;
   const conSug=Object.keys(d.match).length;
   const ver=verId?d.areasById[verId]:null;
   return <div>
-    <div className="ph2"><div className="ptit">Áreas <span>o subcontratos</span></div><button className="badd" onClick={()=>setEditar({})}>+ Crear empresa o área</button></div>
-    {!JO_V2&&<JoFaltaSqlV2/>}
+    <div className="ph2"><div className="ptit">Áreas <span>o subcontratos</span></div><button className="badd" onClick={()=>setEditar({})}>+ Crear área o empresa</button></div>
     {areas.length===0&&<div className="jo-wrap" style={{borderColor:"rgba(245,158,11,.4)"}}>
-      <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Todavía no hay empresas ni áreas. Podés cargar de una el listado inicial ({JO_SEED.length}) o crearlas una por una.</div>
+      <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Todavía no hay áreas ni empresas. Podés cargar de una el listado inicial ({JO_SEED.length}: ALUSA en la fila 11 … Mecánicos en la 115) o crearlas una por una.</div>
       <button className="badd" onClick={sembrar} disabled={sembrando}>{sembrando?"Cargando…":`📥 Cargar el listado inicial (${JO_SEED.length})`}</button>
     </div>}
     <div className="sg">
-      <div className="sc"><div className="sv">{areas.length}</div><div className="slb">Empresas y áreas</div></div>
-      {JO_V2&&<div className="sc"><div className="sv" style={{color:nSinCat?"var(--acc)":"var(--tx2)"}}>{nSinCat}</div><div className="slb">Sin categoría</div></div>}
+      <div className="sc"><div className="sv">{areas.length}</div><div className="slb">Áreas y empresas</div></div>
       <div className="sc"><div className="sv" style={{color:"var(--gr)"}}>{d.activos.length-d.sinArea.length}</div><div className="slb">Personas con área</div></div>
       <div className="sc sc-btn" onClick={()=>setVerSin(true)} title="Ver y asignar a quienes no tienen área"><div className="sv" style={{color:d.sinArea.length?"var(--acc)":"var(--tx2)"}}>{d.sinArea.length}</div><div className="slb">Sin área · ver y asignar</div></div>
       <div className="sc"><div className="sv" style={{color:conSug?"var(--acc)":"var(--tx2)"}}>{conSug}</div><div className="slb">💡 Sin área con sugerencia</div></div>
     </div>
-    {areas.length>0&&<div className="fb"><input className="fi" placeholder="Buscar empresa o área..." value={filtro} onChange={e=>setFiltro(e.target.value)} style={{width:300}}/></div>}
-    {orden.map(g=><div key={g.k||"_sin"} className="jo-wrap" style={g.k===null?{borderColor:"rgba(245,158,11,.5)"}:undefined}>
-      <div className="jo-h">{g.k===null?"⚠ ":""}{g.t} <span style={{color:"var(--tx3)"}}>· {g.areas.length} {g.u==="área"?(g.areas.length===1?"área":"áreas"):(g.areas.length===1?"empresa":"empresas")}</span>
-        {g.k!==null&&<button className="bsm" style={{marginLeft:"auto",textTransform:"none",letterSpacing:0}} onClick={()=>setEditar({cat:g.k})}>+ {g.u==="área"?"Área":"Empresa"}</button>}
-      </div>
-      {g.k===null&&JO_V2&&<div style={{fontSize:12,color:"var(--tx2)",marginBottom:8,lineHeight:1.5}}>Ubicá cada una en su categoría con "Ubicar en…" (o tocándola y Editar).</div>}
-      <div className="jo-list">{g.areas.map(a=>{const n=(d.porArea[a.id]||[]).length,s=(d.sugeridasDe[a.id]||[]).length,rs=d.rolesDe[a.id]||[];
-        return <div key={a.id} className="jo-row" onClick={()=>setVerId(a.id)}>
-          <div className="jo-nom">{a.nombre}<div className="jo-cel">{rs.length?`roles: ${rs.map(r=>r.nombre).join(" · ")}`:(JO_V2?"sin roles":"")}</div></div>
-          {g.k===null&&JO_V2&&<select className="fi" style={{padding:"4px 8px",fontSize:12,minWidth:0}} value="" disabled={ubicando===a.id} onClick={e=>e.stopPropagation()} onChange={e=>ubicar(a,e.target.value)}>
-            <option value="">{ubicando===a.id?"Guardando…":"Ubicar en…"}</option>{JO_CATS.map(c=><option key={c.k} value={c.k}>{c.t}</option>)}
-          </select>}
-          {s>0&&<span className="jo-sug">💡 {s} sugerida{s===1?"":"s"}</span>}
-          <div className="jo-n" style={{color:n?"var(--tx)":"var(--tx3)"}}>{n}</div><div style={{fontSize:11,color:"var(--tx3)",width:52}}>persona{n===1?"":"s"}</div>
-        </div>;})}</div>
-    </div>)}
-    {vis.length===0&&areas.length>0&&<div style={{textAlign:"center",color:"var(--tx2)",padding:20}}>Ninguna empresa o área coincide con "{filtro}".</div>}
+    {areas.length>0&&<div className="fb"><input className="fi" placeholder="Buscar área o empresa..." value={filtro} onChange={e=>setFiltro(e.target.value)} style={{width:300}}/></div>}
+    {["empresa","area"].map(t=>{const l=vis.filter(a=>a.tipo===t);if(!l.length)return null;
+      return <div key={t} className="jo-wrap">
+        <div className="jo-h">{JO_TIPOS[t]} <span style={{color:"var(--tx3)"}}>· {l.length}</span></div>
+        <div className="jo-list">{l.map(a=>{const n=(d.porArea[a.id]||[]).length,s=(d.sugeridasDe[a.id]||[]).length;
+          return <div key={a.id} className="jo-row" onClick={()=>setVerId(a.id)}>
+            <div className="jo-nom">{a.nombre}<div className="jo-cel">{a.fila?`${joCeldaNom(a)} · día 1 en ${joColDia(a,1)}${a.fila} → día 31 en ${joColDia(a,31)}${a.fila}`:"⚠ sin ubicación en el Excel"}</div></div>
+            {s>0&&<span className="jo-sug">💡 {s} sugerida{s===1?"":"s"}</span>}
+            <div className="jo-n" style={{color:n?"var(--tx)":"var(--tx3)"}}>{n}</div><div style={{fontSize:11,color:"var(--tx3)",width:52}}>persona{n===1?"":"s"}</div>
+          </div>;})}</div>
+      </div>;})}
+    {vis.length===0&&areas.length>0&&<div style={{textAlign:"center",color:"var(--tx2)",padding:20}}>Ninguna área coincide con "{filtro}".</div>}
     {ver&&<JoAreaDetalle key={ver.id} area={ver} d={d} user={user} onClose={()=>setVerId(null)} onChanged={load} onEditar={()=>setEditar({area:ver})}/>}
-    {verSin&&<JoSinAreaModal d={d} areas={areas} user={user} onClose={()=>setVerSin(false)} onChanged={load} onCrear={(nombre,cat)=>{setVerSin(false);setEditar({nombre,cat});}}/>}
-    {editar&&<JoAreaModal area={editar.area||null} nombreInicial={editar.nombre} catInicial={editar.cat} areas={areas} d={d} nPersonas={editar.area?(d.porArea[editar.area.id]||[]).length:0} user={user}
+    {verSin&&<JoSinAreaModal d={d} areas={areas} user={user} onClose={()=>setVerSin(false)} onChanged={load} onCrear={(nombre)=>{setVerSin(false);setEditar({nombre});}}/>}
+    {editar&&<JoAreaModal area={editar.area||null} nombreInicial={editar.nombre} areas={areas} nPersonas={editar.area?(d.porArea[editar.area.id]||[]).length:0} user={user}
       onClose={()=>setEditar(null)}
       onSaved={(a)=>{const eraNueva=!editar.area;setEditar(null);load().then(()=>{if(eraNueva&&a&&a.id)setVerId(a.id);});}}
       onDeleted={()=>{setEditar(null);setVerId(null);load();}}/>}
@@ -6997,10 +6768,7 @@ function JoCalendario({mes,setMes,sel,onToggle,habil,hint,minMes,maxMes}){
 function JoDetalleCelda({celda,d,res,presD,presP1D,fuente,radarD,areas,user,onAsignado,onCerrar}){
   const sin=celda.aid==="_sin";
   const a=sin?null:d.areasById[celda.aid];
-  const rid=celda.rid; // Rev133: undefined = toda el área; "_sinrol" = quienes no tienen rol; id = un rol
-  const items=((sin?res.sinArea[celda.d]:(res.porArea[celda.aid]||{})[celda.d])||[])
-    .filter(({p})=>!rid||(rid==="_sinrol"?!d.rolDe[p.id]:d.rolDe[p.id]===rid)).slice().sort((x,y)=>joPorApe(x.p,y.p));
-  const rolNom=rid?(rid==="_sinrol"?"sin rol":((d.rolesById[rid]||{}).nombre||"")):"";
+  const items=((sin?res.sinArea[celda.d]:(res.porArea[celda.aid]||{})[celda.d])||[]).slice().sort((x,y)=>joPorApe(x.p,y.p));
   const[busy,setBusy]=useState(null);
   const[verFaltan,setVerFaltan]=useState(false);
   const esP2=fuente==="p2";
@@ -7013,7 +6781,7 @@ function JoDetalleCelda({celda,d,res,presD,presP1D,fuente,radarD,areas,user,onAs
   const asignar=async(pid,aid)=>{if(!aid)return;setBusy(pid);const ok=await joAsignar([pid],aid,user);setBusy(null);if(ok)onAsignado();};
   return <div className="jo-wrap">
     <div className="jo-h" style={{justifyContent:"space-between"}}>
-      <span>{sin?"⚠ Sin área asignada":(a?a.nombre:"—")}{rolNom?` · ${rolNom}`:""} · {joDiaLbl(celda.d)} · <span style={{color:"var(--tx)"}}>{items.length} {items.length===1?"persona":"personas"}</span></span>
+      <span>{sin?"⚠ Sin área asignada":(a?a.nombre:"—")} · {joDiaLbl(celda.d)} · <span style={{color:"var(--tx)"}}>{items.length} {items.length===1?"persona":"personas"}</span></span>
       <button className="bsm" onClick={onCerrar}>Cerrar</button>
     </div>
     {sin&&items.length>0&&<div style={{fontSize:12,color:"var(--tx2)",marginBottom:8}}>Estuvieron ese día pero no están en ninguna área, así que no entran en el Excel. Asignalas acá o desde "Áreas o subcontratos".</div>}
@@ -7023,14 +6791,14 @@ function JoDetalleCelda({celda,d,res,presD,presP1D,fuente,radarD,areas,user,onAs
       :<div className="tw" style={{maxHeight:420}}><table style={{minWidth:0}}>
         <thead><tr><th>Persona</th><th>DNI</th><th>Empresa en Personal</th><th>Cómo se contó</th>{sin&&<th>Asignar a</th>}</tr></thead>
         <tbody>{items.map(({p,x})=><tr key={p.id}>
-          <td style={{whiteSpace:"nowrap"}}>{p.apellido}, {p.nombre}{p.deleted_at&&<span className="jo-baja">baja</span>}{!sin&&!rid&&d.rolDe[p.id]&&<span style={{fontSize:11,color:"var(--tx3)"}}> · {(d.rolesById[d.rolDe[p.id]]||{}).nombre}</span>}</td>
+          <td style={{whiteSpace:"nowrap"}}>{p.apellido}, {p.nombre}{p.deleted_at&&<span className="jo-baja">baja</span>}</td>
           <td className="mn">{p.dni}</td>
-          <td style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa||"—"}{p.cargo?` · ${p.cargo}`:""}</td>
+          <td style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa||"—"}</td>
           <td style={{fontSize:12,color:"var(--tx2)"}}>{joComoTxt(x)}{(()=>{const av=joAvisoRadar(x,p.id,radarD);return av?<span style={{color:"var(--acc)"}} title="Revisar: puede haberse ido sin fichar la salida por Puesto 1"> · ⚠ {av}</span>:null;})()}</td>
           {sin&&<td><select className="fi" style={{padding:"4px 8px",fontSize:12,maxWidth:200}} value="" disabled={busy===p.id} onChange={e=>asignar(p.id,e.target.value)}>
             <option value="">{busy===p.id?"Guardando…":"Asignar a…"}</option>
             {(d.match[p.id]||[]).length>0&&<optgroup label="💡 Sugeridas">{d.match[p.id].map(id=><option key={id} value={id}>{(d.areasById[id]||{}).nombre}</option>)}</optgroup>}
-            {joOpts(areas)}
+            {["empresa","area"].map(t=><optgroup key={t} label={JO_TIPOS[t]}>{areas.filter(ar=>ar.tipo===t).map(ar=><option key={ar.id} value={ar.id}>{ar.nombre}</option>)}</optgroup>)}
           </select></td>}
         </tr>)}</tbody>
       </table></div>}
@@ -7133,12 +6901,6 @@ function JoParteDiario({user}){
   const setMes=(m)=>{setMesRaw(m);setDias([]);setCelda(null);};
   const toggle=(iso)=>setDias(prev=>prev.includes(iso)?prev.filter(x=>x!==iso):[...prev,iso]);
   const cuenta=(aid,dd)=>((res&&res.porArea[aid]||{})[dd]||[]).length;
-  // Rev133: por rol dentro de un área ("_sinrol" = los que no tienen rol)
-  const cuentaRol=(aid,rid,dd)=>((res&&res.porArea[aid]||{})[dd]||[]).filter(({p})=>rid==="_sinrol"?!d.rolDe[p.id]:d.rolDe[p.id]===rid).length;
-  const rolesFila=(aid)=>{const rs=d.rolesDe[aid]||[];if(!rs.length)return[];
-    const l=rs.map(r=>({id:r.id,n:r.nombre}));
-    if(diasSel.some(dd=>cuentaRol(aid,"_sinrol",dd)>0))l.push({id:"_sinrol",n:"sin rol"});
-    return ocultar0?l.filter(r=>diasSel.some(dd=>cuentaRol(aid,r.id,dd)>0)):l;};
   const hint=(iso)=>{
     const m1=presP1Mes&&presP1Mes[iso],m2=presP2Mes&&presP2Mes[iso];if(!m1||!m2)return null;
     let n=0;
@@ -7151,10 +6913,11 @@ function JoParteDiario({user}){
     return n;
   };
   const totalDia=(dd)=>areas.reduce((s,a)=>s+cuenta(a.id,dd),0)+((res&&res.sinArea[dd])||[]).length;
-  // Rev133: filas agrupadas por categoría → empresa o área → rol (ya no hay fila del Excel)
-  const grupos=joGruposCat(scopeAreas).map(g=>({...g,areas:g.areas.filter(a=>!ocultar0||diasSel.some(dd=>cuenta(a.id,dd)>0))})).filter(g=>g.areas.length);
-  const sumaCat=(g,dd)=>g.areas.reduce((s,a)=>s+cuenta(a.id,dd),0);
-  const scopeNombre=scope==="todas"?"Todas las empresas y áreas":((scopeAreas[0]||{}).nombre||"—");
+  const filas=scopeAreas.filter(a=>!ocultar0||diasSel.some(dd=>cuenta(a.id,dd)>0));
+  const sinFila=scopeAreas.filter(a=>!a.fila);
+  const dup={};scopeAreas.forEach(a=>{if(a.fila)(dup[a.fila]=dup[a.fila]||[]).push(a.nombre);});
+  const dupTxt=Object.entries(dup).filter(([_,l])=>l.length>1).map(([f,l])=>`fila ${f}: ${l.join(" y ")}`);
+  const scopeNombre=scope==="todas"?"Todas las áreas y empresas":((scopeAreas[0]||{}).nombre||"—");
   const fScope=new Set(scopeAreas.map(a=>fuenteDe(a.id)));
   const fpLbl=(f)=>f==="p2"?"P2":"P1";
   const descargar=async()=>{
@@ -7163,38 +6926,31 @@ function JoParteDiario({user}){
     try{
       const XLSX=await joLoadXLSX();
       const wb=XLSX.utils.book_new();
-      // Rev133: el parte sale como listado: categoría → empresa o área → rol, con la cantidad de cada día elegido.
-      const cab=["Categoría","Empresa / área","Rol","Puesto",...diasSel.map(dd=>cmdFmtDate(dd))];
-      const filasX=[cab];
-      grupos.forEach(g=>{
-        filasX.push([g.t.toUpperCase(),"TOTAL "+g.t.toUpperCase(),"","",...diasSel.map(dd=>sumaCat(g,dd))]);
-        g.areas.forEach(a=>{
-          filasX.push([g.t,a.nombre,(d.rolesDe[a.id]||[]).length?"TOTAL":"",fpLbl(fuenteDe(a.id)),...diasSel.map(dd=>cuenta(a.id,dd))]);
-          rolesFila(a.id).forEach(r=>filasX.push([g.t,a.nombre,r.id==="_sinrol"?"SIN ROL":r.n,"",...diasSel.map(dd=>cuentaRol(a.id,r.id,dd))]));
-        });
+      // Hoja 1: cada área en su fila; nombre en su celda y la cantidad de cada día elegido en la columna de ese día.
+      const ws={};let maxR=0,maxC=0;
+      const put=(addr,cell)=>{ws[addr]=cell;const c=XLSX.utils.decode_cell(addr);if(c.r>maxR)maxR=c.r;if(c.c>maxC)maxC=c.c;};
+      scopeAreas.filter(a=>a.fila).forEach(a=>{
+        put(joCeldaNom(a),{t:"s",v:a.nombre});
+        diasSel.forEach(dd=>put(`${joColDia(a,parseInt(dd.slice(8),10))}${a.fila}`,{t:"n",v:cuenta(a.id,dd)}));
       });
-      if(scope==="todas"){
-        filasX.push(["SIN ÁREA ASIGNADA","","","P1",...diasSel.map(dd=>(res.sinArea[dd]||[]).length)]);
-        filasX.push(["TOTAL DEL PARTE","","","",...diasSel.map(dd=>totalDia(dd))]);
-      }
-      const ws=XLSX.utils.aoa_to_sheet(filasX);
-      ws["!cols"]=[{wch:26},{wch:30},{wch:18},{wch:7},...diasSel.map(()=>({wch:11}))];
+      ws["!ref"]=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:maxR,c:maxC}});
+      const cols=[];for(let c=0;c<=maxC;c++)cols.push({wch:5});
+      scopeAreas.forEach(a=>{const c=joColNum(a.col_nombre||"D")-1;if(c>=0&&c<=maxC)cols[c]={wch:26};});
+      ws["!cols"]=cols;
       XLSX.utils.book_append_sheet(wb,ws,"Parte diario");
-      // Hoja 2: quiénes son, ordenados igual que el parte.
-      const det=[["Fecha","Categoría","Empresa / área","Rol","Puesto","Apellido","Nombre","DNI","Empresa en Personal","Cargo","Cómo se contó","Revisar (Radar)"]];
-      diasSel.forEach(dd=>grupos.forEach(g=>g.areas.forEach(a=>((res.porArea[a.id]||{})[dd]||[]).slice()
-        .sort((x,y)=>{const rx=(d.rolesById[d.rolDe[x.p.id]]||{}).nombre,ry=(d.rolesById[d.rolDe[y.p.id]]||{}).nombre;
-          return (rx?0:1)-(ry?0:1)||(rx||"").localeCompare(ry||"","es")||joPorApe(x.p,y.p);})
-        .forEach(({p,x})=>det.push([cmdFmtDate(dd),g.t,a.nombre,(d.rolesById[d.rolDe[p.id]]||{}).nombre||"",fpLbl(fuenteDe(a.id)),p.apellido||"",p.nombre||"",p.dni||"",p.empresa||"",p.cargo||"",joComoTxt(x),joAvisoRadar(x,p.id,radar[dd])||""])))));
+      // Hoja 2: quiénes son, para controlar.
+      const det=[["Fecha","Área / empresa","Fila","Puesto","Apellido","Nombre","DNI","Empresa en Personal","Cómo se contó","Revisar (Radar)"]];
+      diasSel.forEach(dd=>scopeAreas.forEach(a=>((res.porArea[a.id]||{})[dd]||[]).slice().sort((x,y)=>joPorApe(x.p,y.p))
+        .forEach(({p,x})=>det.push([cmdFmtDate(dd),a.nombre,a.fila||"",fpLbl(fuenteDe(a.id)),p.apellido||"",p.nombre||"",p.dni||"",p.empresa||"",joComoTxt(x),joAvisoRadar(x,p.id,radar[dd])||""]))));
       const wd=XLSX.utils.aoa_to_sheet(det);
-      wd["!cols"]=[{wch:11},{wch:22},{wch:24},{wch:16},{wch:7},{wch:18},{wch:18},{wch:12},{wch:24},{wch:18},{wch:56},{wch:30}];
-      XLSX.utils.book_append_sheet(wb,wd,"Personas");
+      wd["!cols"]=[{wch:11},{wch:24},{wch:6},{wch:7},{wch:18},{wch:18},{wch:12},{wch:30},{wch:56},{wch:30}];
+      XLSX.utils.book_append_sheet(wb,wd,"Detalle");
       if(scope==="todas"){
-        const sa=[["Fecha","Apellido","Nombre","DNI","Empresa en Personal","Cargo","Cómo se contó","Revisar (Radar)"]];
+        const sa=[["Fecha","Apellido","Nombre","DNI","Empresa en Personal","Cómo se contó","Revisar (Radar)"]];
         diasSel.forEach(dd=>(res.sinArea[dd]||[]).slice().sort((x,y)=>joPorApe(x.p,y.p))
-          .forEach(({p,x})=>sa.push([cmdFmtDate(dd),p.apellido||"",p.nombre||"",p.dni||"",p.empresa||"",p.cargo||"",joComoTxt(x),joAvisoRadar(x,p.id,radar[dd])||""])));
+          .forEach(({p,x})=>sa.push([cmdFmtDate(dd),p.apellido||"",p.nombre||"",p.dni||"",p.empresa||"",joComoTxt(x),joAvisoRadar(x,p.id,radar[dd])||""])));
         const w2=XLSX.utils.aoa_to_sheet(sa);
-        w2["!cols"]=[{wch:11},{wch:18},{wch:18},{wch:12},{wch:24},{wch:18},{wch:56},{wch:30}];
+        w2["!cols"]=[{wch:11},{wch:18},{wch:18},{wch:12},{wch:30},{wch:56},{wch:30}];
         XLSX.utils.book_append_sheet(wb,w2,"Sin área");
       }
       const nom=(scope==="todas"?"todas las areas":scopeNombre).replace(/[\\/:*?"<>|]+/g," ").trim();
@@ -7226,12 +6982,13 @@ function JoParteDiario({user}){
         <div style={{fontSize:11,color:"var(--tx3)",marginTop:8,lineHeight:1.5}}>Tocá los días para elegirlos (podés elegir varios). El número chico es cuántos se cuentan ese día{scope==="todas"?" en total":" en esa área"}, cada área según su puesto.</div>
       </div>
       <div className="jo-wrap" style={{flex:"1 1 340px"}}>
-        <div className="jo-h">2 · Qué incluir</div>
+        <div className="jo-h">2 · Área o subcontrato</div>
         <select className="fi" style={{width:"100%",marginBottom:12}} value={scope} onChange={e=>{setScope(e.target.value);setCelda(null);}}>
-          <option value="todas">— Todas las empresas y áreas —</option>
-          {joOpts(areas)}
+          <option value="todas">— Todas las áreas y empresas —</option>
+          {["empresa","area"].map(t=><optgroup key={t} label={JO_TIPOS[t]}>{areas.filter(a=>a.tipo===t).map(a=><option key={a.id} value={a.id}>{a.nombre}{a.fila?` (fila ${a.fila})`:""}</option>)}</optgroup>)}
         </select>
-        {areas.length===0&&<div className="warn">Todavía no hay empresas ni áreas: crealas en "Áreas o subcontratos".</div>}
+        {areas.length===0&&<div className="warn">Todavía no hay áreas: crealas en "Áreas o subcontratos".</div>}
+        {scope!=="todas"&&scopeAreas[0]&&<div style={{fontSize:12,color:"var(--tx2)",marginBottom:10}}>📍 {joUbicTxt(scopeAreas[0])}</div>}
         <div className="jo-h" style={{marginTop:6}}>3 · De qué puesto se toma</div>
         {scope!=="todas"&&scopeAreas[0]
           ?<div className="jo-tabs" style={{marginBottom:6}}>
@@ -7255,8 +7012,10 @@ function JoParteDiario({user}){
         <div className="jo-h" style={{marginTop:6}}>4 · Descargar</div>
         <button className="badd" onClick={descargar} disabled={bajando||!res||!diasSel.length} style={{opacity:bajando||!res||!diasSel.length?.5:1}}>{bajando?"Generando…":`⬇️ Descargar Excel${diasSel.length?` (${diasSel.length} día${diasSel.length===1?"":"s"})`:""}`}</button>
         {!diasSel.length&&<div style={{fontSize:12,color:"var(--tx3)",marginTop:6}}>Elegí al menos un día.</div>}
+        {sinFila.length>0&&<div className="warn" style={{marginTop:10,marginBottom:0}}>⚠ Sin ubicación en el Excel (no se vuelcan): {sinFila.map(a=>a.nombre).join(", ")}</div>}
+        {dupTxt.length>0&&<div className="warn" style={{marginTop:10,marginBottom:0}}>⚠ Comparten fila y en el Excel se pisan: {dupTxt.join(" · ")}</div>}
         <div style={{fontSize:11,color:"var(--tx3)",marginTop:12,lineHeight:1.5}}>
-          El Excel trae la hoja <strong>Parte diario</strong> (cuántos hubo cada día por categoría, empresa o área y rol), la hoja <strong>Personas</strong> con quiénes son y de qué puesto se tomó cada una{scope==="todas"?<> y la hoja <strong>Sin área</strong></>:""}.
+          El Excel trae la hoja <strong>Parte diario</strong> con cada área en su fila (el nombre en su celda y la cantidad de cada día en su columna: día 1 en F … día 31 en AJ), la hoja <strong>Detalle</strong> con quiénes son y de qué puesto se tomó cada área{scope==="todas"?<> y la hoja <strong>Sin área</strong></>:""}.
         </div>
       </div>
     </div>
@@ -7272,36 +7031,27 @@ function JoParteDiario({user}){
         {scope==="todas"&&<label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--tx2)",cursor:"pointer",marginLeft:"auto"}}><input type="checkbox" checked={ocultar0} onChange={e=>setOcultar0(e.target.checked)}/> Ocultar las que están en 0</label>}
       </div>
       <div className="jo-mx"><table>
-        <thead><tr><th className="c1">Categoría · empresa o área · rol</th><th title="De qué puesto se toma">Puesto</th>{diasSel.map(dd=><th key={dd}>{joDiaLbl(dd)}</th>)}</tr></thead>
+        <thead><tr><th className="c1">Área / empresa</th><th>Fila</th><th title="De qué puesto se toma">Puesto</th>{diasSel.map(dd=><th key={dd}>{joDiaLbl(dd)}</th>)}</tr></thead>
         <tbody>
-          {grupos.map(g=><React.Fragment key={g.k||"_sin"}>
-            <tr className="cat"><td className="c1">{g.t}</td><td></td>{diasSel.map(dd=><td key={dd} className="mn" style={{textAlign:"center"}}>{sumaCat(g,dd)}</td>)}</tr>
-            {g.areas.map(a=><React.Fragment key={a.id}>
-              <tr>
-                <td className="c1" style={{paddingLeft:16}}>{a.nombre}</td>
-                <td style={{textAlign:"center"}}><FP aid={a.id}/></td>
-                {diasSel.map(dd=>{const n=cuenta(a.id,dd),on=celda&&celda.aid===a.id&&!celda.rid&&celda.d===dd;
-                  return <td key={dd} className={`v${n?"":" cero"}${on?" sel":""}`} onClick={()=>setCelda({aid:a.id,d:dd})}>{n}</td>;})}
-              </tr>
-              {rolesFila(a.id).map(r=><tr key={r.id} className="rol">
-                <td className="c1" style={{paddingLeft:30,fontSize:12,color:"var(--tx2)"}}>· {r.n}</td><td></td>
-                {diasSel.map(dd=>{const n=cuentaRol(a.id,r.id,dd),on=celda&&celda.aid===a.id&&celda.rid===r.id&&celda.d===dd;
-                  return <td key={dd} className={`v${n?"":" cero"}${on?" sel":""}`} style={{fontSize:12}} onClick={()=>setCelda({aid:a.id,rid:r.id,d:dd})}>{n}</td>;})}
-              </tr>)}
-            </React.Fragment>)}
-          </React.Fragment>)}
+          {filas.map(a=><tr key={a.id}>
+            <td className="c1">{a.nombre}</td>
+            <td className="mn" style={{color:a.fila?"var(--tx3)":"var(--acc)",textAlign:"center"}}>{a.fila||"⚠"}</td>
+            <td style={{textAlign:"center"}}><FP aid={a.id}/></td>
+            {diasSel.map(dd=>{const n=cuenta(a.id,dd),on=celda&&celda.aid===a.id&&celda.d===dd;
+              return <td key={dd} className={`v${n?"":" cero"}${on?" sel":""}`} onClick={()=>setCelda({aid:a.id,d:dd})}>{n}</td>;})}
+          </tr>)}
           {scope==="todas"&&<tr className="sin">
-            <td className="c1">⚠ Sin área asignada</td><td style={{textAlign:"center"}}><span className="jo-fp p1" style={{cursor:"default"}}>P1</span></td>
+            <td className="c1">⚠ Sin área asignada</td><td></td><td style={{textAlign:"center"}}><span className="jo-fp p1" style={{cursor:"default"}}>P1</span></td>
             {diasSel.map(dd=>{const n=(res.sinArea[dd]||[]).length,on=celda&&celda.aid==="_sin"&&celda.d===dd;
               return <td key={dd} className={`v${n?"":" cero"}${on?" sel":""}`} onClick={()=>setCelda({aid:"_sin",d:dd})}>{n}</td>;})}
           </tr>}
           {scope==="todas"&&<tr className="tot">
-            <td className="c1">Total del parte</td><td></td>
+            <td className="c1">Total del parte</td><td></td><td></td>
             {diasSel.map(dd=><td key={dd} className="mn" style={{textAlign:"center"}}>{totalDia(dd)}</td>)}
           </tr>}
         </tbody>
       </table></div>
-      {celda&&presD&&<JoDetalleCelda key={celda.aid+(celda.rid||"")+celda.d+fC} celda={celda} d={d} res={res} presD={presD} presP1D={presP1Mes?presP1Mes[celda.d]:null} fuente={fC} radarD={radar[celda.d]} areas={areas} user={user} onAsignado={recargarBase} onCerrar={()=>setCelda(null)}/>}
+      {celda&&presD&&<JoDetalleCelda key={celda.aid+celda.d+fC} celda={celda} d={d} res={res} presD={presD} presP1D={presP1Mes?presP1Mes[celda.d]:null} fuente={fC} radarD={radar[celda.d]} areas={areas} user={user} onAsignado={recargarBase} onCerrar={()=>setCelda(null)}/>}
     </>}
     {verFuentes&&<JoFuentesModal areas={areas} fuenteDe={fuenteDe} onAplicar={setFuentes} onClose={()=>setVerFuentes(false)}/>}
   </div>;
@@ -7327,8 +7077,8 @@ function JoFuentesModal({areas,fuenteDe,onAplicar,onClose}){
         <button className="bsm" onClick={togTodas}>{todas?"Destildar":"Tildar"} {q.trim()?"las filtradas":"todas"}</button>
       </div>
       <div className="jo-scroll" style={{maxHeight:"46vh"}}>
-        {joGruposCat(vis).map(g=>{const l=g.areas;return <div key={g.k||"_sin"}>
-          <div style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",textTransform:"uppercase",letterSpacing:".08em",padding:"8px 10px 4px"}}>{g.t}</div>
+        {["empresa","area"].map(t=>{const l=vis.filter(a=>a.tipo===t);if(!l.length)return null;return <div key={t}>
+          <div style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",textTransform:"uppercase",letterSpacing:".08em",padding:"8px 10px 4px"}}>{JO_TIPOS[t]}</div>
           {l.map(a=>{const f=fuenteDe(a.id);return <label key={a.id} className={`jo-chk${marc.has(a.id)?" on":""}`}>
             <input type="checkbox" checked={marc.has(a.id)} onChange={()=>tog(a.id)}/>
             <span style={{flex:1}}>{a.nombre}</span>
@@ -7528,7 +7278,7 @@ function JoHoras({user}){
             </>}
         {base.areas.length>0&&<select className="fi" style={{width:"100%",marginBottom:8}} value="" onChange={e=>sumarArea(e.target.value)}>
           <option value="">… o sumar toda la gente de un área o subcontrato</option>
-          {joOpts(base.areas,a=>(d.porArea[a.id]||[]).filter(p=>!p.deleted_at).length)}
+          {["empresa","area"].map(t=><optgroup key={t} label={JO_TIPOS[t]}>{base.areas.filter(a=>a.tipo===t).map(a=><option key={a.id} value={a.id}>{a.nombre} ({(d.porArea[a.id]||[]).filter(p=>!p.deleted_at).length})</option>)}</optgroup>)}
         </select>}
         {selP.length>0&&<>
           <div style={{display:"flex",alignItems:"center",gap:8,margin:"6px 0"}}><span style={{fontSize:12,color:"var(--tx2)"}}>Elegidas:</span><button className="bsm" onClick={()=>setSel(new Set())}>Quitar todas</button></div>
@@ -7631,7 +7381,7 @@ function JoIngresoSinAreaModal({lista,d,areas,user,onClose,onAsignado}){
           :<select className="fi" style={{maxWidth:250,padding:"6px 8px",fontSize:13}} value="" disabled={busy===p.id} onChange={e=>asignar(p.id,e.target.value)}>
             <option value="">{busy===p.id?"Guardando…":"Agregar a…"}</option>
             {sug.length>0&&<optgroup label="💡 Sugeridas">{sug.map(id=><option key={id} value={id}>{(d.areasById[id]||{}).nombre}</option>)}</optgroup>}
-            {joOpts(areas)}
+            {["empresa","area"].map(tp=><optgroup key={tp} label={JO_TIPOS[tp]}>{areas.filter(a=>a.tipo===tp).map(a=><option key={a.id} value={a.id}>{a.nombre}</option>)}</optgroup>)}
           </select>}
       </div>;})}
     </div>
@@ -7696,9 +7446,7 @@ function Login({onLogin,onPublic}){
       setErr("Sin conexión a internet. La app necesita conexión para funcionar — registrá las fichadas en la hoja alternativa hasta que vuelva.");
       setLoading(false);return;
     }
-    // Rev133: sin "@" se completa con @obrasysistemas.com.ar (ej. BRCJEFATURA)
-    const em=email.trim().includes("@")?email.trim():email.trim().toLowerCase()+"@obrasysistemas.com.ar";
-    const r=await authApi.signIn(em,pw);
+    const r=await authApi.signIn(email,pw);
     if(r.error){setErr(r.error);setLoading(false);return;}
     const{data}=await db.sel("usuarios",{f:[["id","eq",r.userId]],lim:1});
     if(!data||!data[0]){setErr("Usuario sin perfil. Contacta al administrador.");await authApi.signOut();setLoading(false);return;}
@@ -7708,7 +7456,7 @@ function Login({onLogin,onPublic}){
     <div className="llogo">CONTROL<span>OBRA</span> <span style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3,verticalAlign:"middle"}}>{APP_REV}</span></div>
     <div className="lsub">Sistema de control de puestos</div>
     {err&&<div className="err">{err}</div>}
-    <div className="f"><label>Email o usuario</label><input type="email" placeholder="usuario@obrasysistemas.com.ar" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} autoFocus/></div>
+    <div className="f"><label>Email</label><input type="email" placeholder="usuario@obrasysistemas.com.ar" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} autoFocus/></div>
     <div className="f"><label>Contrasena</label><input type="password" placeholder="..." value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()}/></div>
     <button className="bp" onClick={go} disabled={loading}>{loading?"Ingresando...":"Ingresar"}</button>
     <button className="lpub" onClick={onPublic}>Ver movimientos de obra (sin login)</button>
