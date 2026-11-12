@@ -440,7 +440,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev134";
+const APP_REV="Rev136";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -3948,6 +3948,190 @@ function CmdNoRetiraron(){
       </>}
   </div>;
 }
+// Rev136: conteo de viandas por empresa y/o personas (solo admin). En un rango de días y para las comidas elegidas:
+//  · Pedidas = programadas en el Radar (viandas_calendario).
+//  · Retiradas = pedidas que se retiraron (al menos una ese día).   · No retiradas = pedidas que no se retiraron.
+//  · Sin pedir = entregadas un día que no la tenía programada.   · Repetidas = más de una el mismo día.
+//  · Total entregadas = todas las viandas entregadas (viandas_despachos, cualquier puesto) = retiradas + sin pedir + repetidas.
+// La empresa se agrupa como en el conteo (empresaGrupo: une variantes del mismo nombre). Se ve y se baja en PDF.
+const cmdPct=(a,b)=>b?Math.round(a*100/b)+'%':'—';
+function CmdConteoEmpresa(){
+  const hoy=cmdIsoDate(new Date()),ayer=cmdAddDays(hoy,-1);
+  const[desde,setDesde]=useState(cmdAddDays(ayer,-6));
+  const[hasta,setHasta]=useState(ayer);
+  const[comidas,setComidas]=useState(()=>new Set(CMD_COMIDAS.map(c=>c.key)));
+  const[emp,setEmp]=useState('');
+  const[q,setQ]=useState('');
+  const[detPdf,setDetPdf]=useState(null); // null = automático (con empresa o búsqueda: sí; todas: no)
+  const[datos,setDatos]=useState(null);
+  const[cargando,setCargando]=useState(false);
+  const[abierto,setAbierto]=useState(null);
+  const rangoOk=!!(desde&&hasta&&desde<=hasta&&hasta<=hoy&&cmdAddDays(desde,62)>=hasta);
+  useEffect(()=>{
+    if(!rangoOk)return;
+    let vivo=true;setCargando(true);setAbierto(null);
+    (async()=>{
+      const[{data:cal},{data:desp},{data:pers},{data:ag}]=await Promise.all([
+        dbSelAll("viandas_calendario",{cols:"fecha,dni,desayuno,almuerzo,merienda,cena",f:[["fecha","gte",desde],["fecha","lte",hasta]],ord:"fecha.asc,dni.asc"}),
+        dbSelAll("viandas_despachos",{cols:"id,fecha,dni,comida",f:[["fecha","gte",desde],["fecha","lte",hasta]],ord:"id.asc"}),
+        dbSelAll("personas",{cols:"id,dni,nombre,apellido,empresa,deleted_at",ord:"id.asc"}),
+        dbSelAll("viandas_agregados",{cols:"fecha,dni,nombre,apellido,empresa",f:[["fecha","gte",desde],["fecha","lte",hasta]],ord:"fecha.asc,dni.asc"}),
+      ]);
+      if(!vivo)return;
+      if(!cal||!desp){setDatos({err:true});setCargando(false);return;}
+      const pm={};(pers||[]).forEach(p=>{const k=normDni(p.dni);if(k&&(!pm[k]||!p.deleted_at))pm[k]=p;});
+      const am={};(ag||[]).forEach(a=>{const k=normDni(a.dni);if(k&&!am[k])am[k]=a;});
+      const por={};
+      const get=(dni)=>{const k=normDni(dni);if(!por[k]){const p=pm[k]||null,a=am[k]||null;
+        por[k]={k,dni:String(dni).trim(),nom:p?`${p.apellido}, ${p.nombre}`:a?`${a.apellido||''}, ${a.nombre||''} (agregado)`:'(no está en Personal)',
+          empRaw:p?(p.empresa||''):a?(a.empresa||''):'',prog:{},ret:{},via:{},fuera:{},dias:{}};
+        por[k].emp=empresaGrupo(por[k].empRaw);}
+        return por[k];};
+      const progSet=new Set();
+      cal.forEach(r=>CMD_COMIDAS.forEach(c=>{if(!r[c.key])return;const x=get(r.dni),k=normDni(r.dni);
+        x.prog[c.key]=(x.prog[c.key]||0)+1;progSet.add(r.fecha+'|'+k+'|'+c.key);
+        (x.dias[r.fecha]||(x.dias[r.fecha]={}))[c.key]={p:true,n:0};}));
+      const vistos=new Set();
+      desp.forEach(d=>{const k=normDni(d.dni),key=d.fecha+'|'+k+'|'+d.comida,x=get(d.dni);
+        x.via[d.comida]=(x.via[d.comida]||0)+1;
+        const dd=x.dias[d.fecha]||(x.dias[d.fecha]={});(dd[d.comida]||(dd[d.comida]={p:false,n:0})).n++;
+        if(progSet.has(key)){if(!vistos.has(key)){vistos.add(key);x.ret[d.comida]=(x.ret[d.comida]||0)+1;}}
+        else x.fuera[d.comida]=(x.fuera[d.comida]||0)+1;});
+      setDatos({filas:Object.values(por)});setCargando(false);
+    })().catch(()=>{if(vivo){setDatos({err:true});setCargando(false);}});
+    return()=>{vivo=false;};
+  },[desde,hasta,rangoOk]);
+  const sel=CMD_COMIDAS.filter(c=>comidas.has(c.key));
+  const cuenta=(x,ks)=>{const S=(o)=>ks.reduce((s,k)=>s+(o[k]||0),0);const P=S(x.prog),R=S(x.ret),V=S(x.via),Fu=S(x.fuera);return{P,R,N:P-R,V,Fu,Rep:V-R-Fu};};
+  const suma=(l)=>l.reduce((a,b)=>({P:a.P+b.P,R:a.R+b.R,N:a.N+b.N,V:a.V+b.V,Fu:a.Fu+b.Fu,Rep:a.Rep+b.Rep}),{P:0,R:0,N:0,V:0,Fu:0,Rep:0});
+  const keys=sel.map(c=>c.key);
+  const activas=((datos&&datos.filas)||[]).filter(x=>{const t=cuenta(x,keys);return t.P>0||t.V>0;});
+  const empresas=useMemo(()=>{const m={};activas.forEach(x=>{m[x.emp]=(m[x.emp]||0)+1;});return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0],'es'));},[datos,comidas]);
+  let filas=activas.filter(x=>!emp||x.emp===emp);
+  if(q.trim())filas=filas.filter(x=>joNorm(`${x.nom} ${x.dni} ${x.empRaw}`).includes(joNorm(q)));
+  filas=filas.slice().sort((a,b)=>(emp?0:a.emp.localeCompare(b.emp,'es'))||a.nom.localeCompare(b.nom,'es'));
+  const porComida=sel.map(c=>({c,...suma(filas.map(x=>cuenta(x,[c.key])))}));
+  const total=suma(filas.map(x=>cuenta(x,keys)));
+  const porEmpresa=(()=>{const g={};filas.forEach(x=>{(g[x.emp]=g[x.emp]||[]).push(x);});
+    return Object.entries(g).map(([e,l])=>({e,n:l.length,...suma(l.map(x=>cuenta(x,keys)))})).sort((a,b)=>a.e.localeCompare(b.e,'es'));})();
+  const verPersonas=!!emp||!!q.trim();
+  const conDetalle=detPdf===null?verPersonas:detPdf;
+  const titulo=emp||'Todas las empresas';
+  const togCom=(k)=>setComidas(prev=>{const n=new Set(prev);if(n.has(k)){if(n.size>1)n.delete(k);}else n.add(k);return n;});
+  const periodo=(k)=>{
+    if(k==='mes'){setDesde(hoy.slice(0,8)+'01');setHasta(ayer<hoy.slice(0,8)+'01'?hoy:ayer);}
+    else if(k==='ant'){const[y,m]=hoy.split('-').map(Number);setDesde(cmdIsoDate(new Date(y,m-2,1)));setHasta(cmdIsoDate(new Date(y,m-1,0)));}
+    else{setHasta(ayer);setDesde(cmdAddDays(ayer,-(k-1)));}
+  };
+  const pdf=()=>{
+    const w=window.open('','_blank');
+    if(!w){alert('El navegador bloqueó la ventana para imprimir. Permití las ventanas emergentes de esta página y probá de nuevo.');return;}
+    const E=certEsc,N=(v,cl)=>'<td class="n'+(cl?' '+cl:'')+'">'+v+'</td>';
+    const cel=(t)=>N(t.P)+N(t.R,'b')+N(t.N,t.N?'rd':'')+N(t.Fu)+N(t.Rep)+N(t.V)+N(cmdPct(t.R,t.P));
+    const filaT=(lbl,t,cls)=>'<tr'+(cls?' class="'+cls+'"':'')+'><td>'+lbl+'</td>'+cel(t)+'</tr>';
+    const cab='<th class="n">Pedidas</th><th class="n">Retiradas</th><th class="n">No retiradas</th><th class="n">Sin pedir</th><th class="n">Repetidas</th><th class="n">Total entregadas</th><th class="n">% retiro</th>';
+    let h='<!doctype html><html><head><meta charset="utf-8"><title>Conteo de viandas '+E(titulo)+' '+cmdFmtDate(desde)+' al '+cmdFmtDate(hasta)+'</title><style>'
+      +'body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px;font-size:12px}h1{font-size:18px;margin:0 0 4px}h2{font-size:13px;margin:18px 0 6px;page-break-after:avoid}'
+      +'table{border-collapse:collapse;width:100%}th,td{border:1px solid #999;padding:4px 7px;text-align:left;vertical-align:top}th{background:#eee}.n{text-align:right;white-space:nowrap}'
+      +'.tot td{font-weight:bold;background:#f2f2f2}.b{font-weight:bold}.rd{color:#b42318}.muted{color:#666;font-size:11px}tr{page-break-inside:avoid}'
+      +'@media print{body{margin:10mm}}</style></head><body>';
+    h+='<h1>Conteo de viandas — '+E(titulo)+'</h1>';
+    h+='<div class="muted">Período: '+cmdFmtDate(desde)+' al '+cmdFmtDate(hasta)+' · Comidas: '+sel.map(c=>c.label).join(', ')+(q.trim()?' · Personas que coinciden con "'+E(q.trim())+'"':'')+' · '+filas.length+' persona'+(filas.length===1?'':'s')+' · Generado '+E(joFechaHora(Date.now()))+'</div>';
+    h+='<h2>Totales por comida</h2><table><thead><tr><th>Comida</th>'+cab+'</tr></thead><tbody>';
+    porComida.forEach(x=>{h+=filaT(E(x.c.label),x);});
+    if(porComida.length>1)h+=filaT('Total',total,'tot');
+    h+='</tbody></table>';
+    if(!emp&&porEmpresa.length>1){
+      h+='<h2>Por empresa</h2><table><thead><tr><th>Empresa</th><th class="n">Personas</th>'+cab+'</tr></thead><tbody>';
+      porEmpresa.forEach(x=>{h+='<tr><td>'+E(x.e)+'</td>'+N(x.n)+cel(x)+'</tr>';});
+      h+='<tr class="tot"><td>Total</td>'+N(filas.length)+cel(total)+'</tr>';
+      h+='</tbody></table>';
+    }
+    if(conDetalle){
+      h+='<h2>Por persona</h2><table><thead><tr><th>Persona</th><th>DNI</th>'+(emp?'':'<th>Empresa</th>')+sel.map(c=>'<th class="n">'+E(c.label)+'<br><span class="muted">ret./ped.</span></th>').join('')+'<th class="n">Pedidas</th><th class="n">Retiradas</th><th class="n">No ret.</th><th class="n">Sin pedir</th><th class="n">Total entreg.</th></tr></thead><tbody>';
+      filas.forEach(x=>{const t=cuenta(x,keys);
+        h+='<tr><td>'+E(x.nom)+'</td><td>'+E(x.dni)+'</td>'+(emp?'':'<td>'+E(x.emp)+'</td>')+sel.map(c=>{const u=cuenta(x,[c.key]);return N(u.P||u.V?(u.R+'/'+u.P):'—');}).join('')+N(t.P)+N(t.R,'b')+N(t.N,t.N?'rd':'')+N(t.Fu)+N(t.V)+'</tr>';});
+      h+='</tbody></table>';
+    }
+    h+='<div class="muted" style="margin-top:14px">Pedidas = programadas en el Radar. Retiradas = pedidas que se retiraron. No retiradas = pedidas que no se retiraron ese día. Sin pedir = entregadas un día que no la tenía programada (agregados). Repetidas = más de una el mismo día. Total entregadas = todas las viandas entregadas en cualquier puesto (retiradas + sin pedir + repetidas). % retiro = retiradas sobre pedidas.'+(hasta>=hoy?' El período incluye hoy, que está en curso.':'')+'</div>';
+    h+='</body></html>';
+    w.document.write(h);w.document.close();w.focus();setTimeout(()=>{try{w.print();}catch(e){}},400);
+  };
+  const th=<><th className="n" title="Programadas en el Radar">Pedidas</th><th className="n" title="Pedidas que se retiraron">Retiradas</th><th className="n" title="Pedidas que no se retiraron ese día">No retiradas</th><th className="n" title="Entregadas un día que no la tenía programada (agregados)">Sin pedir</th><th className="n" title="Más de una el mismo día">Repetidas</th><th className="n" title="Todas las viandas entregadas: retiradas + sin pedir + repetidas">Total entregadas</th><th className="n" title="Retiradas sobre pedidas">% retiro</th></>;
+  const tds=(t)=><><td className="n">{t.P}</td><td className="n" style={{color:'var(--cmd-ok)',fontWeight:700}}>{t.R}</td><td className="n" style={{color:t.N?'var(--cmd-err)':'var(--tx3)'}}>{t.N}</td><td className="n" style={{color:t.Fu?'var(--cmd-info)':'var(--tx3)'}}>{t.Fu}</td><td className="n" style={{color:t.Rep?'var(--cmd-dieta)':'var(--tx3)'}}>{t.Rep}</td><td className="n" style={{color:'var(--cmd-pri)'}}>{t.V}</td><td className="n">{cmdPct(t.R,t.P)}</td></>;
+  return <div className="cmd-rep">
+    <h3>📊 Conteo por empresa <span style={{fontSize:10,color:'var(--tx3)',textTransform:'none',letterSpacing:0,fontWeight:400}}>· solo admin</span></h3>
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
+      <input className="fi" type="date" value={desde} max={hoy} onChange={e=>setDesde(e.target.value)}/>
+      <span style={{color:'var(--tx3)'}}>al</span>
+      <input className="fi" type="date" value={hasta} max={hoy} onChange={e=>setHasta(e.target.value)}/>
+      <button className="cmd-btn" onClick={()=>periodo(7)}>Últimos 7 días</button>
+      <button className="cmd-btn" onClick={()=>periodo('mes')}>Este mes</button>
+      <button className="cmd-btn" onClick={()=>periodo('ant')}>Mes anterior</button>
+    </div>
+    <div className="cmd-fbar" style={{marginBottom:8}}>
+      <span className="lbl">Comidas:</span>
+      {CMD_COMIDAS.map(c=><button key={c.key} className={'cmd-fbtn'+(comidas.has(c.key)?' active':'')} onClick={()=>togCom(c.key)}>{c.em} {c.label}</button>)}
+    </div>
+    <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
+      <select className="fi" style={{minWidth:220}} value={emp} onChange={e=>{setEmp(e.target.value);setAbierto(null);}}>
+        <option value="">Todas las empresas ({activas.length} personas)</option>
+        {empresas.map(([e,n])=><option key={e} value={e}>{e} ({n})</option>)}
+      </select>
+      <input className="fi" style={{flex:1,minWidth:180}} placeholder="Filtrar personas por nombre o DNI..." value={q} onChange={e=>setQ(e.target.value)}/>
+    </div>
+    {!rangoOk&&<div className="cmd-aviso">Revisá las fechas: "desde" antes de "hasta", hasta hoy como máximo y no más de 2 meses.</div>}
+    {rangoOk&&hasta===hoy&&<div className="cmd-aviso">Incluye hoy, que está en curso: las comidas que todavía no se sirvieron figuran como no retiradas.</div>}
+    {cargando?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Cargando…</div>
+      :datos&&datos.err?<div className="cmd-aviso">No se pudieron leer los datos. Revisá la conexión.</div>
+      :datos&&<>
+        <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',margin:'4px 0 8px'}}>
+          <div style={{fontFamily:'var(--fh)',fontSize:16,fontWeight:700,textTransform:'uppercase'}}>{titulo}</div>
+          <div style={{fontSize:12,color:'var(--tx2)'}}>{cmdFmtDate(desde)} al {cmdFmtDate(hasta)} · {filas.length} persona{filas.length===1?'':'s'}</div>
+          <label style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'var(--tx2)',cursor:'pointer',marginLeft:'auto'}}><input type="checkbox" checked={conDetalle} onChange={e=>setDetPdf(e.target.checked)}/> Detalle por persona en el PDF</label>
+          <button className="cmd-btn" onClick={pdf} disabled={!filas.length}>📄 Descargar PDF</button>
+        </div>
+        {filas.length===0?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Nadie con viandas pedidas o retiradas con estos filtros.</div>:<>
+          <div className="cmd-tblw"><table>
+            <thead><tr><th>Comida</th>{th}</tr></thead>
+            <tbody>{porComida.map(x=><tr key={x.c.key}><td>{x.c.em} {x.c.label}</td>{tds(x)}</tr>)}
+              {porComida.length>1&&<tr style={{fontWeight:700}}><td>Total</td>{tds(total)}</tr>}</tbody>
+          </table></div>
+          {!emp&&porEmpresa.length>1&&<>
+            <div style={{fontSize:12,color:'var(--tx2)',margin:'12px 0 6px'}}>Por empresa · tocá una para ver su gente</div>
+            <div className="cmd-tblw" style={{maxHeight:420,overflowY:'auto'}}><table>
+              <thead><tr><th>Empresa</th><th className="n">Personas</th>{th}</tr></thead>
+              <tbody>{porEmpresa.map(x=><tr key={x.e} style={{cursor:'pointer'}} onClick={()=>setEmp(x.e)}><td>{x.e}</td><td className="n">{x.n}</td>{tds(x)}</tr>)}</tbody>
+            </table></div>
+          </>}
+          {verPersonas&&<>
+            <div style={{fontSize:12,color:'var(--tx2)',margin:'12px 0 6px'}}>Por persona · cada comida dice <b>retiradas / pedidas</b> · tocá una persona para ver los días</div>
+            <div className="cmd-tblw" style={{maxHeight:520,overflowY:'auto'}}><table>
+              <thead><tr><th>Persona</th>{!emp&&<th>Empresa</th>}{sel.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}<th className="n">Pedidas</th><th className="n">Retiradas</th><th className="n">No ret.</th><th className="n">Sin pedir</th><th className="n">Total entreg.</th></tr></thead>
+              <tbody>{filas.slice(0,500).map(x=>{const t=cuenta(x,keys),ab=abierto===x.k;return <React.Fragment key={x.k}>
+                <tr style={{cursor:'pointer'}} onClick={()=>setAbierto(ab?null:x.k)}>
+                  <td>{ab?'▾':'▸'} {x.nom}<div style={{fontSize:10,color:'var(--tx3)'}}>DNI {x.dni}</div></td>
+                  {!emp&&<td style={{fontSize:11,color:'var(--tx2)'}}>{x.emp}</td>}
+                  {sel.map(c=>{const u=cuenta(x,[c.key]);return <td key={c.key} className="n" style={{color:!u.P&&!u.V?'var(--tx3)':u.N?(u.R?'var(--cmd-dieta)':'var(--cmd-err)'):'var(--cmd-ok)'}}>{u.P||u.V?<><b>{u.R}</b>/{u.P}</>:'—'}</td>;})}
+                  <td className="n">{t.P}</td><td className="n" style={{color:'var(--cmd-ok)',fontWeight:700}}>{t.R}</td><td className="n" style={{color:t.N?'var(--cmd-err)':'var(--tx3)'}}>{t.N}</td><td className="n" style={{color:t.Fu?'var(--cmd-info)':'var(--tx3)'}}>{t.Fu}</td><td className="n" style={{color:'var(--cmd-pri)'}}>{t.V}</td>
+                </tr>
+                {ab&&<tr><td colSpan={sel.length+7} style={{background:'var(--bg)'}}>
+                  {Object.keys(x.dias).sort().filter(d=>sel.some(c=>x.dias[d][c.key])).map(d=><div key={d} style={{display:'flex',gap:10,fontSize:11,padding:'2px 0'}}>
+                    <span style={{width:80,color:'var(--tx2)',fontFamily:'var(--fm)'}}>{joDiaLbl(d)}</span>
+                    <span>{sel.filter(c=>x.dias[d][c.key]).map(c=>{const e=x.dias[d][c.key];const col=e.p?(e.n?'var(--cmd-ok)':'var(--cmd-err)'):'var(--cmd-info)';
+                      return <span key={c.key} style={{marginRight:12,color:col}} title={e.p?(e.n?'Pedida y retirada':'Pedida y no retirada'):'Retirada sin estar pedida'}>{e.p?(e.n?'✓':'✗'):'+'} {c.short}{e.n>1?` ×${e.n}`:''}</span>;})}</span>
+                  </div>)}
+                </td></tr>}
+              </React.Fragment>;})}</tbody>
+            </table></div>
+            {filas.length>500&&<div style={{fontSize:11,color:'var(--tx3)',marginTop:4}}>Se muestran 500 de {filas.length} (el PDF trae todas).</div>}
+          </>}
+          {!verPersonas&&<div style={{fontSize:11,color:'var(--tx3)',marginTop:8}}>Elegí una empresa o buscá personas para ver el detalle de cada una.</div>}
+          <div style={{fontSize:11,color:'var(--tx3)',marginTop:8,lineHeight:1.5}}><b>Pedidas</b>: programadas en el Radar. <b>Retiradas</b>: pedidas que se retiraron. <b>No retiradas</b>: pedidas que no se retiraron ese día. <b>Sin pedir</b>: entregadas un día que no la tenía programada. <b>Repetidas</b>: más de una el mismo día. <b>Total entregadas</b>: todas las viandas entregadas (retiradas + sin pedir + repetidas). <b>% retiro</b>: retiradas sobre pedidas.</div>
+        </>}
+      </>}
+  </div>;
+}
 function CmdReporte({personas,despachos,fecha,onVerDia,resInicio,setResInicio,isAdmin}){
   // Programada = del Radar; las comidas agregadas en el día van en su propia columna
   const prog=(p,k)=>p.comidas.includes(k)&&!(p.extras||[]).includes(k);
@@ -3997,6 +4181,7 @@ function CmdReporte({personas,despachos,fecha,onVerDia,resInicio,setResInicio,is
       </table></div>
     </div>}
     {isAdmin&&<CmdErrBoundary><CmdNoRetiraron/></CmdErrBoundary>}
+    {isAdmin&&<CmdErrBoundary><CmdConteoEmpresa/></CmdErrBoundary>}
     <div className="cmd-rep">
       <h3>Últimos despachos del día</h3>
       {despachos.length===0?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Sin despachos aún.</div>:
