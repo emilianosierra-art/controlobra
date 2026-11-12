@@ -339,6 +339,14 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .cmd-citem{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:10px 12px;cursor:pointer;text-align:left;color:var(--tx);font-family:var(--fh);}
 .cmd-citem:hover{border-color:var(--cmd-pri);}
 @media(max-width:700px){.cmd-mcards{grid-template-columns:1fr 1fr}.cmd-tabs{overflow-x:auto}.cmd-tab{white-space:nowrap;font-size:12px;padding:10px 8px}}
+/* Rev138: Viandas → Reporte como menú de botones */
+.cmd-repmenu{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-bottom:12px}
+.cmd-repbtn{display:flex;align-items:flex-start;gap:12px;text-align:left;background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:14px 16px;cursor:pointer;color:var(--tx);font-family:var(--fh);transition:border-color .15s,background .15s}
+.cmd-repbtn:hover{border-color:var(--cmd-pri);background:rgba(245,158,11,.05)}
+.cmd-repbtn .ic{font-size:24px;line-height:1}
+.cmd-repbtn .t{display:block;font-size:16px;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
+.cmd-repbtn .s{display:block;font-size:12px;color:var(--tx2);font-family:var(--fb);margin-top:4px;line-height:1.35}
+.cmd-repbtn .adm{display:inline-block;margin-top:6px;font-size:10px;color:var(--tx3);font-family:var(--fm);text-transform:uppercase;letter-spacing:.06em}
 /* Reportes JO (Rev111) */
 .jo-wrap{background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:14px 16px;margin-bottom:14px}
 .jo-h{font-family:var(--fh);font-size:14px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--tx2);margin-bottom:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -440,7 +448,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev137";
+const APP_REV="Rev138";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -3765,18 +3773,20 @@ function CmdEscanear({personas,despachos,dieta,platos,onTogglePlato,bandejas,onT
 // Resumen de 7 días desde una fecha elegible (programadas vs despachadas; por defecto los últimos 7 hasta hoy)
 // y 7 días adelante de hoy (programadas). Click en un día → abre el Listado de esa fecha con el detalle por persona.
 // La fecha elegida vive en Comedor (inicio/setInicio) para no perderla al ir y volver del Listado.
-function CmdResumenSemanal({onVerDia,inicio,setInicio}){
+function CmdResumenSemanal({onVerDia,inicio,setInicio,modo}){
+  // Rev138: modo "pasados" = últimos 7 días (despachadas / programadas); "proximos" = próximos 7 días (programadas).
   const hoy=cmdIsoDate(new Date());
   const defInicio=cmdAddDays(hoy,-6);
   const ini=inicio||defInicio,fin=cmdAddDays(ini,6);
   const esDefault=ini===defInicio;
+  const verPas=modo!=='proximos',verProx=modo!=='pasados';
   const[data,setData]=useState(null);
   const[loading,setLoading]=useState(true);
   const reqRef=useRef(0);
   const load=async()=>{
     const req=++reqRef.current;setLoading(true);
     // Dos rangos separados: si la fecha elegida es vieja, no traemos todos los días intermedios.
-    const[a,b]=await Promise.all([cmdFetchResumen(ini,fin),cmdFetchResumen(cmdAddDays(hoy,1),cmdAddDays(hoy,7))]);
+    const[a,b]=await Promise.all([verPas?cmdFetchResumen(ini,fin):{},verProx?cmdFetchResumen(cmdAddDays(hoy,1),cmdAddDays(hoy,7)):{}]);
     if(req!==reqRef.current)return; // cambiaron la fecha mientras cargaba
     setData({...b,...a});setLoading(false);
   };
@@ -3787,17 +3797,18 @@ function CmdResumenSemanal({onVerDia,inicio,setInicio}){
   const row=(iso)=>(data&&data[iso])||{prog:{desayuno:0,almuerzo:0,merienda:0,cena:0},desp:{desayuno:0,almuerzo:0,merienda:0,cena:0},hayProg:false};
   const sum=(dias,campo,k)=>dias.reduce((a,iso)=>a+row(iso)[campo][k],0);
   const trStyle={cursor:'pointer'};
+  const actualizar=<button onClick={load} style={{marginLeft:'auto',background:'var(--s2)',border:'1px solid var(--bd)',color:'var(--tx2)',borderRadius:4,padding:'4px 10px',fontSize:11,cursor:'pointer'}}>{loading?'…':'↻ actualizar'}</button>;
   return <div className="cmd-rep">
-    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,flexWrap:'wrap'}}>
+    {verPas?<div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10,flexWrap:'wrap'}}>
       <h3 style={{margin:0}}>{esDefault?'Últimos 7 días':('Del '+cmdFmtDate(ini).slice(0,5)+' al '+cmdFmtDate(fin).slice(0,5))} · despachadas / programadas</h3>
       <label style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'var(--tx2)',textTransform:'uppercase',fontWeight:700,letterSpacing:.5}}>Desde
         <input type="date" value={ini} max={hoy} onChange={e=>setInicio(e.target.value||null)} style={{background:'var(--s2)',border:'1px solid var(--bd)',color:'var(--tx)',borderRadius:4,padding:'4px 8px',fontFamily:'var(--fm)',fontSize:12}}/>
       </label>
       {!esDefault&&<button onClick={()=>setInicio(null)} style={{background:'none',border:'1px solid var(--cmd-pri)',color:'var(--cmd-pri)',borderRadius:4,padding:'4px 10px',fontSize:11,cursor:'pointer'}} title="Volver a los últimos 7 días hasta hoy">↺ últimos 7 días</button>}
-      <button onClick={load} style={{marginLeft:'auto',background:'var(--s2)',border:'1px solid var(--bd)',color:'var(--tx2)',borderRadius:4,padding:'4px 10px',fontSize:11,cursor:'pointer'}}>{loading?'…':'↻ actualizar'}</button>
-    </div>
+      {actualizar}
+    </div>:<div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}><h3 style={{margin:0}}>Próximos 7 días · programadas</h3>{actualizar}</div>}
     {loading?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Cargando…</div>:<>
-      <table>
+      {verPas&&<table>
         <thead><tr><th>Día</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
         <tbody>
           {pasados.map(iso=>{const r=row(iso);const fut=iso>hoy;return <tr key={iso} style={trStyle} onClick={()=>onVerDia(iso)} title="Ver el detalle de ese día">
@@ -3808,9 +3819,9 @@ function CmdResumenSemanal({onVerDia,inicio,setInicio}){
           </tr>;})}
           <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Total</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{sum(pasados,'desp',c.key)}<span style={{color:'var(--tx3)',fontWeight:500}}> / {sum(pasados,'prog',c.key)}</span></td>)}</tr>
         </tbody>
-      </table>
-      <h3 style={{marginTop:18}}>Próximos 7 días · programadas</h3>
-      <table>
+      </table>}
+      {verPas&&verProx&&<h3 style={{marginTop:18}}>Próximos 7 días · programadas</h3>}
+      {verProx&&<table>
         <thead><tr><th>Día</th>{CMD_COMIDAS.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}</tr></thead>
         <tbody>
           {proximos.map(iso=>{const r=row(iso);return <tr key={iso} style={trStyle} onClick={()=>onVerDia(iso)} title="Ver el detalle de ese día">
@@ -3819,10 +3830,10 @@ function CmdResumenSemanal({onVerDia,inicio,setInicio}){
           </tr>;})}
           <tr style={{borderTop:'2px solid var(--bd)'}}><td style={{fontWeight:800}}>Total</td>{CMD_COMIDAS.map(c=><td key={c.key} className="n">{sum(proximos,'prog',c.key)}</td>)}</tr>
         </tbody>
-      </table>
+      </table>}
       <div style={{marginTop:10,fontSize:11,color:'var(--tx3)',lineHeight:1.5}}>
         Tocá un día para ver el detalle por persona. "—" = el día todavía no se sincronizó desde el Radar (el sync trae hoy + 10 días).
-        Las cenas cuentan todos los platos entregados, incluidas las repeticiones.
+        {verPas&&' Las cenas cuentan todos los platos entregados, incluidas las repeticiones.'}
       </div>
     </>}
   </div>;
@@ -4141,7 +4152,16 @@ function CmdConteoEmpresa(){
       </>}
   </div>;
 }
-function CmdReporte({personas,despachos,fecha,onVerDia,resInicio,setResInicio,isAdmin}){
+// Rev138: la solapa Reporte es un menú: cada informe es un botón y al entrar se ven (o se eligen) sus fechas.
+const CMD_REPORTES=[
+  {k:'pasados',ic:'📅',t:'Últimos 7 días',s:'Despachadas / programadas, día por día. Se puede elegir desde qué fecha.'},
+  {k:'proximos',ic:'🗓️',t:'Próximos 7 días',s:'Programadas, día por día.'},
+  {k:'dia',ic:'🍽️',t:'Día por tipo de comida',s:'Solicitadas, agregadas, despachadas, repetidas y pendientes de un día.'},
+  {k:'despachos',ic:'🕐',t:'Despachos del día',s:'Quién retiró, qué comida, a qué hora y en qué puesto.'},
+  {k:'noret',ic:'🚫',t:'Quiénes no retiraron',s:'Personas que no retiraron lo programado en un período.',admin:true},
+  {k:'conteo',ic:'📊',t:'Conteo por empresa',s:'Pedidas, retiradas y no retiradas por empresa o persona, con PDF.',admin:true},
+];
+function CmdReporte({personas,despachos,fecha,setFecha,onVerDia,resInicio,setResInicio,isAdmin,ver,setVer}){
   // Programada = del Radar; las comidas agregadas en el día van en su propia columna
   const prog=(p,k)=>p.comidas.includes(k)&&!(p.extras||[]).includes(k);
   const porComida=useMemo(()=>CMD_COMIDAS.map(c=>({
@@ -4156,47 +4176,56 @@ function CmdReporte({personas,despachos,fecha,onVerDia,resInicio,setResInicio,is
     repetidas:despachos.filter(d=>d.comida===c.key).length-new Set(despachos.filter(d=>d.comida===c.key).map(d=>d.dni)).size,
   })),[personas,despachos]);
   const agregadosDia=personas.filter(p=>p.agregado&&(p.extras||[]).length);
+  const items=CMD_REPORTES.filter(r=>!r.admin||isAdmin);
+  const R=items.find(r=>r.k===ver);
+  if(!R)return <div className="cmd-repmenu">{items.map(r=><button key={r.k} className="cmd-repbtn" onClick={()=>setVer(r.k)}>
+    <span className="ic">{r.ic}</span>
+    <span><span className="t">{r.t}</span><span className="s">{r.s}</span>{r.admin&&<span className="adm">solo admin</span>}</span>
+  </button>)}</div>;
   return <div>
-    <CmdResumenSemanal onVerDia={onVerDia} inicio={resInicio} setInicio={setResInicio}/>
-    <div className="cmd-rep">
-      <h3>{cmdFmtDate(fecha)} · por tipo de comida</h3>
-      <div className="cmd-tblw"><table>
-        <thead><tr><th>Comida</th><th className="n">Solicitadas</th><th className="n" title="Entregadas a gente que no estaba en el listado o que no la tenía programada">Agregadas</th><th className="n">Despachadas</th><th className="n" title="Platos entregados de más a alguien que ya había retirado">Repetidas</th><th className="n">Camp.</th><th className="n">Chalet</th><th className="n">Pendientes</th></tr></thead>
-        <tbody>{porComida.map(c=>(
-          <tr key={c.key}>
-            <td>{c.em} {c.label}</td>
-            <td className="n">{c.total}</td>
-            <td className="n" style={{color:c.agregadas?'var(--cmd-info)':'var(--tx3)'}}>{c.agregadas}</td>
-            <td className="n" style={{color:'var(--cmd-pri)'}}>{c.despachadas}</td>
-            <td className="n" style={{color:c.repetidas?'var(--cmd-err)':'var(--tx3)'}}>{c.repetidas}</td>
-            <td className="n" style={{color:'var(--cmd-info)'}}>{c.camp}</td>
-            <td className="n" style={{color:'var(--cmd-purple)'}}>{c.chal}</td>
-            <td className="n" style={{color:'var(--cmd-ok)'}}>{c.pendientes}</td>
-          </tr>
-        ))}</tbody>
-      </table></div>
-    </div>
-    {agregadosDia.length>0&&<div className="cmd-rep">
-      <h3>➕ Agregados del día ({agregadosDia.length})</h3>
-      <div className="cmd-tblw"><table>
-        <thead><tr><th>Persona</th><th>Comidas agregadas</th><th>Puesto</th><th>Hora</th><th>Motivo</th></tr></thead>
-        <tbody>{agregadosDia.map(p=><tr key={p.dni}>
-          <td>{p.nombre} {p.apellido}<div style={{fontSize:10,color:'var(--tx3)'}}>DNI {p.dni}{p.empresa?' · '+p.empresa:''}{p.noListado?' · no estaba en el listado':''}</div></td>
-          <td>{p.extras.map(k=>{const c=CMD_COMIDAS.find(x=>x.key===k);return c.em+' '+c.short;}).join('  ')}</td>
-          <td><span className={'cmd-ptag '+cmdPuestoClass(p.agregado.puesto)}>{cmdPuestoShort(p.agregado.puesto)}</span></td>
-          <td style={{fontFamily:'var(--fm)',fontSize:11}}>{cmdHora(p.agregado.agregado_at)}</td>
-          <td style={{fontSize:11}}>{p.agregado.motivo||''}</td>
-        </tr>)}</tbody>
-      </table></div>
-    </div>}
-    {isAdmin&&<CmdErrBoundary><CmdNoRetiraron/></CmdErrBoundary>}
-    {isAdmin&&<CmdErrBoundary><CmdConteoEmpresa/></CmdErrBoundary>}
-    <div className="cmd-rep">
-      <h3>Últimos despachos del día</h3>
-      {despachos.length===0?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Sin despachos aún.</div>:
-        <table>
+    <div style={{marginBottom:10}}><button className="cmd-btn" onClick={()=>setVer(null)}>← Reportes</button></div>
+    {(ver==='dia'||ver==='despachos')&&setFecha&&<CmdDateBar fecha={fecha} setFecha={setFecha} readOnly/>}
+    {ver==='pasados'&&<CmdResumenSemanal modo="pasados" onVerDia={onVerDia} inicio={resInicio} setInicio={setResInicio}/>}
+    {ver==='proximos'&&<CmdResumenSemanal modo="proximos" onVerDia={onVerDia} inicio={resInicio} setInicio={setResInicio}/>}
+    {ver==='dia'&&<>
+      <div className="cmd-rep">
+        <h3>{cmdFmtDate(fecha)} · por tipo de comida</h3>
+        <div className="cmd-tblw"><table>
+          <thead><tr><th>Comida</th><th className="n">Solicitadas</th><th className="n" title="Entregadas a gente que no estaba en el listado o que no la tenía programada">Agregadas</th><th className="n">Despachadas</th><th className="n" title="Platos entregados de más a alguien que ya había retirado">Repetidas</th><th className="n">Camp.</th><th className="n">Chalet</th><th className="n">Pendientes</th></tr></thead>
+          <tbody>{porComida.map(c=>(
+            <tr key={c.key}>
+              <td>{c.em} {c.label}</td>
+              <td className="n">{c.total}</td>
+              <td className="n" style={{color:c.agregadas?'var(--cmd-info)':'var(--tx3)'}}>{c.agregadas}</td>
+              <td className="n" style={{color:'var(--cmd-pri)'}}>{c.despachadas}</td>
+              <td className="n" style={{color:c.repetidas?'var(--cmd-err)':'var(--tx3)'}}>{c.repetidas}</td>
+              <td className="n" style={{color:'var(--cmd-info)'}}>{c.camp}</td>
+              <td className="n" style={{color:'var(--cmd-purple)'}}>{c.chal}</td>
+              <td className="n" style={{color:'var(--cmd-ok)'}}>{c.pendientes}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      </div>
+      {agregadosDia.length>0&&<div className="cmd-rep">
+        <h3>➕ Agregados del día ({agregadosDia.length})</h3>
+        <div className="cmd-tblw"><table>
+          <thead><tr><th>Persona</th><th>Comidas agregadas</th><th>Puesto</th><th>Hora</th><th>Motivo</th></tr></thead>
+          <tbody>{agregadosDia.map(p=><tr key={p.dni}>
+            <td>{p.nombre} {p.apellido}<div style={{fontSize:10,color:'var(--tx3)'}}>DNI {p.dni}{p.empresa?' · '+p.empresa:''}{p.noListado?' · no estaba en el listado':''}</div></td>
+            <td>{p.extras.map(k=>{const c=CMD_COMIDAS.find(x=>x.key===k);return c.em+' '+c.short;}).join('  ')}</td>
+            <td><span className={'cmd-ptag '+cmdPuestoClass(p.agregado.puesto)}>{cmdPuestoShort(p.agregado.puesto)}</span></td>
+            <td style={{fontFamily:'var(--fm)',fontSize:11}}>{cmdHora(p.agregado.agregado_at)}</td>
+            <td style={{fontSize:11}}>{p.agregado.motivo||''}</td>
+          </tr>)}</tbody>
+        </table></div>
+      </div>}
+    </>}
+    {ver==='despachos'&&<div className="cmd-rep">
+      <h3>{cmdFmtDate(fecha)} · despachos del día ({despachos.length})</h3>
+      {despachos.length===0?<div style={{color:'var(--tx3)',fontSize:12,padding:8}}>Sin despachos ese día.</div>:
+        <div className="cmd-tblw" style={{maxHeight:560,overflowY:'auto'}}><table>
           <thead><tr><th>Hora</th><th>Persona</th><th>Comida</th><th>Puesto</th></tr></thead>
-          <tbody>{[...despachos].reverse().slice(0,30).map(d=>{
+          <tbody>{[...despachos].reverse().map(d=>{
             const p=personas.find(x=>x.dni===d.dni);
             const c=CMD_COMIDAS.find(x=>x.key===d.comida);
             return <tr key={d.id}>
@@ -4208,8 +4237,10 @@ function CmdReporte({personas,despachos,fecha,onVerDia,resInicio,setResInicio,is
               <td><span className={'cmd-ptag '+cmdPuestoClass(d.puesto)}>{cmdPuestoShort(d.puesto)}</span></td>
             </tr>;
           })}</tbody>
-        </table>}
-    </div>
+        </table></div>}
+    </div>}
+    {ver==='noret'&&<CmdErrBoundary><CmdNoRetiraron/></CmdErrBoundary>}
+    {ver==='conteo'&&<CmdErrBoundary><CmdConteoEmpresa/></CmdErrBoundary>}
   </div>;
 }
 
@@ -5119,6 +5150,7 @@ function Comedor({user,proyectoId}){
   const verPedidos=isAdmin||isAdminViandas; // Pedido semanal + Certificados: admin edita, Lagunas (admin_viandas) solo mira
   const[subtab,setSubtab]=useState(isAdmin?'listado':'scan');
   const[resInicio,setResInicio]=useState(null); // Reporte: fecha "desde" del resumen de 7 días (null = últimos 7 hasta hoy)
+  const[repVer,setRepVer]=useState(null); // Rev138: reporte abierto (null = menú de reportes)
   const[fecha,setFecha]=useState(()=>cmdIsoDate(new Date()));
   const[personasRadar,setPersonasRadar]=useState([]); // listado del día según el Radar
   const[agregados,setAgregados]=useState({});         // dni → fila de viandas_agregados (no listados / comidas no programadas)
@@ -5338,7 +5370,7 @@ function Comedor({user,proyectoId}){
           :<CmdEscanear personas={personasDia} despachos={despachosDia} dieta={dieta} platos={platos} onTogglePlato={togglePlato} bandejas={bandejas} onToggleBandeja={toggleBandeja} prefix={prefix} togglePref={togglePref} onDispatch={addDespacho} onUndispatch={removeDespacho} preloadPersona={picked} clearPreload={()=>setPicked(null)} fecha={fecha} isReadOnly={isReadOnly} onAgregarComida={agregarComida} onAgregarPersona={setAgregando}/>
       )}
       {subtab==='listado'&&<CmdListado personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} dieta={dieta} chaletSet={chaletSet} platos={platos} onTogglePlato={togglePlato} bandejas={bandejas} onToggleBandeja={toggleBandeja} isAdmin={canEditDieta} onOpenDieta={setDietaEditing} onPick={puedeEscanear?onPickFromList:null} onDispatch={addDespacho} onUndispatch={removeDespacho} canDispatch={!!userPuesto||isAdmin} isReadOnly={isReadOnly} onAgregarComida={agregarComida} onAgregarPersona={setAgregando}/>}
-      {subtab==='reporte'&&<CmdReporte personas={personasDia} despachos={despachosDia} fecha={fecha} onVerDia={verDia} resInicio={resInicio} setResInicio={setResInicio} isAdmin={isAdmin}/>}
+      {subtab==='reporte'&&<CmdReporte personas={personasDia} despachos={despachosDia} fecha={fecha} setFecha={setFecha} onVerDia={verDia} resInicio={resInicio} setResInicio={setResInicio} isAdmin={isAdmin} ver={repVer} setVer={setRepVer}/>}
       {subtab==='pedido'&&verPedidos&&<CmdErrBoundary><CmdPedidoSemanal user={user} canEdit={isAdmin} showToast={showToast}/></CmdErrBoundary>}
       {subtab==='cert'&&verPedidos&&<CmdErrBoundary><CmdCertificados user={user} canEdit={isAdmin} showToast={showToast}/></CmdErrBoundary>}
     </>}
