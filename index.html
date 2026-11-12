@@ -440,7 +440,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev136";
+const APP_REV="Rev137";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -3960,7 +3960,11 @@ function CmdConteoEmpresa(){
   const[desde,setDesde]=useState(cmdAddDays(ayer,-6));
   const[hasta,setHasta]=useState(ayer);
   const[comidas,setComidas]=useState(()=>new Set(CMD_COMIDAS.map(c=>c.key)));
-  const[emp,setEmp]=useState('');
+  // Rev137: se pueden tildar varias empresas (vacío = todas)
+  const[emps,setEmps]=useState(()=>new Set());
+  const[qe,setQe]=useState('');
+  const togEmp=(e)=>{setEmps(prev=>{const n=new Set(prev);n.has(e)?n.delete(e):n.add(e);return n;});setAbierto(null);};
+  const una=emps.size===1;
   const[q,setQ]=useState('');
   const[detPdf,setDetPdf]=useState(null); // null = automático (con empresa o búsqueda: sí; todas: no)
   const[datos,setDatos]=useState(null);
@@ -4006,17 +4010,18 @@ function CmdConteoEmpresa(){
   const suma=(l)=>l.reduce((a,b)=>({P:a.P+b.P,R:a.R+b.R,N:a.N+b.N,V:a.V+b.V,Fu:a.Fu+b.Fu,Rep:a.Rep+b.Rep}),{P:0,R:0,N:0,V:0,Fu:0,Rep:0});
   const keys=sel.map(c=>c.key);
   const activas=((datos&&datos.filas)||[]).filter(x=>{const t=cuenta(x,keys);return t.P>0||t.V>0;});
-  const empresas=useMemo(()=>{const m={};activas.forEach(x=>{m[x.emp]=(m[x.emp]||0)+1;});return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0],'es'));},[datos,comidas]);
-  let filas=activas.filter(x=>!emp||x.emp===emp);
+  const empresas=useMemo(()=>{const m={};activas.forEach(x=>{m[x.emp]=(m[x.emp]||0)+1;});emps.forEach(e=>{if(!(e in m))m[e]=0;});return Object.entries(m).sort((a,b)=>a[0].localeCompare(b[0],'es'));},[datos,comidas,emps]);
+  const empresasVis=qe.trim()?empresas.filter(([e])=>emps.has(e)||joNorm(e).includes(joNorm(qe))):empresas;
+  let filas=activas.filter(x=>!emps.size||emps.has(x.emp));
   if(q.trim())filas=filas.filter(x=>joNorm(`${x.nom} ${x.dni} ${x.empRaw}`).includes(joNorm(q)));
-  filas=filas.slice().sort((a,b)=>(emp?0:a.emp.localeCompare(b.emp,'es'))||a.nom.localeCompare(b.nom,'es'));
+  filas=filas.slice().sort((a,b)=>(una?0:a.emp.localeCompare(b.emp,'es'))||a.nom.localeCompare(b.nom,'es'));
   const porComida=sel.map(c=>({c,...suma(filas.map(x=>cuenta(x,[c.key])))}));
   const total=suma(filas.map(x=>cuenta(x,keys)));
   const porEmpresa=(()=>{const g={};filas.forEach(x=>{(g[x.emp]=g[x.emp]||[]).push(x);});
     return Object.entries(g).map(([e,l])=>({e,n:l.length,...suma(l.map(x=>cuenta(x,keys)))})).sort((a,b)=>a.e.localeCompare(b.e,'es'));})();
-  const verPersonas=!!emp||!!q.trim();
+  const verPersonas=emps.size>0||!!q.trim();
   const conDetalle=detPdf===null?verPersonas:detPdf;
-  const titulo=emp||'Todas las empresas';
+  const titulo=emps.size?[...emps].sort((a,b)=>a.localeCompare(b,'es')).join(' + '):'Todas las empresas';
   const togCom=(k)=>setComidas(prev=>{const n=new Set(prev);if(n.has(k)){if(n.size>1)n.delete(k);}else n.add(k);return n;});
   const periodo=(k)=>{
     if(k==='mes'){setDesde(hoy.slice(0,8)+'01');setHasta(ayer<hoy.slice(0,8)+'01'?hoy:ayer);}
@@ -4041,16 +4046,16 @@ function CmdConteoEmpresa(){
     porComida.forEach(x=>{h+=filaT(E(x.c.label),x);});
     if(porComida.length>1)h+=filaT('Total',total,'tot');
     h+='</tbody></table>';
-    if(!emp&&porEmpresa.length>1){
+    if(!una&&porEmpresa.length>1){
       h+='<h2>Por empresa</h2><table><thead><tr><th>Empresa</th><th class="n">Personas</th>'+cab+'</tr></thead><tbody>';
       porEmpresa.forEach(x=>{h+='<tr><td>'+E(x.e)+'</td>'+N(x.n)+cel(x)+'</tr>';});
       h+='<tr class="tot"><td>Total</td>'+N(filas.length)+cel(total)+'</tr>';
       h+='</tbody></table>';
     }
     if(conDetalle){
-      h+='<h2>Por persona</h2><table><thead><tr><th>Persona</th><th>DNI</th>'+(emp?'':'<th>Empresa</th>')+sel.map(c=>'<th class="n">'+E(c.label)+'<br><span class="muted">ret./ped.</span></th>').join('')+'<th class="n">Pedidas</th><th class="n">Retiradas</th><th class="n">No ret.</th><th class="n">Sin pedir</th><th class="n">Total entreg.</th></tr></thead><tbody>';
+      h+='<h2>Por persona</h2><table><thead><tr><th>Persona</th><th>DNI</th>'+(una?'':'<th>Empresa</th>')+sel.map(c=>'<th class="n">'+E(c.label)+'<br><span class="muted">ret./ped.</span></th>').join('')+'<th class="n">Pedidas</th><th class="n">Retiradas</th><th class="n">No ret.</th><th class="n">Sin pedir</th><th class="n">Total entreg.</th></tr></thead><tbody>';
       filas.forEach(x=>{const t=cuenta(x,keys);
-        h+='<tr><td>'+E(x.nom)+'</td><td>'+E(x.dni)+'</td>'+(emp?'':'<td>'+E(x.emp)+'</td>')+sel.map(c=>{const u=cuenta(x,[c.key]);return N(u.P||u.V?(u.R+'/'+u.P):'—');}).join('')+N(t.P)+N(t.R,'b')+N(t.N,t.N?'rd':'')+N(t.Fu)+N(t.V)+'</tr>';});
+        h+='<tr><td>'+E(x.nom)+'</td><td>'+E(x.dni)+'</td>'+(una?'':'<td>'+E(x.emp)+'</td>')+sel.map(c=>{const u=cuenta(x,[c.key]);return N(u.P||u.V?(u.R+'/'+u.P):'—');}).join('')+N(t.P)+N(t.R,'b')+N(t.N,t.N?'rd':'')+N(t.Fu)+N(t.V)+'</tr>';});
       h+='</tbody></table>';
     }
     h+='<div class="muted" style="margin-top:14px">Pedidas = programadas en el Radar. Retiradas = pedidas que se retiraron. No retiradas = pedidas que no se retiraron ese día. Sin pedir = entregadas un día que no la tenía programada (agregados). Repetidas = más de una el mismo día. Total entregadas = todas las viandas entregadas en cualquier puesto (retiradas + sin pedir + repetidas). % retiro = retiradas sobre pedidas.'+(hasta>=hoy?' El período incluye hoy, que está en curso.':'')+'</div>';
@@ -4073,11 +4078,14 @@ function CmdConteoEmpresa(){
       <span className="lbl">Comidas:</span>
       {CMD_COMIDAS.map(c=><button key={c.key} className={'cmd-fbtn'+(comidas.has(c.key)?' active':'')} onClick={()=>togCom(c.key)}>{c.em} {c.label}</button>)}
     </div>
+    <div className="cmd-fbar" style={{marginBottom:6}}>
+      <span className="lbl">Empresas:</span>
+      <button className={'cmd-fbtn'+(emps.size===0?' active':'')} onClick={()=>{setEmps(new Set());setAbierto(null);}} title="Sacar el filtro de empresas">Todas ({activas.length})</button>
+      {empresas.length>15&&<input className="fi" style={{padding:'5px 9px',fontSize:12,width:150}} placeholder="Buscar empresa..." value={qe} onChange={e=>setQe(e.target.value)}/>}
+      {empresasVis.map(([e,n])=><button key={e} className={'cmd-fbtn'+(emps.has(e)?' active':'')} onClick={()=>togEmp(e)} title={emps.has(e)?'Tocá para sacarla':'Tocá para sumarla'}>{emps.has(e)?'✓ ':''}{e} <span style={{opacity:.6}}>({n})</span></button>)}
+    </div>
+    {emps.size>0&&<div style={{fontSize:12,color:'var(--tx2)',marginBottom:8}}>{emps.size===1?'1 empresa tildada':`${emps.size} empresas tildadas`} · tocá otra para sumarla o una tildada para sacarla.</div>}
     <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',marginBottom:8}}>
-      <select className="fi" style={{minWidth:220}} value={emp} onChange={e=>{setEmp(e.target.value);setAbierto(null);}}>
-        <option value="">Todas las empresas ({activas.length} personas)</option>
-        {empresas.map(([e,n])=><option key={e} value={e}>{e} ({n})</option>)}
-      </select>
       <input className="fi" style={{flex:1,minWidth:180}} placeholder="Filtrar personas por nombre o DNI..." value={q} onChange={e=>setQ(e.target.value)}/>
     </div>
     {!rangoOk&&<div className="cmd-aviso">Revisá las fechas: "desde" antes de "hasta", hasta hoy como máximo y no más de 2 meses.</div>}
@@ -4097,21 +4105,22 @@ function CmdConteoEmpresa(){
             <tbody>{porComida.map(x=><tr key={x.c.key}><td>{x.c.em} {x.c.label}</td>{tds(x)}</tr>)}
               {porComida.length>1&&<tr style={{fontWeight:700}}><td>Total</td>{tds(total)}</tr>}</tbody>
           </table></div>
-          {!emp&&porEmpresa.length>1&&<>
-            <div style={{fontSize:12,color:'var(--tx2)',margin:'12px 0 6px'}}>Por empresa · tocá una para ver su gente</div>
+          {!una&&porEmpresa.length>1&&<>
+            <div style={{fontSize:12,color:'var(--tx2)',margin:'12px 0 6px'}}>Por empresa{emps.size?'':' · tocá una para filtrarla'}</div>
             <div className="cmd-tblw" style={{maxHeight:420,overflowY:'auto'}}><table>
               <thead><tr><th>Empresa</th><th className="n">Personas</th>{th}</tr></thead>
-              <tbody>{porEmpresa.map(x=><tr key={x.e} style={{cursor:'pointer'}} onClick={()=>setEmp(x.e)}><td>{x.e}</td><td className="n">{x.n}</td>{tds(x)}</tr>)}</tbody>
+              <tbody>{porEmpresa.map(x=><tr key={x.e} style={{cursor:emps.size?'default':'pointer'}} onClick={emps.size?undefined:()=>togEmp(x.e)}><td>{x.e}</td><td className="n">{x.n}</td>{tds(x)}</tr>)}
+                {emps.size>1&&<tr style={{fontWeight:700}}><td>Total</td><td className="n">{filas.length}</td>{tds(total)}</tr>}</tbody>
             </table></div>
           </>}
           {verPersonas&&<>
             <div style={{fontSize:12,color:'var(--tx2)',margin:'12px 0 6px'}}>Por persona · cada comida dice <b>retiradas / pedidas</b> · tocá una persona para ver los días</div>
             <div className="cmd-tblw" style={{maxHeight:520,overflowY:'auto'}}><table>
-              <thead><tr><th>Persona</th>{!emp&&<th>Empresa</th>}{sel.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}<th className="n">Pedidas</th><th className="n">Retiradas</th><th className="n">No ret.</th><th className="n">Sin pedir</th><th className="n">Total entreg.</th></tr></thead>
+              <thead><tr><th>Persona</th>{!una&&<th>Empresa</th>}{sel.map(c=><th key={c.key} className="n">{c.em} {c.short}</th>)}<th className="n">Pedidas</th><th className="n">Retiradas</th><th className="n">No ret.</th><th className="n">Sin pedir</th><th className="n">Total entreg.</th></tr></thead>
               <tbody>{filas.slice(0,500).map(x=>{const t=cuenta(x,keys),ab=abierto===x.k;return <React.Fragment key={x.k}>
                 <tr style={{cursor:'pointer'}} onClick={()=>setAbierto(ab?null:x.k)}>
                   <td>{ab?'▾':'▸'} {x.nom}<div style={{fontSize:10,color:'var(--tx3)'}}>DNI {x.dni}</div></td>
-                  {!emp&&<td style={{fontSize:11,color:'var(--tx2)'}}>{x.emp}</td>}
+                  {!una&&<td style={{fontSize:11,color:'var(--tx2)'}}>{x.emp}</td>}
                   {sel.map(c=>{const u=cuenta(x,[c.key]);return <td key={c.key} className="n" style={{color:!u.P&&!u.V?'var(--tx3)':u.N?(u.R?'var(--cmd-dieta)':'var(--cmd-err)'):'var(--cmd-ok)'}}>{u.P||u.V?<><b>{u.R}</b>/{u.P}</>:'—'}</td>;})}
                   <td className="n">{t.P}</td><td className="n" style={{color:'var(--cmd-ok)',fontWeight:700}}>{t.R}</td><td className="n" style={{color:t.N?'var(--cmd-err)':'var(--tx3)'}}>{t.N}</td><td className="n" style={{color:t.Fu?'var(--cmd-info)':'var(--tx3)'}}>{t.Fu}</td><td className="n" style={{color:'var(--cmd-pri)'}}>{t.V}</td>
                 </tr>
