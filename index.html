@@ -448,7 +448,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev138";
+const APP_REV="Rev139";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -2164,6 +2164,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const[showModal,setShowModal]=useState(false);
   const[showMasivo,setShowMasivo]=useState(false);
   const[showMasivoTodo,setShowMasivoTodo]=useState(false);
+  const[verAviso,setVerAviso]=useState(false); // Rev139
   const[editP,setEditP]=useState(null);
   const[registroP,setRegistroP]=useState(null);
   const[detalleP,setDetalleP]=useState(null);
@@ -2294,11 +2295,12 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
     return ids.size;
   })();
   const btns=[];
+  if(user)btns.push(<button key="aviso" className="badd" style={{background:"rgba(59,130,246,.16)",border:"1px solid var(--acc2)",color:"#60A5FA"}} onClick={()=>setVerAviso(true)} title="Avisar que va a ingresar alguien">📨 Aviso de ingreso</button>);
   if(!readOnly&&(canSH||canCP))btns.push(<button key="add" className="badd" onClick={()=>{setEditP(null);setShowModal(true);}}>+ Nuevo</button>);
   if(canSH)btns.push(<button key="mas" className="badd" style={{background:"var(--acc2)",marginLeft:6}} onClick={()=>setShowMasivo(true)}>Hab. masiva por empresa</button>);
   if(userRole==="admin")btns.push(<button key="todo" className="badd" style={{background:"rgba(16,185,129,.2)",border:"1px solid var(--gr)",color:"var(--gr)",marginLeft:6}} onClick={()=>setShowMasivoTodo(true)}>⭐ Habilitar todo</button>);
   return <div>
-    <div className="ph2"><div className="ptit"><span>Personal</span>{readOnly&&<span style={{fontSize:14,fontWeight:400,color:"var(--tx2)",marginLeft:10}}>solo lectura</span>}</div><div style={{display:"flex",gap:6}}>{btns}</div></div>
+    <div className="ph2"><div className="ptit"><span>Personal</span>{readOnly&&<span style={{fontSize:14,fontWeight:400,color:"var(--tx2)",marginLeft:10}}>solo lectura</span>}</div><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{btns}</div></div>
     <div className="sg">
       <div className="sc"><div className="sv">{personas.length}</div><div className="slb">Total</div></div>
       <div className="sc sc-btn" onClick={()=>setFilterEst(filterEst==="ingreso"?"":"ingreso")} title="S&H Ingreso + CP Ingreso (del Radar) vigentes" style={filterEst==="ingreso"?{borderColor:"var(--gr)"}:{}}><div className="sv" style={{color:"var(--gr)"}}>{cuantos("ingreso")}</div><div className="slb">Habilitados a ingresar</div></div>
@@ -2367,9 +2369,285 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
     {showModal&&<PersonModal p={editP} onClose={()=>setShowModal(false)} onSave={saveP} onVer={x=>verPersona(x.dni,"Ya estaba dada de alta"+(x.empresa?" ("+x.empresa+")":"")+" — si cambió de empresa, usá Editar")}/>}
     {detalleP&&<PersonaDetalleModal persona={detalleP} proyectoId={proyectoId} onClose={()=>setDetalleP(null)}/>}
     {registroP&&user&&<RegistroManualAcceso persona={registroP} user={user} proyectoId={proyectoId} onClose={()=>setRegistroP(null)} onSaved={()=>setRegistroP(null)}/>}
+    {verAviso&&<AvisoIngresoModal user={user} onClose={()=>setVerAviso(false)}/>}
     {showMasivoTodo&&<HabTodoModal proyectoId={proyectoId} currentUserId={currentUserId} tipo="persona" porNombre={user&&(user.nombre||user.email)} onClose={()=>setShowMasivoTodo(false)} onSaved={load}/>}
     {showMasivo&&<HabMasivaModal proyectoId={proyectoId} currentUserId={currentUserId} habs={habs} onClose={()=>setShowMasivo(false)} onSaved={load}/>}
   </div>;
+}
+
+// ─── AVISOS DE INGRESO (Rev139) ───────────────────────────────────────────────
+// Cualquier usuario avisa que va a ingresar alguien (una o varias personas): datos para darlo de alta, fecha, cuántos
+// días se queda y qué corre por cuenta de Obras y Sistemas (estadía, viandas, traslado con origen/destino y pasaje).
+// A los admins les aparece una campanita 🔔 con los pendientes y los marcan como vistos / resueltos / rechazados; quien
+// avisó ve el estado en "Mis avisos". Tabla obra.avisos_ingreso con RLS: cada usuario ve los suyos; los admins, todos.
+const AVISO_SQL=`CREATE TABLE IF NOT EXISTS obra.avisos_ingreso (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  creado_at timestamptz NOT NULL DEFAULT now(),
+  creado_por uuid NOT NULL DEFAULT auth.uid(),
+  creado_por_nombre text,
+  personas jsonb NOT NULL DEFAULT '[]'::jsonb,
+  fecha_ingreso date NOT NULL,
+  dias integer CHECK (dias BETWEEN 1 AND 7),
+  hasta date,
+  indefinido boolean NOT NULL DEFAULT false,
+  estadia boolean NOT NULL DEFAULT false,
+  viandas boolean NOT NULL DEFAULT false,
+  traslado boolean NOT NULL DEFAULT false,
+  traslado_origen text,
+  traslado_destino text,
+  compra_pasaje boolean NOT NULL DEFAULT false,
+  notas text,
+  estado text NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente','visto','resuelto','rechazado','anulado')),
+  estado_por uuid,
+  estado_por_nombre text,
+  estado_at timestamptz,
+  respuesta text
+);
+ALTER TABLE obra.avisos_ingreso ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE ON obra.avisos_ingreso TO authenticated;
+CREATE POLICY avisos_ingreso_insert ON obra.avisos_ingreso FOR INSERT TO authenticated
+  WITH CHECK (creado_por = auth.uid() AND EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo));
+CREATE POLICY avisos_ingreso_select ON obra.avisos_ingreso FOR SELECT TO authenticated
+  USING (creado_por = auth.uid() OR EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo AND u.rol = 'admin'));
+CREATE POLICY avisos_ingreso_update ON obra.avisos_ingreso FOR UPDATE TO authenticated
+  USING (creado_por = auth.uid() OR EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo AND u.rol = 'admin'));
+NOTIFY pgrst, 'reload schema';`;
+const AV_EST={pendiente:{t:"Pendiente",c:"var(--acc)"},visto:{t:"Visto",c:"#60A5FA"},resuelto:{t:"Resuelto",c:"var(--gr)"},rechazado:{t:"Rechazado",c:"var(--rd)"},anulado:{t:"Anulado",c:"var(--tx3)"}};
+const avDuracion=(a)=>a.indefinido?"más de 7 días · hasta: indefinido":a.hasta?`hasta el ${cmdFmtDate(a.hasta)}`:a.dias?(a.dias===1?"1 día":`${a.dias} días (hasta el ${cmdFmtDate(cmdAddDays(a.fecha_ingreso,a.dias-1))})`):"—";
+const avCargo=(a)=>[a.estadia&&"🛏️ Estadía",a.viandas&&"🍽️ Viandas",a.traslado&&("🚌 Traslado"+(a.traslado_origen||a.traslado_destino?`: ${a.traslado_origen||"?"} → ${a.traslado_destino||"?"}`:"")+(a.compra_pasaje?" · con compra de pasaje":""))].filter(Boolean);
+const avDni=(x)=>normDni(x).replace(/[^A-Z0-9]/g,"");
+function AvisoChip({e}){const x=AV_EST[e]||AV_EST.pendiente;return <span style={{fontFamily:"var(--fm)",fontSize:11,fontWeight:700,color:x.c,border:"1px solid "+x.c,borderRadius:4,padding:"1px 7px",textTransform:"uppercase",whiteSpace:"nowrap"}}>{x.t}</span>;}
+// Tarjeta de un aviso (la usan "Mis avisos" y el panel de admin)
+function AvisoCard({a,extra,personaExtra}){
+  const c=avCargo(a);
+  return <div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"12px 14px",marginBottom:10}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+      <AvisoChip e={a.estado}/>
+      <span style={{fontWeight:700}}>Ingresa el {cmdFmtDate(a.fecha_ingreso)}</span>
+      <span style={{fontSize:12,color:"var(--tx2)"}}>· {avDuracion(a)}</span>
+      <span style={{fontSize:11,color:"var(--tx3)",marginLeft:"auto"}}>avisó {a.creado_por_nombre||"—"} · {fmtTs(a.creado_at)}</span>
+    </div>
+    {(a.personas||[]).map((p,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",fontSize:13,padding:"3px 0"}}>
+      <span>👤 <b>{p.apellido}, {p.nombre}</b> · DNI {p.dni} · {p.empresa}</span>
+      {personaExtra&&personaExtra(p)}
+    </div>)}
+    <div style={{fontSize:12,color:"var(--tx2)",marginTop:6}}>A cargo de Obras y Sistemas: {c.length?c.join(" · "):"nada"}</div>
+    {a.notas&&<div style={{fontSize:12,color:"var(--tx2)",marginTop:4}}>📝 {a.notas}</div>}
+    {a.estado!=="pendiente"&&a.estado_por_nombre&&<div style={{fontSize:11,color:"var(--tx3)",marginTop:4}}>{AV_EST[a.estado]?AV_EST[a.estado].t:a.estado} por {a.estado_por_nombre}{a.estado_at?` · ${fmtTs(a.estado_at)}`:""}{a.respuesta?` — "${a.respuesta}"`:""}</div>}
+    {extra&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>{extra}</div>}
+  </div>;
+}
+function AvisoIngresoModal({user,onClose}){
+  const hoy=today();
+  const vacia=()=>({dni:"",empresa:"",nombre:"",apellido:"",enBase:null});
+  const[tab,setTab]=useState("nuevo");
+  const[pers,setPers]=useState([vacia()]);
+  const[fecha,setFecha]=useState(cmdAddDays(hoy,1));
+  const[dur,setDur]=useState("corto"); // corto = 7 días o menos | largo = más de 7 días
+  const[dias,setDias]=useState(1);
+  const[hasta,setHasta]=useState("");
+  const[indef,setIndef]=useState(false);
+  const[estadia,setEstadia]=useState(false);
+  const[viandas,setViandas]=useState(false);
+  const[traslado,setTraslado]=useState(false);
+  const[origen,setOrigen]=useState("");
+  const[destino,setDestino]=useState("");
+  const[pasaje,setPasaje]=useState(false);
+  const[notas,setNotas]=useState("");
+  const[busy,setBusy]=useState(false);
+  const[enviado,setEnviado]=useState(false);
+  const[empresas,setEmpresas]=useState([]);
+  const[mios,setMios]=useState(null);
+  useEffect(()=>{db.sel("personas",{cols:"empresa",f:[["deleted_at","is","null"]],lim:5000}).then(({data})=>{
+    if(data)setEmpresas([...new Set(data.map(p=>(p.empresa||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es")));});},[]);
+  const cargarMios=async()=>{const{data}=await db.sel("avisos_ingreso",{f:[["creado_por","eq",user.id]],ord:"creado_at.desc",lim:60});setMios(data===null?{err:true}:data);};
+  useEffect(()=>{if(tab==="mios")cargarMios();},[tab]);
+  const setP=(i,k,v)=>setPers(l=>l.map((x,j)=>j===i?{...x,[k]:v}:x));
+  // Al escribir el DNI se busca en Personal: si ya está, se completan los datos que falten
+  const buscarDni=async(i)=>{
+    const d=avDni(pers[i].dni);if(d.length<6){setP(i,"enBase",null);return;}
+    const{data}=await db.sel("personas",{cols:"nombre,apellido,empresa,deleted_at",f:[["dni","ilike",d]],lim:1});
+    const p=data&&data[0]&&!data[0].deleted_at?data[0]:null;
+    setPers(l=>l.map((x,j)=>j!==i?x:(p?{...x,enBase:p,nombre:x.nombre||p.nombre||"",apellido:x.apellido||p.apellido||"",empresa:x.empresa||p.empresa||""}:{...x,enBase:false})));
+  };
+  const minHasta=cmdAddDays(fecha||hoy,7);
+  const falta=[
+    pers.some(p=>!p.empresa.trim()||!p.nombre.trim()||!p.apellido.trim()||avDni(p.dni).length<6)&&"empresa, nombre, apellido y DNI de cada persona",
+    !fecha&&"fecha de ingreso",
+    dur==="largo"&&!indef&&!hasta&&"hasta cuándo se queda (o tildá indefinido)",
+    dur==="largo"&&!indef&&hasta&&hasta<minHasta&&"para menos de 8 días elegí \"7 días o menos\"",
+    traslado&&(!origen.trim()||!destino.trim())&&"origen y destino del traslado",
+  ].filter(Boolean);
+  const enviar=async()=>{
+    if(falta.length||busy)return;
+    setBusy(true);
+    const payload={creado_por:user.id,creado_por_nombre:user.nombre||user.email||"",
+      personas:pers.map(p=>({empresa:p.empresa.trim(),nombre:p.nombre.trim(),apellido:p.apellido.trim(),dni:avDni(p.dni)})),
+      fecha_ingreso:fecha,dias:dur==="corto"?Number(dias):null,hasta:dur==="largo"&&!indef?hasta:null,indefinido:dur==="largo"&&indef,
+      estadia,viandas,traslado,traslado_origen:traslado?origen.trim():null,traslado_destino:traslado?destino.trim():null,compra_pasaje:traslado&&pasaje,
+      notas:notas.trim()||null};
+    const r=await db.ins("avisos_ingreso",payload);
+    setBusy(false);
+    if(!r.ok){
+      const t=JSON.stringify(r.data||"");
+      alert(/avisos_ingreso|PGRST205|42P01|42501/.test(t)
+        ?"Todavía no está habilitado el aviso de ingreso: un admin tiene que correr el SQL (está en la campanita 🔔 de los admins)."
+        :"No se pudo enviar el aviso. Revisá la conexión y probá de nuevo.\n\nDetalle: "+t.slice(0,200));
+      return;
+    }
+    setEnviado(true);
+  };
+  const nuevo=()=>{setPers([vacia()]);setNotas("");setEnviado(false);};
+  const chk=(v,set,lbl)=><label style={{display:"flex",alignItems:"center",gap:8,fontSize:14,cursor:"pointer",padding:"4px 0"}}><input type="checkbox" checked={v} onChange={e=>set(e.target.checked)} style={{width:"auto",accentColor:"var(--acc)"}}/> {lbl}</label>;
+  const anular=async(a)=>{if(!confirm("¿Anular este aviso?"))return;const r=await db.upd("avisos_ingreso",{estado:"anulado",estado_por:user.id,estado_por_nombre:user.nombre||user.email||"",estado_at:new Date().toISOString()},[["id","eq",a.id]]);if(!r.ok)alert("No se pudo anular.");cargarMios();};
+  return <div className="mo"><div className="md md-lg">
+    <div className="mh"><div className="mt">📨 Aviso de ingreso</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div className="jo-tabs">
+        <button className={`jo-tab${tab==="nuevo"?" on":""}`} onClick={()=>setTab("nuevo")}>Nuevo aviso</button>
+        <button className={`jo-tab${tab==="mios"?" on":""}`} onClick={()=>setTab("mios")}>Mis avisos</button>
+      </div>
+      {tab==="mios"?(mios===null?<Spin/>:mios.err?<div className="warn">Todavía no está habilitado el aviso de ingreso.</div>
+        :mios.length===0?<div style={{color:"var(--tx3)",fontSize:13,padding:10}}>Todavía no enviaste avisos.</div>
+        :mios.map(a=><AvisoCard key={a.id} a={a} extra={a.estado==="pendiente"?<button className="bsm" onClick={()=>anular(a)}>Anular</button>:null}/>))
+      :enviado?<div style={{textAlign:"center",padding:"20px 10px"}}>
+        <div style={{fontSize:40}}>✅</div>
+        <div style={{fontFamily:"var(--fh)",fontSize:20,fontWeight:800,margin:"6px 0"}}>AVISO ENVIADO</div>
+        <div style={{fontSize:13,color:"var(--tx2)",marginBottom:16}}>Les llega a los admins. En "Mis avisos" ves cuando lo marquen como visto o resuelto.</div>
+        <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}><button className="bsm" onClick={nuevo}>Enviar otro aviso</button><button className="bsm" onClick={()=>setTab("mios")}>Ver mis avisos</button></div>
+      </div>:<>
+        <datalist id="av-empresas">{empresas.map(e=><option key={e} value={e}/>)}</datalist>
+        <div className="jo-h" style={{marginTop:4}}>Quién ingresa</div>
+        {pers.map((p,i)=><div key={i} style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"10px 12px",marginBottom:8}}>
+          <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
+            <span style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)"}}>PERSONA {i+1}</span>
+            {p.enBase&&<span style={{fontSize:11,color:"var(--gr)",marginLeft:8}}>✓ ya está en Personal</span>}
+            {p.enBase===false&&<span style={{fontSize:11,color:"var(--acc)",marginLeft:8}}>no está en Personal</span>}
+            {pers.length>1&&<button className="bsm" style={{marginLeft:"auto",padding:"2px 8px"}} onClick={()=>setPers(l=>l.filter((_,j)=>j!==i))}>Quitar</button>}
+          </div>
+          <div className="row2"><div className="f"><label>DNI *</label><input value={p.dni} onChange={e=>setP(i,"dni",e.target.value)} onBlur={()=>buscarDni(i)} placeholder="30456789" inputMode="numeric"/></div>
+            <div className="f"><label>Empresa *</label><input value={p.empresa} onChange={e=>setP(i,"empresa",e.target.value)} list="av-empresas" placeholder="Ej: ALUSA"/></div></div>
+          <div className="row2" style={{marginBottom:-14}}><div className="f"><label>Nombre *</label><input value={p.nombre} onChange={e=>setP(i,"nombre",e.target.value)}/></div>
+            <div className="f"><label>Apellido *</label><input value={p.apellido} onChange={e=>setP(i,"apellido",e.target.value)}/></div></div>
+        </div>)}
+        <button className="bsm" style={{marginBottom:16}} onClick={()=>setPers(l=>[...l,vacia()])}>+ Agregar otra persona</button>
+
+        <div className="jo-h">Cuándo y por cuánto tiempo</div>
+        <div className="f"><label>Fecha de ingreso *</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/></div>
+        <div className="jo-tabs">
+          <button className={`jo-tab${dur==="corto"?" on":""}`} onClick={()=>setDur("corto")}>7 días o menos</button>
+          <button className={`jo-tab${dur==="largo"?" on":""}`} onClick={()=>setDur("largo")}>Más de 7 días</button>
+        </div>
+        {dur==="corto"
+          ?<div className="f"><label>Cuántos días se queda</label><select value={dias} onChange={e=>setDias(e.target.value)}>
+            {[1,2,3,4,5,6,7].map(n=><option key={n} value={n}>{n===1?"1 día (solo ese día)":`${n} días`}{fecha?` — hasta el ${cmdFmtDate(cmdAddDays(fecha,n-1))}`:""}</option>)}
+          </select></div>
+          :<div className="row2" style={{alignItems:"flex-end"}}>
+            <div className="f"><label>Hasta</label><input type="date" value={hasta} min={minHasta} disabled={indef} onChange={e=>setHasta(e.target.value)}/></div>
+            <div className="f">{chk(indef,setIndef,"Indefinido (todavía no se sabe)")}</div>
+          </div>}
+
+        <div className="jo-h" style={{marginTop:6}}>A cargo de Obras y Sistemas</div>
+        {chk(estadia,setEstadia,"🛏️ Estadía")}
+        {chk(viandas,setViandas,"🍽️ Servicio de viandas")}
+        {chk(traslado,setTraslado,"🚌 Traslado")}
+        {traslado&&<div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"10px 12px",margin:"6px 0 10px"}}>
+          <div className="row2"><div className="f"><label>Origen *</label><input value={origen} onChange={e=>setOrigen(e.target.value)} placeholder="Ej: Buenos Aires"/></div>
+            <div className="f"><label>Destino *</label><input value={destino} onChange={e=>setDestino(e.target.value)} placeholder="Ej: Bariloche"/></div></div>
+          {chk(pasaje,setPasaje,"Incluye compra de pasaje")}
+        </div>}
+        <div className="f" style={{marginTop:8}}><label>Notas (opcional)</label><textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Algo más que convenga saber"/></div>
+        {falta.length>0&&<div style={{fontSize:12,color:"var(--tx3)"}}>Falta: {falta.join(" · ")}</div>}
+      </>}
+    </div>
+    {tab==="nuevo"&&!enviado&&<div className="mf">
+      <button className="bcanc" onClick={onClose}>Cancelar</button>
+      <button className="bp" onClick={enviar} disabled={busy||falta.length>0}>{busy?"Enviando…":`Enviar aviso${pers.length>1?` (${pers.length} personas)`:""}`}</button>
+    </div>}
+  </div></div>;
+}
+// Campanita de los admins: avisos pendientes (se revisa cada minuto)
+function AvisosCampana({user}){
+  const[pend,setPend]=useState(0);
+  const[falta,setFalta]=useState(false);
+  const[ver,setVer]=useState(false);
+  const check=useCallback(async()=>{
+    const{data}=await db.sel("avisos_ingreso",{cols:"id",f:[["estado","eq","pendiente"]],lim:500});
+    if(data===null){setFalta(true);return;}
+    setFalta(false);setPend(data.length);
+  },[]);
+  useEffect(()=>{check();const i=setInterval(check,60000);return()=>clearInterval(i);},[check]);
+  return <>
+    <button className="btn-out" onClick={()=>setVer(true)} title={falta?"Aviso de ingreso: falta habilitarlo":pend?`${pend} aviso${pend===1?"":"s"} de ingreso pendiente${pend===1?"":"s"}`:"Avisos de ingreso"}
+      style={{position:"relative",padding:"5px 10px",flexShrink:0,borderColor:pend?"var(--acc)":undefined,animation:pend?"pulseWarn 2s infinite":undefined}}>
+      🔔{pend>0&&<span style={{position:"absolute",top:-7,right:-7,background:"var(--rd)",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 5px",lineHeight:"14px"}}>{pend}</span>}
+    </button>
+    {ver&&<AvisosPanel user={user} falta={falta} onClose={()=>{setVer(false);check();}}/>}
+  </>;
+}
+function AvisosPanel({user,falta,onClose}){
+  const[lista,setLista]=useState(null);
+  const[filtro,setFiltro]=useState("abiertos");
+  const[enBase,setEnBase]=useState({});
+  const[busy,setBusy]=useState(null);
+  const cargar=useCallback(async()=>{
+    const{data}=await db.sel("avisos_ingreso",{ord:"creado_at.desc",lim:300});
+    if(data===null){setLista({err:true});return;}
+    setLista(data);
+    const dnis=[...new Set(data.flatMap(a=>(a.personas||[]).map(p=>avDni(p.dni))).filter(Boolean))];
+    const m={};
+    for(let i=0;i<dnis.length;i+=150){const{data:ps}=await db.sel("personas",{cols:"dni,deleted_at",inFilter:["dni",dnis.slice(i,i+150)],lim:2000});(ps||[]).forEach(p=>{if(!p.deleted_at)m[avDni(p.dni)]=true;});}
+    setEnBase(m);
+  },[]);
+  useEffect(()=>{if(!falta)cargar();},[cargar,falta]);
+  const estado=async(a,e)=>{
+    let resp=a.respuesta||null;
+    if(e==="rechazado"){const r=prompt("Motivo (opcional, lo ve quien avisó):",a.respuesta||"");if(r===null)return;resp=r.trim()||null;}
+    setBusy(a.id);
+    const r=await db.upd("avisos_ingreso",{estado:e,estado_por:user.id,estado_por_nombre:user.nombre||user.email||"",estado_at:new Date().toISOString(),respuesta:resp},[["id","eq",a.id]]);
+    setBusy(null);
+    if(!r.ok||(Array.isArray(r.data)&&!r.data.length)){alert("No se pudo guardar. Revisá la conexión.");return;}
+    cargar();
+  };
+  const alta=async(p)=>{
+    if(!confirm(`¿Dar de alta en Personal a ${p.nombre} ${p.apellido} (DNI ${p.dni} · ${p.empresa})?`))return;
+    const{data:ex}=await db.sel("personas",{f:[["dni","ilike",p.dni]],lim:1});
+    let r;
+    if(ex&&ex[0])r=await db.upd("personas",{nombre:p.nombre,apellido:p.apellido,empresa:p.empresa,deleted_at:null},[["id","eq",ex[0].id]]);
+    else r=await db.ins("personas",{dni:p.dni,nombre:p.nombre,apellido:p.apellido,empresa:p.empresa});
+    if(!r.ok){alert("No se pudo dar de alta.\n\nDetalle: "+JSON.stringify(r.data).slice(0,200));return;}
+    cargar();
+  };
+  const copiar=async()=>{try{await navigator.clipboard.writeText(AVISO_SQL);alert("SQL copiado");}catch(e){prompt("Copiá el SQL:",AVISO_SQL);}};
+  const vis=lista&&!lista.err?lista.filter(a=>filtro==="todos"||a.estado==="pendiente"||a.estado==="visto"):[];
+  const nPend=lista&&!lista.err?lista.filter(a=>a.estado==="pendiente").length:0;
+  return <div className="mo"><div className="md md-lg" style={{maxWidth:760}}>
+    <div className="mh"><div className="mt">🔔 Avisos de ingreso{nPend?` · ${nPend} pendiente${nPend===1?"":"s"}`:""}</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      {falta||(lista&&lista.err)?<div className="jo-wrap" style={{borderColor:"rgba(245,158,11,.5)"}}>
+        <div className="jo-h" style={{color:"var(--acc)"}}>⚠️ Falta habilitar el aviso de ingreso</div>
+        <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Corré este SQL una sola vez en Supabase (SQL Editor) y recargá la página. Crea la tabla con permisos: cada usuario ve sus avisos y los admins ven y responden todos.</div>
+        <pre className="jo-pre">{AVISO_SQL}</pre>
+        <button className="bsm" style={{marginTop:8}} onClick={copiar}>📋 Copiar SQL</button>
+      </div>:lista===null?<Spin/>:<>
+        <div className="jo-tabs">
+          <button className={`jo-tab${filtro==="abiertos"?" on":""}`} onClick={()=>setFiltro("abiertos")}>Pendientes y vistos</button>
+          <button className={`jo-tab${filtro==="todos"?" on":""}`} onClick={()=>setFiltro("todos")}>Todos</button>
+          <button className="bsm" style={{marginLeft:"auto"}} onClick={cargar}>↻ Actualizar</button>
+        </div>
+        {vis.length===0?<div style={{color:"var(--tx3)",fontSize:13,padding:10}}>{filtro==="abiertos"?"No hay avisos pendientes. 🎉":"Todavía no hay avisos."}</div>
+          :vis.map(a=><AvisoCard key={a.id} a={a}
+            personaExtra={(p)=>enBase[avDni(p.dni)]?<span style={{fontSize:11,color:"var(--gr)"}}>✓ en Personal</span>
+              :<button className="bsm" style={{padding:"2px 8px",fontSize:11}} onClick={()=>alta(p)}>+ Dar de alta en Personal</button>}
+            extra={<>
+              {a.estado==="pendiente"&&<button className="bsm" disabled={busy===a.id} onClick={()=>estado(a,"visto")}>👁 Visto</button>}
+              {(a.estado==="pendiente"||a.estado==="visto")&&<button className="bsm" style={{color:"var(--gr)",borderColor:"rgba(16,185,129,.45)"}} disabled={busy===a.id} onClick={()=>estado(a,"resuelto")}>✓ Resuelto</button>}
+              {(a.estado==="pendiente"||a.estado==="visto")&&<button className="bsm" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.4)"}} disabled={busy===a.id} onClick={()=>estado(a,"rechazado")}>✗ Rechazar</button>}
+              {a.estado!=="pendiente"&&a.estado!=="anulado"&&<button className="bsm" disabled={busy===a.id} onClick={()=>estado(a,"pendiente")}>↺ Volver a pendiente</button>}
+            </>}/>)}
+      </>}
+    </div>
+  </div></div>;
 }
 
 function PersonModal({p,onClose,onSave,onVer}){
@@ -7696,6 +7974,7 @@ function App(){
   const[proyectos,setProyectos]=useState([]);
   const[checking,setChecking]=useState(true);
   const[publicMode,setPublicMode]=useState(false);
+  const[verAviso,setVerAviso]=useState(false); // Rev139: aviso de ingreso desde la barra de arriba
   const pid=proyectos.length>0?proyectos[0].id:null;
 
   useEffect(()=>{
@@ -7779,6 +8058,8 @@ function App(){
     <div className="topbar">
       <div className="brand">CONTROL<span>OBRA</span> <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3}}>{APP_REV}</span></div>
       <div className="tr" style={{gap:8,flexWrap:"nowrap"}}>
+        {user.rol==="admin"&&<AvisosCampana user={user}/>}
+        {!(TABS[user.rol]||[]).some(t=>t.k==="per")&&<button className="btn-out" style={{flexShrink:0,padding:"5px 10px"}} onClick={()=>setVerAviso(true)} title="Avisar que va a ingresar alguien">📨<span className="top-nom"> Aviso de ingreso</span></button>}
         <span className="top-nom" style={{fontSize:12,color:"var(--tx2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:80}}>{user.nombre}</span>
         <span className="rol" style={{flexShrink:0}}>{user.rol==="puesto"?user.puesto_nombre||"Puesto":(ROL_LBL[user.rol]||user.rol).toUpperCase()}</span>
         <button className="btn-out" onClick={logout} style={{flexShrink:0}}>Salir</button>
@@ -7800,6 +8081,7 @@ function App(){
         <div className="ngrp-b">{gt.map(t=><button key={t.k} className={`nb${tab===t.k?" on":""}`} onClick={()=>setTab(t.k)}>{t.l}</button>)}</div>
       </div>;
     })}</div>}
+    {verAviso&&<AvisoIngresoModal user={user} onClose={()=>setVerAviso(false)}/>}
     <div className="main">
       {tab==="per"&&<PersonalPanel userRole={user.rol} currentUserId={user.id} proyectoId={pid} user={user}/>}
       {tab==="veh"&&<VehiculosPanel userRole={user.rol} currentUserId={user.id} proyectoId={pid}/>}
