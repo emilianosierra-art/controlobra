@@ -353,6 +353,7 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .av-op .ic{font-size:22px;line-height:1}
 .av-op b{font-size:15px}
 .av-op .d{display:block;font-size:12px;color:var(--tx2);margin-top:2px}
+.av-op.dis{opacity:.35;cursor:not-allowed}
 .av-fp{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;margin-bottom:6px}
 .av-fl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--tx2)}
 .av-fl .fi{padding:5px 8px;font-size:13px}
@@ -468,7 +469,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev144";
+const APP_REV="Rev147";
 // Rev143: número de versión que se muestra al lado de CONTROLOBRA: AAMM.revisión.DD con la fecha de la revisión
 // (ej. 2611.143.14 = revisión 143 del 14/11/2026). En cada revisión nueva se actualizan APP_REV y APP_FECHA.
 const APP_FECHA="2026-11-14";
@@ -652,7 +653,9 @@ const dirPasado=(puesto,dir)=>dirInfo(puesto,dir).p;  // "entró" / "salió" / "
 const cap1=(s)=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
 // Rev115: "jefe_obra" tiene las mismas opciones que "sobrestante"; solo cambia cómo se muestra el rol.
 const esSobrestante=(u)=>!!u&&(u.rol==="sobrestante"||u.rol==="jefe_obra");
-const ROL_LBL={jefe_obra:"Jefe de Obra"};
+const ROL_LBL={jefe_obra:"Jefe de Obra",compras:"Compras",ambiente:"Ambiente",intendencia:"Intendencia"};
+// Rev147: roles que solo consultan: ven Personal y Vehículos sin editar, mandan avisos de ingreso y miran Registros
+const ROLES_CONSULTA=["compras","ambiente","intendencia"];
 const ini=n=>(n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
 const fmtD=d=>d?d.split("-").reverse().join("/"):"";
 const fmtTs=ts=>new Date(ts).toLocaleString("es-AR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
@@ -2211,7 +2214,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const canSH=userRole==="sh"||userRole==="admin";
   const canCP=userRole==="cp"||userRole==="admin";
   // Rev141: sobrestante y jefe de obra ven Personal como logística (solo lectura; tocando a la persona, su historial)
-  const readOnly=userRole==="puesto"||userRole==="logistica"||userRole==="sobrestante"||userRole==="jefe_obra";
+  const readOnly=userRole==="puesto"||userRole==="logistica"||userRole==="sobrestante"||userRole==="jefe_obra"||ROLES_CONSULTA.includes(userRole);
   const onHabSaved=(newHab)=>{
     setHabs(prev=>{
       // Remove old hab for same entity+tipo+proyecto
@@ -2491,10 +2494,11 @@ function AvisoCard({a,extra,personaExtra,verSH}){
       <span style={{fontSize:11,color:"var(--tx3)",marginLeft:"auto"}}>avisó {a.creado_por_nombre||"—"} · {fmtTs(a.creado_at)}</span>
     </div>
     <div className="tw" style={{maxHeight:"none",marginBottom:8}}><table style={{minWidth:560}}>
-      <thead><tr><th>Persona</th><th>DNI</th><th>Empresa</th><th>Ingreso</th><th>Egreso</th>{personaExtra&&<th></th>}</tr></thead>
+      <thead><tr><th>DNI</th><th>Nombre</th><th>Apellido</th><th>Empresa</th><th>Ingreso</th><th>Egreso</th>{personaExtra&&<th></th>}</tr></thead>
       <tbody>{ps.map(({p,ing,eg,ind},i)=><tr key={i}>
-        <td style={{fontWeight:600}}>{p.apellido}, {p.nombre}</td>
         <td className="mn">{p.dni}</td>
+        <td style={{fontWeight:600}}>{p.nombre}</td>
+        <td style={{fontWeight:600}}>{p.apellido}</td>
         <td style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa}</td>
         <td className="mn">{ing?cmdFmtDate(ing):"—"}</td>
         <td className="mn">{ind?"indefinido":eg?<>{cmdFmtDate(eg)} <span style={{color:"var(--tx3)"}}>({avDiasTxt(ing,eg)})</span></>:"—"}</td>
@@ -2562,6 +2566,8 @@ function AvisoIngresoModal({user,onClose,pagina}){
   const[origen,setOrigen]=useState("");
   const[destino,setDestino]=useState("");
   const[pasaje,setPasaje]=useState(false);
+  const[nada,setNadaRaw]=useState(false); // Rev145: "Nada" = no necesitan nada de Obras y Sistemas
+  const setNada=(v)=>{setNadaRaw(v);if(v){setEstadia(false);setViandas(false);setTraslado(false);}};
   const[vehPropio,setVehPropio]=useState(false);
   const[patente,setPatente]=useState("");
   const[notas,setNotas]=useState("");
@@ -2589,8 +2595,8 @@ function AvisoIngresoModal({user,onClose,pagina}){
   // Pegar una lista desde Excel: un renglón por persona con DNI, empresa, nombre y apellido
   const pegar=async()=>{
     const filas=pegado.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>(l.includes("\t")?l.split("\t"):l.includes(";")?l.split(";"):l.split(",")).map(x=>x.trim()));
-    const nuevas=filas.filter(c=>/\d/.test(c[0]||"")).map(c=>({...vacia(rango),dni:c[0]||"",empresa:c[1]||"",nombre:c[2]||"",apellido:c[3]||""}));
-    if(!nuevas.length){alert("No encontré renglones con DNI. Pegá una persona por renglón: DNI, empresa, nombre, apellido (como columnas de Excel).");return;}
+    const nuevas=filas.filter(c=>/\d/.test(c[0]||"")).map(c=>({...vacia(rango),dni:c[0]||"",nombre:c[1]||"",apellido:c[2]||"",empresa:c[3]||""}));
+    if(!nuevas.length){alert("No encontré renglones con DNI. Pegá una persona por renglón: DNI, nombre, apellido, empresa (como columnas de Excel).");return;}
     const dnis=[...new Set(nuevas.map(x=>avDni(x.dni)).filter(d=>d.length>=6))];
     const m={};
     for(let i=0;i<dnis.length;i+=150){const{data}=await db.sel("personas",{cols:"dni,nombre,apellido,empresa,deleted_at",inFilter:["dni",dnis.slice(i,i+150)],lim:2000});(data||[]).forEach(p=>{if(!p.deleted_at)m[avDni(p.dni)]=p;});}
@@ -2606,7 +2612,7 @@ function AvisoIngresoModal({user,onClose,pagina}){
   const faltaPaso={
     1:[datosMal&&`completar DNI, empresa, nombre y apellido (${datosMal===1?"1 persona":datosMal+" personas"})`,repetidos.length&&`DNI repetido: ${repetidos.join(", ")}`].filter(Boolean),
     2:[fechasMal&&`revisar ingreso y egreso (${fechasMal===1?"1 persona":fechasMal+" personas"})`].filter(Boolean),
-    3:[traslado&&(!origen.trim()||!destino.trim())&&"origen y destino del traslado"].filter(Boolean),
+    3:[!(estadia||viandas||traslado||nada)&&"tildar lo que necesitan, o \"Nada\"",traslado&&(!origen.trim()||!destino.trim())&&"origen y destino del traslado"].filter(Boolean),
   };
   const falta=[...faltaPaso[1],...faltaPaso[2],...faltaPaso[3]];
   const pasoOk=(n)=>!(faltaPaso[n]||[]).length;
@@ -2635,12 +2641,14 @@ function AvisoIngresoModal({user,onClose,pagina}){
     }
     setEnviado(true);
   };
-  const nuevo=()=>{setPers([vacia(rango)]);setNotas("");setEstadia(false);setViandas(false);setTraslado(false);setOrigen("");setDestino("");setPasaje(false);setVehPropio(false);setPatente("");setPorPersona(false);setPaso(1);setEnviado(false);};
+  const nuevo=()=>{setPers([vacia(rango)]);setNotas("");setEstadia(false);setViandas(false);setTraslado(false);setNadaRaw(false);setVerPegar(false);setPegado("");setOrigen("");setDestino("");setPasaje(false);setVehPropio(false);setPatente("");setPorPersona(false);setPaso(1);setEnviado(false);};
+  const hayDatos=pers.some(p=>p.dni.trim()||p.nombre.trim()||p.apellido.trim()||p.empresa.trim())||estadia||viandas||traslado||nada||vehPropio||!!notas.trim();
+  const cancelar=()=>{if(hayDatos&&!confirm("¿Descartar este aviso? Se borra lo que cargaste."))return;if(pagina)nuevo();else onClose();};
   const anular=async(a)=>{if(!confirm("¿Anular este aviso?"))return;const r=await db.upd("avisos_ingreso",{estado:"anulado",estado_por:user.id,estado_por_nombre:user.nombre||user.email||"",estado_at:new Date().toISOString()},[["id","eq",a.id]]);if(!r.ok&&!SIM_ACTIVO)alert("No se pudo anular.");cargarMios();};
-  const opcion=(v,set,ic,t,d)=><label className={"av-op"+(v?" on":"")}><input type="checkbox" checked={v} onChange={e=>set(e.target.checked)}/><span className="ic">{ic}</span><span><b>{t}</b>{d&&<span className="d">{d}</span>}</span></label>;
+  const opcion=(v,set,ic,t,d,dis)=><label className={"av-op"+(v?" on":"")+(dis?" dis":"")}><input type="checkbox" checked={v} disabled={!!dis} onChange={e=>set(e.target.checked)}/><span className="ic">{ic}</span><span><b>{t}</b>{d&&<span className="d">{d}</span>}</span></label>;
   const fechaTxt=(p)=>p.indef?`desde ${cmdFmtDate(p.ingreso)} · sin fecha de egreso`:p.ingreso===p.egreso?`${cmdFmtDate(p.ingreso)} (por el día)`:`${cmdFmtDate(p.ingreso)} al ${cmdFmtDate(p.egreso)} · ${avDiasTxt(p.ingreso,p.egreso)}`;
   const necesita=[estadia&&"🛏️ Estadía",viandas&&"🍽️ Viandas",traslado&&(`🚌 Traslado: ${origen||"?"} → ${destino||"?"}`+(pasaje?" · con compra de pasaje":""))].filter(Boolean);
-  const nombreP=(p,i)=>p.apellido||p.nombre?`${p.apellido}${p.apellido&&p.nombre?", ":""}${p.nombre}`:`Persona ${i+1}`;
+  const nombreP=(p,i)=>p.apellido||p.nombre?`${p.nombre} ${p.apellido}`.trim():`Persona ${i+1}`;
   // Rev141: con pagina=true se muestra como pantalla (solapa "Aviso de ingreso" de Habilitaciones) en vez de ventana
   const envolver=(contenido)=>pagina
     ?<div><div className="ph2"><div className="ptit">Aviso de <span>ingreso</span></div></div><div className="jo-wrap" style={{maxWidth:900,padding:"16px 18px"}}>{contenido}</div></div>
@@ -2676,9 +2684,9 @@ function AvisoIngresoModal({user,onClose,pagina}){
             </div>
             <div className="av-g">
               <div className="f"><label>DNI</label><input value={p.dni} inputMode="numeric" placeholder="30456789" onChange={e=>setP(i,{dni:e.target.value})} onBlur={()=>buscarDni(i)}/></div>
-              <div className="f"><label>Empresa</label><input value={p.empresa} list="av-empresas" placeholder="Ej: ALUSA" onChange={e=>setP(i,{empresa:e.target.value})}/></div>
               <div className="f"><label>Nombre</label><input value={p.nombre} onChange={e=>setP(i,{nombre:e.target.value})}/></div>
               <div className="f"><label>Apellido</label><input value={p.apellido} onChange={e=>setP(i,{apellido:e.target.value})}/></div>
+              <div className="f"><label>Empresa</label><input value={p.empresa} list="av-empresas" placeholder="Ej: ALUSA" onChange={e=>setP(i,{empresa:e.target.value})}/></div>
             </div>
           </div>)}
           <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"4px 0 6px"}}>
@@ -2686,8 +2694,8 @@ function AvisoIngresoModal({user,onClose,pagina}){
             <button className="bsm" style={{padding:"8px 12px"}} onClick={()=>setVerPegar(v=>!v)}>📋 Son muchas: pegar lista de Excel</button>
           </div>
           {verPegar&&<div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"10px 12px",marginTop:6}}>
-            <div style={{fontSize:12,color:"var(--tx2)",marginBottom:6}}>Copiá de Excel las columnas <b>DNI · Empresa · Nombre · Apellido</b> (una persona por renglón) y pegalas acá.</div>
-            <textarea value={pegado} onChange={e=>setPegado(e.target.value)} rows={5} placeholder={"30456789\tALUSA\tJuan\tPérez\n28123456\tALUSA\tAna\tGómez"} style={{width:"100%",background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:4,color:"var(--tx)",padding:8,fontFamily:"var(--fm)",fontSize:12}}/>
+            <div style={{fontSize:12,color:"var(--tx2)",marginBottom:6}}>Copiá de Excel las columnas <b>DNI · Nombre · Apellido · Empresa</b> (una persona por renglón) y pegalas acá.</div>
+            <textarea value={pegado} onChange={e=>setPegado(e.target.value)} rows={5} placeholder={"30456789\tJuan\tPérez\tALUSA\n28123456\tAna\tGómez\tALUSA"} style={{width:"100%",background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:4,color:"var(--tx)",padding:8,fontFamily:"var(--fm)",fontSize:12}}/>
             <div style={{display:"flex",gap:6,marginTop:6}}><button className="bsm" onClick={pegar} disabled={!pegado.trim()}>Agregar a la lista</button><button className="bsm" onClick={()=>setVerPegar(false)}>Cancelar</button></div>
           </div>}
         </>}
@@ -2713,15 +2721,16 @@ function AvisoIngresoModal({user,onClose,pagina}){
 
         {paso===3&&<>
           <div className="av-preg">¿Qué tiene que poner Obras y Sistemas?</div>
-          <div className="av-ayuda">Tildá solo lo que corresponda. Si no necesitan nada, pasá al siguiente paso.</div>
-          {opcion(estadia,setEstadia,"🛏️","Estadía","Alojamiento")}
-          {opcion(viandas,setViandas,"🍽️","Viandas","Servicio de comidas")}
-          {opcion(traslado,setTraslado,"🚌","Traslado","Viaje hasta la obra y/o de vuelta")}
+          <div className="av-ayuda">Tildá lo que corresponda, o "Nada" si no necesitan nada.</div>
+          {opcion(estadia,setEstadia,"🛏️","Estadía","Alojamiento",nada)}
+          {opcion(viandas,setViandas,"🍽️","Viandas","Servicio de comidas",nada)}
+          {opcion(traslado,setTraslado,"🚌","Traslado","Viaje hasta la obra y/o de vuelta",nada)}
           {traslado&&<div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"10px 12px",margin:"-2px 0 10px"}}>
             <div className="row2"><div className="f"><label>Desde (origen)</label><input value={origen} onChange={e=>setOrigen(e.target.value)} placeholder="Ej: Buenos Aires"/></div>
               <div className="f"><label>Hasta (destino)</label><input value={destino} onChange={e=>setDestino(e.target.value)} placeholder="Ej: Bariloche"/></div></div>
             <label style={{display:"flex",alignItems:"center",gap:8,fontSize:14,cursor:"pointer"}}><input type="checkbox" checked={pasaje} onChange={e=>setPasaje(e.target.checked)} style={{width:"auto",accentColor:"var(--acc)"}}/> Incluye compra de pasaje</label>
           </div>}
+          {opcion(nada,setNada,"🚫","Nada","No necesitan nada de Obras y Sistemas")}
           <div className="av-preg" style={{fontSize:16,marginTop:16}}>Otros datos</div>
           {opcion(vehPropio,setVehPropio,"🚗","Vienen con vehículo propio",null)}
           {vehPropio&&<div className="f" style={{maxWidth:260}}><label>Patente (si la sabés)</label><input value={patente} onChange={e=>setPatente(e.target.value)} placeholder="Ej: AB123CD"/></div>}
@@ -2733,7 +2742,7 @@ function AvisoIngresoModal({user,onClose,pagina}){
           <div className="av-res">
             <div className="av-res-t">👤 Ingresan {pers.length} persona{pers.length===1?"":"s"} <a href="#" onClick={e=>{e.preventDefault();setPaso(1);}}>cambiar</a></div>
             {pers.map((p,i)=><div key={i} style={{padding:"7px 0",borderTop:i?"1px solid var(--bd)":"none"}}>
-              <div style={{fontWeight:600,fontSize:14}}>{nombreP(p,i)} <span style={{fontWeight:400,fontSize:12,color:"var(--tx2)"}}>· DNI {avDni(p.dni)} · {p.empresa}</span></div>
+              <div style={{fontSize:14}}><span className="mn">DNI {avDni(p.dni)}</span> · <b>{nombreP(p,i)}</b> · <span style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa}</span></div>
               <div style={{fontSize:13,color:p.propia?"#60A5FA":"var(--tx2)",marginTop:2}}>📅 {fechaTxt(p)}</div>
             </div>)}
           </div>
@@ -2746,11 +2755,12 @@ function AvisoIngresoModal({user,onClose,pagina}){
         </>}
 
         {(faltaPaso[paso]||[]).length>0&&<div style={{fontSize:13,color:"var(--acc)",marginTop:10}}>Falta: {faltaPaso[paso].join(" · ")}</div>}
-        <div style={{display:"flex",gap:10,marginTop:16}}>
-          {paso>1?<button className="bcanc" onClick={()=>setPaso(paso-1)}>← Atrás</button>:(!pagina&&<button className="bcanc" onClick={onClose}>Cancelar</button>)}
+        <div style={{display:"flex",gap:10,marginTop:16,flexWrap:"wrap"}}>
+          <button className="bcanc" onClick={cancelar}>Cancelar</button>
+          {paso>1&&<button className="bcanc" onClick={()=>setPaso(paso-1)}>← Atrás</button>}
           {paso<4
-            ?<button className="bp" style={{flex:1}} disabled={!pasoOk(paso)} onClick={()=>setPaso(paso+1)}>Siguiente →</button>
-            :<button className="bp" style={{flex:1}} onClick={enviar} disabled={busy||falta.length>0}>{busy?"Enviando…":`Enviar aviso${pers.length>1?` (${pers.length} personas)`:""}`}</button>}
+            ?<button className="bp" style={{flex:1,minWidth:150}} disabled={!pasoOk(paso)} onClick={()=>setPaso(paso+1)}>Siguiente →</button>
+            :<button className="bp" style={{flex:1,minWidth:150}} onClick={enviar} disabled={busy||falta.length>0}>{busy?"Enviando…":`Enviar aviso${pers.length>1?` (${pers.length} personas)`:""}`}</button>}
         </div>
       </>}
     </div>
@@ -2914,7 +2924,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
   const[filterEst,setFilterEst]=useState("");
   const canSH=userRole==="sh"||userRole==="admin";
   const canEditVeh=canSH||userRole==="logistica"||userRole==="sobrestante"||userRole==="jefe_obra"; // Rev141: como logística
-  const readOnly=userRole==="puesto";
+  const readOnly=userRole==="puesto"||ROLES_CONSULTA.includes(userRole); // Rev147: los roles de consulta solo miran
   const onHabSaved=(newHab)=>{
     setHabs(prev=>{
       // Remove old hab for same entity+tipo+proyecto
@@ -3207,7 +3217,7 @@ function Registros({defaultPuesto,user}){
   // Rev91: solo admin + puesto (P1/P2/P3) pueden editar fecha/hora
   const canEdit=!!user&&(user.rol==="admin"||user.rol==="puesto");
   // Rev114: el sobrestante entra a Registros solo para mirar (sin invertir ni editar).
-  const soloVer=esSobrestante(user);
+  const soloVer=esSobrestante(user)||(!!user&&ROLES_CONSULTA.includes(user.rol)); // Rev147: también los roles de consulta
 
   const onHabSaved=(newHab)=>{
     setHabs(prev=>{
@@ -3501,8 +3511,8 @@ function Usuarios({currentUser}){
   const[list,setList]=useState([]);const[loading,setLoading]=useState(true);
   const load=async()=>{setLoading(true);const{data}=await db.sel("usuarios",{f:[["activo","eq",true]],ord:"nombre.asc"});if(data)setList(data);setLoading(false);};
   useEffect(()=>{load();},[]);
-  const RC={admin:"t-e",sh:"t-v",cp:"t-a",puesto:"t-p",logistica:"t-p",cocina_campamento:"t-a",cocina_chalet:"t-a",admin_viandas:"t-e",sobrestante:"t-v",jefe_obra:"t-v"};
-  const RL={admin:"Admin",sh:"S&H",cp:"Control Personal",puesto:"Puesto",logistica:"Logistica",cocina_campamento:"Cocina Campamento",cocina_chalet:"Cocina Chalet",admin_viandas:"Admin Viandas",sobrestante:"Sobrestante",jefe_obra:"Jefe de Obra"};
+  const RC={admin:"t-e",sh:"t-v",cp:"t-a",puesto:"t-p",logistica:"t-p",cocina_campamento:"t-a",cocina_chalet:"t-a",admin_viandas:"t-e",sobrestante:"t-v",jefe_obra:"t-v",compras:"t-p",ambiente:"t-a",intendencia:"t-p"};
+  const RL={admin:"Admin",sh:"S&H",cp:"Control Personal",puesto:"Puesto",logistica:"Logistica",cocina_campamento:"Cocina Campamento",cocina_chalet:"Cocina Chalet",admin_viandas:"Admin Viandas",sobrestante:"Sobrestante",jefe_obra:"Jefe de Obra",compras:"Compras",ambiente:"Ambiente",intendencia:"Intendencia"};
   return <div>
     <div className="ph2"><div className="ptit">Usuarios del <span>Sistema</span></div></div>
     <div style={{marginBottom:14,padding:"12px 16px",background:"rgba(245,158,11,.07)",border:"1px solid rgba(245,158,11,.25)",borderRadius:6,fontSize:13,color:"var(--tx2)"}}>Para crear o modificar usuarios, ingresa al <strong style={{color:"var(--tx)"}}>dashboard de Supabase → Authentication → Users</strong>.</div>
@@ -8184,6 +8194,7 @@ function Login({onLogin,onPublic}){
 // Rev140: roles que el admin puede simular con "👁 Ver como"
 const SIM_ROLES=[
   {rol:"sobrestante",t:"Sobrestante"},{rol:"jefe_obra",t:"Jefe de obra"},
+  {rol:"compras",t:"Compras"},{rol:"ambiente",t:"Ambiente"},{rol:"intendencia",t:"Intendencia"},
   {rol:"logistica",t:"Logística"},{rol:"sh",t:"S&H"},{rol:"cp",t:"Control de personal (CP)"},
   {rol:"puesto",puesto_nombre:"Puesto 1",t:"Puesto 1"},{rol:"puesto",puesto_nombre:"Puesto 2",t:"Puesto 2"},{rol:"puesto",puesto_nombre:"Puesto 3",t:"Puesto 3"},
   {rol:"cocina_campamento",t:"Cocina campamento"},{rol:"cocina_chalet",t:"Cocina chalet"},{rol:"admin_viandas",t:"Admin viandas (Lagunas)"},
@@ -8254,7 +8265,7 @@ function App(){
   };
 
   // Solapa con la que arranca cada rol
-  const TAB_INI={puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi",admin_viandas:"vi",sobrestante:"jpd",jefe_obra:"jpd"};
+  const TAB_INI={puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi",admin_viandas:"vi",sobrestante:"jpd",jefe_obra:"jpd",compras:"per",ambiente:"per",intendencia:"per"};
   // Rev140: "Ver como" (solo admin): rol simulado; null = la app normal del admin
   const[sim,setSim]=useState(null);
   const[verSim,setVerSim]=useState(false);
@@ -8281,6 +8292,10 @@ function App(){
     cocina_campamento:[{k:"avi",l:"Aviso de ingreso"},{k:"vi",l:"Viandas"}],
     cocina_chalet:    [{k:"avi",l:"Aviso de ingreso"},{k:"vi",l:"Viandas"}],
     admin_viandas:    [{k:"avi",l:"Aviso de ingreso"},{k:"vi",l:"Viandas"}],
+    // Rev147: Compras, Ambiente e Intendencia: Habilitaciones (Personal y Vehículos para ver, Aviso de ingreso) y Registros
+    compras:          [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"}],
+    ambiente:         [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"}],
+    intendencia:      [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"}],
     // Rev112: lo mismo que la vista sin login (como solapas) + Reportes JO completo. Rev114: + Registros (solo ver).
     sobrestante:      TABS_SOB,
     jefe_obra:        TABS_SOB,
