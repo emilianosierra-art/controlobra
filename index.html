@@ -339,6 +339,26 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .cmd-citem{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:10px 12px;cursor:pointer;text-align:left;color:var(--tx);font-family:var(--fh);}
 .cmd-citem:hover{border-color:var(--cmd-pri);}
 @media(max-width:700px){.cmd-mcards{grid-template-columns:1fr 1fr}.cmd-tabs{overflow-x:auto}.cmd-tab{white-space:nowrap;font-size:12px;padding:10px 8px}}
+/* Rev144: aviso de ingreso en pasos */
+.av-preg{font-family:var(--fh);font-size:22px;font-weight:800;letter-spacing:.02em;margin:4px 0 4px}
+.av-ayuda{font-size:13px;color:var(--tx2);margin-bottom:14px;line-height:1.45}
+.av-per{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.av-per-h{display:flex;align-items:center;gap:10px;margin-bottom:6px;min-height:26px}
+.av-n{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--acc);color:#000;font-family:var(--fh);font-weight:800;font-size:13px}
+.av-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 10px}
+.av-g .f{margin-bottom:6px}
+.av-op{display:flex;align-items:center;gap:12px;background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;cursor:pointer;margin-bottom:8px;transition:border-color .15s,background .15s}
+.av-op.on{border-color:var(--acc);background:rgba(245,158,11,.08)}
+.av-op input{width:auto;accent-color:var(--acc);transform:scale(1.3);flex-shrink:0}
+.av-op .ic{font-size:22px;line-height:1}
+.av-op b{font-size:15px}
+.av-op .d{display:block;font-size:12px;color:var(--tx2);margin-top:2px}
+.av-fp{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;margin-bottom:6px}
+.av-fl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--tx2)}
+.av-fl .fi{padding:5px 8px;font-size:13px}
+.av-res{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:12px 14px;margin-bottom:10px}
+.av-res-t{font-family:var(--fh);font-size:15px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;display:flex;gap:10px;align-items:baseline}
+.av-res-t a{font-family:var(--fb);font-size:12px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--acc2)}
 /* Rev138: Viandas → Reporte como menú de botones */
 .cmd-repmenu{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;margin-bottom:12px}
 .cmd-repbtn{display:flex;align-items:flex-start;gap:12px;text-align:left;background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:14px 16px;cursor:pointer;color:var(--tx);font-family:var(--fh);transition:border-color .15s,background .15s}
@@ -448,7 +468,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev143";
+const APP_REV="Rev144";
 // Rev143: número de versión que se muestra al lado de CONTROLOBRA: AAMM.revisión.DD con la fecha de la revisión
 // (ej. 2611.143.14 = revisión 143 del 14/11/2026). En cada revisión nueva se actualizan APP_REV y APP_FECHA.
 const APP_FECHA="2026-11-14";
@@ -2526,12 +2546,16 @@ function AvRango({desde,hasta,indef,onChange}){
       onChange={e=>{onChange({desde,hasta:e.target.checked?null:(hasta||desde),indef:e.target.checked});setEsperaFin(false);}}/> Egreso indefinido (todavía no se sabe)</label>
   </div>;
 }
+// Rev144: el aviso se carga en 4 pasos, una pregunta por pantalla: 1 Quiénes · 2 Cuándo · 3 Qué necesitan · 4 Revisar y enviar
+const AV_PASOS=["Quiénes","Cuándo","Qué necesitan","Revisar y enviar"];
 function AvisoIngresoModal({user,onClose,pagina}){
   const hoy=today(),manana=cmdAddDays(hoy,1);
   const[tab,setTab]=useState("nuevo");
+  const[paso,setPaso]=useState(1);
   const[rango,setRango]=useState({desde:manana,hasta:manana,indef:false}); // fechas para todos
   const vacia=(r)=>({dni:"",empresa:"",nombre:"",apellido:"",enBase:null,ingreso:r.desde,egreso:r.hasta,indef:r.indef,propia:false});
   const[pers,setPers]=useState(()=>[vacia({desde:manana,hasta:manana,indef:false})]);
+  const[porPersona,setPorPersona]=useState(false); // mostrar las fechas de cada persona
   const[estadia,setEstadia]=useState(false);
   const[viandas,setViandas]=useState(false);
   const[traslado,setTraslado]=useState(false);
@@ -2574,16 +2598,19 @@ function AvisoIngresoModal({user,onClose,pagina}){
     setPers(l=>[...l.filter(p=>p.dni.trim()||p.nombre.trim()||p.apellido.trim()||p.empresa.trim()),...comp]);
     setPegado("");setVerPegar(false);
   };
+  // Qué falta en cada paso
   const dniCont={};pers.forEach(p=>{const d=avDni(p.dni);if(d)dniCont[d]=(dniCont[d]||0)+1;});
   const repetidos=Object.keys(dniCont).filter(d=>dniCont[d]>1);
   const datosMal=pers.filter(p=>!p.empresa.trim()||!p.nombre.trim()||!p.apellido.trim()||avDni(p.dni).length<6).length;
   const fechasMal=pers.filter(p=>!p.ingreso||(!p.indef&&(!p.egreso||p.egreso<p.ingreso))).length;
-  const falta=[
-    datosMal&&`completar DNI, empresa, nombre y apellido (${datosMal===1?"1 persona":datosMal+" personas"})`,
-    fechasMal&&`revisar ingreso y egreso (${fechasMal===1?"1 persona":fechasMal+" personas"})`,
-    repetidos.length&&`DNI repetido: ${repetidos.join(", ")}`,
-    traslado&&(!origen.trim()||!destino.trim())&&"origen y destino del traslado",
-  ].filter(Boolean);
+  const faltaPaso={
+    1:[datosMal&&`completar DNI, empresa, nombre y apellido (${datosMal===1?"1 persona":datosMal+" personas"})`,repetidos.length&&`DNI repetido: ${repetidos.join(", ")}`].filter(Boolean),
+    2:[fechasMal&&`revisar ingreso y egreso (${fechasMal===1?"1 persona":fechasMal+" personas"})`].filter(Boolean),
+    3:[traslado&&(!origen.trim()||!destino.trim())&&"origen y destino del traslado"].filter(Boolean),
+  };
+  const falta=[...faltaPaso[1],...faltaPaso[2],...faltaPaso[3]];
+  const pasoOk=(n)=>!(faltaPaso[n]||[]).length;
+  const irA=(n)=>{for(let k=1;k<n;k++)if(!pasoOk(k)){setPaso(k);return;}setPaso(n);};
   const enviar=async()=>{
     if(falta.length||busy)return;
     setBusy(true);
@@ -2608,15 +2635,16 @@ function AvisoIngresoModal({user,onClose,pagina}){
     }
     setEnviado(true);
   };
-  const nuevo=()=>{setPers([vacia(rango)]);setNotas("");setEnviado(false);};
-  const chk=(v,set,lbl)=><label style={{display:"flex",alignItems:"center",gap:8,fontSize:14,cursor:"pointer",padding:"4px 0"}}><input type="checkbox" checked={v} onChange={e=>set(e.target.checked)} style={{width:"auto",accentColor:"var(--acc)"}}/> {lbl}</label>;
+  const nuevo=()=>{setPers([vacia(rango)]);setNotas("");setEstadia(false);setViandas(false);setTraslado(false);setOrigen("");setDestino("");setPasaje(false);setVehPropio(false);setPatente("");setPorPersona(false);setPaso(1);setEnviado(false);};
   const anular=async(a)=>{if(!confirm("¿Anular este aviso?"))return;const r=await db.upd("avisos_ingreso",{estado:"anulado",estado_por:user.id,estado_por_nombre:user.nombre||user.email||"",estado_at:new Date().toISOString()},[["id","eq",a.id]]);if(!r.ok&&!SIM_ACTIVO)alert("No se pudo anular.");cargarMios();};
-  const ci={padding:"6px 8px",fontSize:13,minWidth:0};
-  const hayPropias=pers.some(p=>p.propia);
+  const opcion=(v,set,ic,t,d)=><label className={"av-op"+(v?" on":"")}><input type="checkbox" checked={v} onChange={e=>set(e.target.checked)}/><span className="ic">{ic}</span><span><b>{t}</b>{d&&<span className="d">{d}</span>}</span></label>;
+  const fechaTxt=(p)=>p.indef?`desde ${cmdFmtDate(p.ingreso)} · sin fecha de egreso`:p.ingreso===p.egreso?`${cmdFmtDate(p.ingreso)} (por el día)`:`${cmdFmtDate(p.ingreso)} al ${cmdFmtDate(p.egreso)} · ${avDiasTxt(p.ingreso,p.egreso)}`;
+  const necesita=[estadia&&"🛏️ Estadía",viandas&&"🍽️ Viandas",traslado&&(`🚌 Traslado: ${origen||"?"} → ${destino||"?"}`+(pasaje?" · con compra de pasaje":""))].filter(Boolean);
+  const nombreP=(p,i)=>p.apellido||p.nombre?`${p.apellido}${p.apellido&&p.nombre?", ":""}${p.nombre}`:`Persona ${i+1}`;
   // Rev141: con pagina=true se muestra como pantalla (solapa "Aviso de ingreso" de Habilitaciones) en vez de ventana
   const envolver=(contenido)=>pagina
-    ?<div><div className="ph2"><div className="ptit">Aviso de <span>ingreso</span></div></div><div className="jo-wrap" style={{maxWidth:1100,padding:"16px 18px"}}>{contenido}</div></div>
-    :<div className="mo"><div className="md md-lg" style={{maxWidth:1000}}><div className="mh"><div className="mt">📨 Aviso de ingreso</div><button className="mc" onClick={onClose}>x</button></div>{contenido}</div></div>;
+    ?<div><div className="ph2"><div className="ptit">Aviso de <span>ingreso</span></div></div><div className="jo-wrap" style={{maxWidth:900,padding:"16px 18px"}}>{contenido}</div></div>
+    :<div className="mo"><div className="md md-lg" style={{maxWidth:900}}><div className="mh"><div className="mt">📨 Aviso de ingreso</div><button className="mc" onClick={onClose}>x</button></div>{contenido}</div></div>;
   return envolver(<>
     <div className={pagina?"":"mb"}>
       <div className="jo-tabs">
@@ -2632,70 +2660,100 @@ function AvisoIngresoModal({user,onClose,pagina}){
         <div style={{fontSize:13,color:"var(--tx2)",marginBottom:16}}>Les llega a administración y Control de Personal. En "Mis avisos" ves cuando lo marquen como visto o resuelto.</div>
         <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}><button className="bsm" onClick={nuevo}>Enviar otro aviso</button><button className="bsm" onClick={()=>setTab("mios")}>Ver mis avisos</button></div>
       </div>:<>
+        <div className="steps">{AV_PASOS.map((t,i)=>{const n=i+1;return <div key={n} className={`step${paso===n?" on":paso>n?" dn":""}`} style={{cursor:"pointer"}} onClick={()=>irA(n)}><span className="sn">{paso>n?"✓":n}</span>{t}</div>;})}</div>
         <datalist id="av-empresas">{empresas.map(e=><option key={e} value={e}/>)}</datalist>
-        <div style={{display:"flex",gap:18,flexWrap:"wrap",alignItems:"flex-start"}}>
-          <div style={{flex:"0 1 380px"}}>
-            <div className="jo-h">1 · Fechas (para todos)</div>
-            <AvRango desde={rango.desde} hasta={rango.hasta} indef={rango.indef} onChange={cambiarRango}/>
-            {hayPropias&&<div style={{fontSize:11,color:"var(--tx3)",marginTop:6}}>Hay personas con fechas propias (no se mueven con el calendario). <a href="#" onClick={e=>{e.preventDefault();igualarTodos();}} style={{color:"var(--acc2)"}}>Poner estas fechas a todas</a></div>}
-          </div>
-          <div style={{flex:"1 1 300px"}}>
-            <div className="jo-h">2 · A cargo de Obras y Sistemas</div>
-            {chk(estadia,setEstadia,"🛏️ Estadía")}
-            {chk(viandas,setViandas,"🍽️ Servicio de viandas")}
-            {chk(traslado,setTraslado,"🚌 Traslado")}
-            {traslado&&<div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"10px 12px",margin:"6px 0 10px"}}>
-              <div className="row2"><div className="f"><label>Origen *</label><input value={origen} onChange={e=>setOrigen(e.target.value)} placeholder="Ej: Buenos Aires"/></div>
-                <div className="f"><label>Destino *</label><input value={destino} onChange={e=>setDestino(e.target.value)} placeholder="Ej: Bariloche"/></div></div>
-              {chk(pasaje,setPasaje,"Incluye compra de pasaje")}
-            </div>}
-            <div className="jo-h" style={{marginTop:10}}>Vehículo</div>
-            {chk(vehPropio,setVehPropio,"🚗 Ingresan con vehículo propio")}
-            {vehPropio&&<div className="f" style={{marginTop:4}}><label>Patente (opcional)</label><input value={patente} onChange={e=>setPatente(e.target.value)} placeholder="Ej: AB123CD"/></div>}
-          </div>
-        </div>
 
-        <div className="jo-h" style={{marginTop:16,justifyContent:"space-between"}}>
-          <span>3 · Quiénes ingresan ({pers.length})</span>
-          <span style={{display:"flex",gap:6,textTransform:"none",letterSpacing:0}}>
-            <button className="bsm" onClick={()=>setPers(l=>[...l,vacia(rango)])}>+ Agregar persona</button>
-            <button className="bsm" onClick={()=>setVerPegar(v=>!v)}>📋 Pegar lista de Excel</button>
-          </span>
+        {paso===1&&<>
+          <div className="av-preg">¿Quiénes ingresan?</div>
+          <div className="av-ayuda">Escribí el DNI: si la persona ya está en Personal, se completan sus datos.</div>
+          {pers.map((p,i)=><div key={i} className="av-per">
+            <div className="av-per-h">
+              <span className="av-n">{i+1}</span>
+              {p.enBase&&<span style={{fontSize:12,color:"var(--gr)"}}>✓ ya está en Personal</span>}
+              {p.enBase===false&&<span style={{fontSize:12,color:"var(--acc)"}}>no está en Personal</span>}
+              {repetidos.includes(avDni(p.dni))&&<span style={{fontSize:12,color:"var(--rd)"}}>DNI repetido</span>}
+              {pers.length>1&&<button className="bsm" style={{marginLeft:"auto",padding:"2px 9px"}} title="Quitar a esta persona" onClick={()=>setPers(l=>l.filter((_,j)=>j!==i))}>✕</button>}
+            </div>
+            <div className="av-g">
+              <div className="f"><label>DNI</label><input value={p.dni} inputMode="numeric" placeholder="30456789" onChange={e=>setP(i,{dni:e.target.value})} onBlur={()=>buscarDni(i)}/></div>
+              <div className="f"><label>Empresa</label><input value={p.empresa} list="av-empresas" placeholder="Ej: ALUSA" onChange={e=>setP(i,{empresa:e.target.value})}/></div>
+              <div className="f"><label>Nombre</label><input value={p.nombre} onChange={e=>setP(i,{nombre:e.target.value})}/></div>
+              <div className="f"><label>Apellido</label><input value={p.apellido} onChange={e=>setP(i,{apellido:e.target.value})}/></div>
+            </div>
+          </div>)}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"4px 0 6px"}}>
+            <button className="bsm" style={{padding:"8px 12px"}} onClick={()=>setPers(l=>[...l,vacia(rango)])}>+ Agregar otra persona</button>
+            <button className="bsm" style={{padding:"8px 12px"}} onClick={()=>setVerPegar(v=>!v)}>📋 Son muchas: pegar lista de Excel</button>
+          </div>
+          {verPegar&&<div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"10px 12px",marginTop:6}}>
+            <div style={{fontSize:12,color:"var(--tx2)",marginBottom:6}}>Copiá de Excel las columnas <b>DNI · Empresa · Nombre · Apellido</b> (una persona por renglón) y pegalas acá.</div>
+            <textarea value={pegado} onChange={e=>setPegado(e.target.value)} rows={5} placeholder={"30456789\tALUSA\tJuan\tPérez\n28123456\tALUSA\tAna\tGómez"} style={{width:"100%",background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:4,color:"var(--tx)",padding:8,fontFamily:"var(--fm)",fontSize:12}}/>
+            <div style={{display:"flex",gap:6,marginTop:6}}><button className="bsm" onClick={pegar} disabled={!pegado.trim()}>Agregar a la lista</button><button className="bsm" onClick={()=>setVerPegar(false)}>Cancelar</button></div>
+          </div>}
+        </>}
+
+        {paso===2&&<>
+          <div className="av-preg">¿Cuándo ingresan{pers.length>1?"":" y hasta cuándo se queda"}?</div>
+          <div className="av-ayuda">Tocá el día de ingreso y después el de egreso. Si todavía no se sabe hasta cuándo, tildá "egreso indefinido".</div>
+          <AvRango desde={rango.desde} hasta={rango.hasta} indef={rango.indef} onChange={cambiarRango}/>
+          {pers.length>1&&<div style={{marginTop:14}}>
+            <label className={"av-op"+(porPersona?" on":"")} style={{marginBottom:8}}><input type="checkbox" checked={porPersona} onChange={e=>setPorPersona(e.target.checked)}/><span className="ic">👥</span><span><b>Alguien viene o se va otro día</b><span className="d">Para cambiarle las fechas a una persona en particular</span></span></label>
+            {porPersona&&<div>
+              {pers.map((p,i)=>{const mal=!p.ingreso||(!p.indef&&(!p.egreso||p.egreso<p.ingreso));return <div key={i} className="av-fp" style={{borderColor:mal?"var(--rd)":p.propia?"var(--acc2)":undefined}}>
+                <div style={{fontWeight:600,minWidth:150,flex:"1 1 150px"}}>{nombreP(p,i)}</div>
+                <label className="av-fl">Ingreso <input className="fi" type="date" value={p.ingreso||""} min={hoy} onChange={e=>setP(i,{ingreso:e.target.value,propia:true})}/></label>
+                {p.indef?<span className="av-fl" style={{color:"var(--tx2)"}}>Egreso: indefinido</span>
+                  :<label className="av-fl">Egreso <input className="fi" type="date" value={p.egreso||""} min={p.ingreso||hoy} onChange={e=>setP(i,{egreso:e.target.value,propia:true})}/></label>}
+                <label className="av-fl" style={{cursor:"pointer"}}><input type="checkbox" checked={!!p.indef} style={{width:"auto"}} onChange={e=>setP(i,{indef:e.target.checked,egreso:e.target.checked?null:(p.egreso||p.ingreso),propia:true})}/> indefinido</label>
+              </div>;})}
+              {pers.some(p=>p.propia)&&<a href="#" onClick={e=>{e.preventDefault();igualarTodos();}} style={{color:"var(--acc2)",fontSize:12}}>Volver a poner las fechas del calendario a todas</a>}
+            </div>}
+          </div>}
+        </>}
+
+        {paso===3&&<>
+          <div className="av-preg">¿Qué tiene que poner Obras y Sistemas?</div>
+          <div className="av-ayuda">Tildá solo lo que corresponda. Si no necesitan nada, pasá al siguiente paso.</div>
+          {opcion(estadia,setEstadia,"🛏️","Estadía","Alojamiento")}
+          {opcion(viandas,setViandas,"🍽️","Viandas","Servicio de comidas")}
+          {opcion(traslado,setTraslado,"🚌","Traslado","Viaje hasta la obra y/o de vuelta")}
+          {traslado&&<div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"10px 12px",margin:"-2px 0 10px"}}>
+            <div className="row2"><div className="f"><label>Desde (origen)</label><input value={origen} onChange={e=>setOrigen(e.target.value)} placeholder="Ej: Buenos Aires"/></div>
+              <div className="f"><label>Hasta (destino)</label><input value={destino} onChange={e=>setDestino(e.target.value)} placeholder="Ej: Bariloche"/></div></div>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:14,cursor:"pointer"}}><input type="checkbox" checked={pasaje} onChange={e=>setPasaje(e.target.checked)} style={{width:"auto",accentColor:"var(--acc)"}}/> Incluye compra de pasaje</label>
+          </div>}
+          <div className="av-preg" style={{fontSize:16,marginTop:16}}>Otros datos</div>
+          {opcion(vehPropio,setVehPropio,"🚗","Vienen con vehículo propio",null)}
+          {vehPropio&&<div className="f" style={{maxWidth:260}}><label>Patente (si la sabés)</label><input value={patente} onChange={e=>setPatente(e.target.value)} placeholder="Ej: AB123CD"/></div>}
+          <div className="f"><label>Notas (opcional)</label><textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Algo más que convenga saber"/></div>
+        </>}
+
+        {paso===4&&<>
+          <div className="av-preg">Revisá y enviá</div>
+          <div className="av-res">
+            <div className="av-res-t">👤 Ingresan {pers.length} persona{pers.length===1?"":"s"} <a href="#" onClick={e=>{e.preventDefault();setPaso(1);}}>cambiar</a></div>
+            {pers.map((p,i)=><div key={i} style={{padding:"7px 0",borderTop:i?"1px solid var(--bd)":"none"}}>
+              <div style={{fontWeight:600,fontSize:14}}>{nombreP(p,i)} <span style={{fontWeight:400,fontSize:12,color:"var(--tx2)"}}>· DNI {avDni(p.dni)} · {p.empresa}</span></div>
+              <div style={{fontSize:13,color:p.propia?"#60A5FA":"var(--tx2)",marginTop:2}}>📅 {fechaTxt(p)}</div>
+            </div>)}
+          </div>
+          <div className="av-res">
+            <div className="av-res-t">🧾 A cargo de Obras y Sistemas <a href="#" onClick={e=>{e.preventDefault();setPaso(3);}}>cambiar</a></div>
+            <div style={{fontSize:14}}>{necesita.length?necesita.join(" · "):"Nada"}</div>
+            {vehPropio&&<div style={{fontSize:14,marginTop:4}}>🚗 Vienen con vehículo propio{patente.trim()?` · ${patente.trim().toUpperCase()}`:""}</div>}
+            {notas.trim()&&<div style={{fontSize:13,color:"var(--tx2)",marginTop:4}}>📝 {notas.trim()}</div>}
+          </div>
+        </>}
+
+        {(faltaPaso[paso]||[]).length>0&&<div style={{fontSize:13,color:"var(--acc)",marginTop:10}}>Falta: {faltaPaso[paso].join(" · ")}</div>}
+        <div style={{display:"flex",gap:10,marginTop:16}}>
+          {paso>1?<button className="bcanc" onClick={()=>setPaso(paso-1)}>← Atrás</button>:(!pagina&&<button className="bcanc" onClick={onClose}>Cancelar</button>)}
+          {paso<4
+            ?<button className="bp" style={{flex:1}} disabled={!pasoOk(paso)} onClick={()=>setPaso(paso+1)}>Siguiente →</button>
+            :<button className="bp" style={{flex:1}} onClick={enviar} disabled={busy||falta.length>0}>{busy?"Enviando…":`Enviar aviso${pers.length>1?` (${pers.length} personas)`:""}`}</button>}
         </div>
-        {verPegar&&<div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"10px 12px",marginBottom:10}}>
-          <div style={{fontSize:12,color:"var(--tx2)",marginBottom:6}}>Copiá de Excel las columnas <b>DNI · Empresa · Nombre · Apellido</b> (una persona por renglón) y pegalas acá. Si alguien ya está en Personal, se completan sus datos.</div>
-          <textarea value={pegado} onChange={e=>setPegado(e.target.value)} rows={5} placeholder={"30456789\tALUSA\tJuan\tPérez\n28123456\tALUSA\tAna\tGómez"} style={{width:"100%",background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:4,color:"var(--tx)",padding:8,fontFamily:"var(--fm)",fontSize:12}}/>
-          <div style={{display:"flex",gap:6,marginTop:6}}><button className="bsm" onClick={pegar} disabled={!pegado.trim()}>Agregar a la lista</button><button className="bsm" onClick={()=>setVerPegar(false)}>Cancelar</button></div>
-        </div>}
-        <div className="tw" style={{maxHeight:"none"}}><table style={{minWidth:900}}>
-          <thead><tr><th>#</th><th>DNI *</th><th>Empresa *</th><th>Nombre *</th><th>Apellido *</th><th>Ingreso</th><th>Egreso</th><th></th></tr></thead>
-          <tbody>{pers.map((p,i)=>{const malF=!p.ingreso||(!p.indef&&(!p.egreso||p.egreso<p.ingreso));const rep=repetidos.includes(avDni(p.dni));
-            return <tr key={i}>
-              <td className="mn" style={{color:"var(--tx3)"}}>{i+1}</td>
-              <td><input className="fi" style={{...ci,width:110,borderColor:rep?"var(--rd)":undefined}} value={p.dni} inputMode="numeric" placeholder="30456789" onChange={e=>setP(i,{dni:e.target.value})} onBlur={()=>buscarDni(i)}/>
-                {p.enBase&&<div style={{fontSize:10,color:"var(--gr)",marginTop:2}}>✓ en Personal</div>}{p.enBase===false&&<div style={{fontSize:10,color:"var(--acc)",marginTop:2}}>no está en Personal</div>}</td>
-              <td><input className="fi" style={{...ci,width:150}} list="av-empresas" value={p.empresa} placeholder="Ej: ALUSA" onChange={e=>setP(i,{empresa:e.target.value})}/></td>
-              <td><input className="fi" style={{...ci,width:130}} value={p.nombre} onChange={e=>setP(i,{nombre:e.target.value})}/></td>
-              <td><input className="fi" style={{...ci,width:130}} value={p.apellido} onChange={e=>setP(i,{apellido:e.target.value})}/></td>
-              <td><input className="fi" type="date" style={{...ci,width:140,borderColor:malF?"var(--rd)":p.propia?"var(--acc2)":undefined}} value={p.ingreso||""} min={hoy} onChange={e=>setP(i,{ingreso:e.target.value,propia:true})}/></td>
-              <td style={{whiteSpace:"nowrap"}}>
-                {p.indef?<span style={{fontSize:12,color:"var(--tx2)",display:"inline-block",width:140}}>indefinido</span>
-                  :<input className="fi" type="date" style={{...ci,width:140,borderColor:malF?"var(--rd)":p.propia?"var(--acc2)":undefined}} value={p.egreso||""} min={p.ingreso||hoy} onChange={e=>setP(i,{egreso:e.target.value,propia:true})}/>}
-                <label style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"var(--tx2)",marginLeft:6,cursor:"pointer"}}><input type="checkbox" checked={!!p.indef} style={{width:"auto"}} onChange={e=>setP(i,{indef:e.target.checked,egreso:e.target.checked?null:(p.egreso||p.ingreso),propia:true})}/> indef.</label>
-                {!p.indef&&p.ingreso&&p.egreso&&p.egreso>=p.ingreso&&<div style={{fontSize:10,color:"var(--tx3)"}}>{avDiasTxt(p.ingreso,p.egreso)}</div>}
-              </td>
-              <td>{pers.length>1&&<button className="bsm" style={{padding:"3px 8px"}} title="Quitar" onClick={()=>setPers(l=>l.filter((_,j)=>j!==i))}>✕</button>}</td>
-            </tr>;})}</tbody>
-        </table></div>
-        <div style={{fontSize:11,color:"var(--tx3)",marginTop:6}}>Las fechas de cada persona salen del calendario; si alguien viene o se va otro día, cambiale las fechas en su fila (quedan marcadas en azul).</div>
-        <div className="f" style={{marginTop:14}}><label>Notas (opcional)</label><textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Algo más que convenga saber"/></div>
-        {falta.length>0&&<div style={{fontSize:12,color:"var(--tx3)"}}>Falta: {falta.join(" · ")}</div>}
       </>}
     </div>
-    {tab==="nuevo"&&!enviado&&<div className={pagina?"":"mf"} style={pagina?{display:"flex",gap:10,marginTop:14}:undefined}>
-      {!pagina&&<button className="bcanc" onClick={onClose}>Cancelar</button>}
-      <button className="bp" onClick={enviar} disabled={busy||falta.length>0}>{busy?"Enviando…":`Enviar aviso${pers.length>1?` (${pers.length} personas)`:""}`}</button>
-    </div>}
   </>);
 }
 // Campanita: admin y CP ven los pendientes; S&H, los que todavía no marcó como vistos (se revisa cada minuto)
