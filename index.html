@@ -1,13 +1,4 @@
-CREATE TABLE IF NOT EXISTS obra.avisos_ingreso (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  creado_at timestamptz NOT NULL DEFAULT now(),
-  creado_por uuid NOT NULL DEFAULT auth.uid(),
-  creado_por_nombre text,
-  personas jsonb NOT NULL DEFAULT '[]'::jsonb,
-  fecha_ingreso date NOT NULL,
-  dias integer CHECK (dias BETWEEN 1 AND 7),
-  hasta date,
-  indefinido boolean NOT NULL DEFAULT false,<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8"/>
@@ -8160,44 +8151,3 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
-
-  estadia boolean NOT NULL DEFAULT false,
-  viandas boolean NOT NULL DEFAULT false,
-  traslado boolean NOT NULL DEFAULT false,
-  traslado_origen text,
-  traslado_destino text,
-  compra_pasaje boolean NOT NULL DEFAULT false,
-  notas text,
-  estado text NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente','visto','resuelto','rechazado','anulado')),
-  estado_por uuid,
-  estado_por_nombre text,
-  estado_at timestamptz,
-  respuesta text
-);
-ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS vehiculo_propio boolean NOT NULL DEFAULT false;
-ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS vehiculo_patente text;
-ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS vistos_sh jsonb NOT NULL DEFAULT '[]'::jsonb;
-ALTER TABLE obra.avisos_ingreso ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, UPDATE ON obra.avisos_ingreso TO authenticated;
-DROP POLICY IF EXISTS avisos_ingreso_insert ON obra.avisos_ingreso;
-DROP POLICY IF EXISTS avisos_ingreso_select ON obra.avisos_ingreso;
-DROP POLICY IF EXISTS avisos_ingreso_update ON obra.avisos_ingreso;
-CREATE POLICY avisos_ingreso_insert ON obra.avisos_ingreso FOR INSERT TO authenticated
-  WITH CHECK (creado_por = auth.uid() AND EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo));
-CREATE POLICY avisos_ingreso_select ON obra.avisos_ingreso FOR SELECT TO authenticated
-  USING (creado_por = auth.uid() OR EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo AND u.rol IN ('admin','cp','sh')));
-CREATE POLICY avisos_ingreso_update ON obra.avisos_ingreso FOR UPDATE TO authenticated
-  USING (creado_por = auth.uid() OR EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo AND u.rol IN ('admin','cp')));
-CREATE OR REPLACE FUNCTION obra.aviso_visto_sh(p_aviso uuid) RETURNS void
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = obra, public AS $$
-DECLARE u record;
-BEGIN
-  SELECT id, nombre, email, rol INTO u FROM obra.usuarios WHERE id = auth.uid() AND activo;
-  IF u.id IS NULL OR u.rol <> 'sh' THEN RAISE EXCEPTION 'sin permiso'; END IF;
-  UPDATE obra.avisos_ingreso
-     SET vistos_sh = COALESCE(vistos_sh,'[]'::jsonb) || jsonb_build_array(jsonb_build_object('por', u.id, 'nombre', COALESCE(u.nombre, u.email), 'at', now()))
-   WHERE id = p_aviso AND NOT (COALESCE(vistos_sh,'[]'::jsonb) @> jsonb_build_array(jsonb_build_object('por', u.id)));
-END $$;
-REVOKE ALL ON FUNCTION obra.aviso_visto_sh(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION obra.aviso_visto_sh(uuid) TO authenticated;
-NOTIFY pgrst, 'reload schema';
