@@ -448,7 +448,11 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev141";
+const APP_REV="Rev143";
+// Rev143: número de versión que se muestra al lado de CONTROLOBRA: AAMM.revisión.DD con la fecha de la revisión
+// (ej. 2611.143.14 = revisión 143 del 14/11/2026). En cada revisión nueva se actualizan APP_REV y APP_FECHA.
+const APP_FECHA="2026-11-14";
+const APP_VER=APP_FECHA.slice(2,4)+APP_FECHA.slice(5,7)+"."+APP_REV.replace(/\D/g,"")+"."+APP_FECHA.slice(8,10);
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -2379,12 +2383,15 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   </div>;
 }
 
-// ─── AVISOS DE INGRESO (Rev139) ───────────────────────────────────────────────
-// Cualquier usuario avisa que va a ingresar alguien (una o varias personas): datos para darlo de alta, fecha, cuántos
-// días se queda y qué corre por cuenta de Obras y Sistemas (estadía, viandas, traslado con origen/destino y pasaje).
-// A los admins les aparece una campanita 🔔 con los pendientes y los marcan como vistos / resueltos / rechazados; quien
-// avisó ve el estado en "Mis avisos". Tabla obra.avisos_ingreso con RLS: cada usuario ve los suyos; los admins, todos.
-const AVISO_SQL=`CREATE TABLE IF NOT EXISTS obra.avisos_ingreso (
+// ─── AVISOS DE INGRESO (Rev139 · Rev142) ──────────────────────────────────────
+// Cualquier usuario (menos los puestos) avisa que va a ingresar gente: una tablita con cada persona y sus fechas de
+// ingreso y egreso (o egreso indefinido), qué corre por cuenta de Obras y Sistemas (estadía, viandas, traslado con
+// origen, destino y pasaje) y si ingresan con vehículo propio. Admin y CP lo gestionan desde la campanita 🔔 (visto /
+// resuelto / rechazado, dar de alta en Personal). S&H también tiene campanita, pero solo puede marcar "visto" (función
+// obra.aviso_visto_sh); ese visto lo ven admin y CP. Tabla obra.avisos_ingreso con RLS. Cada persona guarda sus fechas
+// dentro de "personas" (ingreso, egreso, indefinido); fecha_ingreso / hasta / indefinido del aviso son el resumen.
+const AVISO_SQL=`-- Aviso de ingreso (Rev142). Se puede correr aunque ya se haya corrido el SQL anterior.
+CREATE TABLE IF NOT EXISTS obra.avisos_ingreso (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   creado_at timestamptz NOT NULL DEFAULT now(),
   creado_por uuid NOT NULL DEFAULT auth.uid(),
@@ -2407,57 +2414,135 @@ const AVISO_SQL=`CREATE TABLE IF NOT EXISTS obra.avisos_ingreso (
   estado_at timestamptz,
   respuesta text
 );
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS vehiculo_propio boolean NOT NULL DEFAULT false;
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS vehiculo_patente text;
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS vistos_sh jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE obra.avisos_ingreso ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE ON obra.avisos_ingreso TO authenticated;
+DROP POLICY IF EXISTS avisos_ingreso_insert ON obra.avisos_ingreso;
+DROP POLICY IF EXISTS avisos_ingreso_select ON obra.avisos_ingreso;
+DROP POLICY IF EXISTS avisos_ingreso_update ON obra.avisos_ingreso;
 CREATE POLICY avisos_ingreso_insert ON obra.avisos_ingreso FOR INSERT TO authenticated
   WITH CHECK (creado_por = auth.uid() AND EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo));
 CREATE POLICY avisos_ingreso_select ON obra.avisos_ingreso FOR SELECT TO authenticated
-  USING (creado_por = auth.uid() OR EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo AND u.rol = 'admin'));
+  USING (creado_por = auth.uid() OR EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo AND u.rol IN ('admin','cp','sh')));
 CREATE POLICY avisos_ingreso_update ON obra.avisos_ingreso FOR UPDATE TO authenticated
-  USING (creado_por = auth.uid() OR EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo AND u.rol = 'admin'));
+  USING (creado_por = auth.uid() OR EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo AND u.rol IN ('admin','cp')));
+-- S&H solo puede marcar "visto" (no cambia nada más del aviso)
+CREATE OR REPLACE FUNCTION obra.aviso_visto_sh(p_aviso uuid) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = obra, public AS $$
+DECLARE u record;
+BEGIN
+  SELECT id, nombre, email, rol INTO u FROM obra.usuarios WHERE id = auth.uid() AND activo;
+  IF u.id IS NULL OR u.rol <> 'sh' THEN RAISE EXCEPTION 'sin permiso'; END IF;
+  UPDATE obra.avisos_ingreso
+     SET vistos_sh = COALESCE(vistos_sh,'[]'::jsonb) || jsonb_build_array(jsonb_build_object('por', u.id, 'nombre', COALESCE(u.nombre, u.email), 'at', now()))
+   WHERE id = p_aviso AND NOT (COALESCE(vistos_sh,'[]'::jsonb) @> jsonb_build_array(jsonb_build_object('por', u.id)));
+END $$;
+REVOKE ALL ON FUNCTION obra.aviso_visto_sh(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION obra.aviso_visto_sh(uuid) TO authenticated;
 NOTIFY pgrst, 'reload schema';`;
 const AV_EST={pendiente:{t:"Pendiente",c:"var(--acc)"},visto:{t:"Visto",c:"#60A5FA"},resuelto:{t:"Resuelto",c:"var(--gr)"},rechazado:{t:"Rechazado",c:"var(--rd)"},anulado:{t:"Anulado",c:"var(--tx3)"}};
-const avDuracion=(a)=>a.indefinido?"más de 7 días · hasta: indefinido":a.hasta?`hasta el ${cmdFmtDate(a.hasta)}`:a.dias?(a.dias===1?"1 día":`${a.dias} días (hasta el ${cmdFmtDate(cmdAddDays(a.fecha_ingreso,a.dias-1))})`):"—";
-const avCargo=(a)=>[a.estadia&&"🛏️ Estadía",a.viandas&&"🍽️ Viandas",a.traslado&&("🚌 Traslado"+(a.traslado_origen||a.traslado_destino?`: ${a.traslado_origen||"?"} → ${a.traslado_destino||"?"}`:"")+(a.compra_pasaje?" · con compra de pasaje":""))].filter(Boolean);
+const AV_GESTION=["admin","cp"]; // gestionan los avisos; S&H solo marca visto
 const avDni=(x)=>normDni(x).replace(/[^A-Z0-9]/g,"");
+// Fechas de una persona del aviso (los avisos viejos tenían una sola fecha / días para todos)
+const avFechasP=(a,p)=>{
+  const ing=p.ingreso||a.fecha_ingreso;
+  const ind=p.indefinido!==undefined?!!p.indefinido:!!a.indefinido;
+  const eg=ind?null:(p.egreso||a.hasta||(a.dias?cmdAddDays(a.fecha_ingreso,a.dias-1):ing));
+  return{ing,eg,ind};
+};
+const avDiasTxt=(ing,eg)=>{if(!ing||!eg)return"";const n=Math.round((new Date(eg+"T12:00:00")-new Date(ing+"T12:00:00"))/864e5)+1;return n===1?"1 día":`${n} días`;};
+const avCargo=(a)=>[a.estadia&&"🛏️ Estadía",a.viandas&&"🍽️ Viandas",a.traslado&&("🚌 Traslado"+(a.traslado_origen||a.traslado_destino?`: ${a.traslado_origen||"?"} → ${a.traslado_destino||"?"}`:"")+(a.compra_pasaje?" · con compra de pasaje":""))].filter(Boolean);
+const avVistoPorMi=(a,uid)=>(a.vistos_sh||[]).some(v=>v.por===uid);
 function AvisoChip({e}){const x=AV_EST[e]||AV_EST.pendiente;return <span style={{fontFamily:"var(--fm)",fontSize:11,fontWeight:700,color:x.c,border:"1px solid "+x.c,borderRadius:4,padding:"1px 7px",textTransform:"uppercase",whiteSpace:"nowrap"}}>{x.t}</span>;}
-// Tarjeta de un aviso (la usan "Mis avisos" y el panel de admin)
-function AvisoCard({a,extra,personaExtra}){
+// Tarjeta de un aviso: "Mis avisos", panel de admin/CP y panel de S&H
+function AvisoCard({a,extra,personaExtra,verSH}){
+  const ps=(a.personas||[]).map(p=>({p,...avFechasP(a,p)}));
+  const ini=ps.reduce((m,x)=>!m||x.ing<m?x.ing:m,null);
+  const algunaInd=ps.some(x=>x.ind);
+  const fin=algunaInd?null:ps.reduce((m,x)=>!m||x.eg>m?x.eg:m,null);
   const c=avCargo(a);
+  const vs=a.vistos_sh||[];
   return <div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"12px 14px",marginBottom:10}}>
-    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:8}}>
       <AvisoChip e={a.estado}/>
-      <span style={{fontWeight:700}}>Ingresa el {cmdFmtDate(a.fecha_ingreso)}</span>
-      <span style={{fontSize:12,color:"var(--tx2)"}}>· {avDuracion(a)}</span>
+      <span style={{fontWeight:700}}>{ps.length} persona{ps.length===1?"":"s"} · ingreso {ini?cmdFmtDate(ini):"—"} · egreso {algunaInd?"indefinido":fin?cmdFmtDate(fin):"—"}</span>
       <span style={{fontSize:11,color:"var(--tx3)",marginLeft:"auto"}}>avisó {a.creado_por_nombre||"—"} · {fmtTs(a.creado_at)}</span>
     </div>
-    {(a.personas||[]).map((p,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",fontSize:13,padding:"3px 0"}}>
-      <span>👤 <b>{p.apellido}, {p.nombre}</b> · DNI {p.dni} · {p.empresa}</span>
-      {personaExtra&&personaExtra(p)}
-    </div>)}
-    <div style={{fontSize:12,color:"var(--tx2)",marginTop:6}}>A cargo de Obras y Sistemas: {c.length?c.join(" · "):"nada"}</div>
+    <div className="tw" style={{maxHeight:"none",marginBottom:8}}><table style={{minWidth:560}}>
+      <thead><tr><th>Persona</th><th>DNI</th><th>Empresa</th><th>Ingreso</th><th>Egreso</th>{personaExtra&&<th></th>}</tr></thead>
+      <tbody>{ps.map(({p,ing,eg,ind},i)=><tr key={i}>
+        <td style={{fontWeight:600}}>{p.apellido}, {p.nombre}</td>
+        <td className="mn">{p.dni}</td>
+        <td style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa}</td>
+        <td className="mn">{ing?cmdFmtDate(ing):"—"}</td>
+        <td className="mn">{ind?"indefinido":eg?<>{cmdFmtDate(eg)} <span style={{color:"var(--tx3)"}}>({avDiasTxt(ing,eg)})</span></>:"—"}</td>
+        {personaExtra&&<td>{personaExtra(p)}</td>}
+      </tr>)}</tbody>
+    </table></div>
+    <div style={{fontSize:12,color:"var(--tx2)"}}>A cargo de Obras y Sistemas: {c.length?c.join(" · "):"nada"}</div>
+    {a.vehiculo_propio&&<div style={{fontSize:12,color:"var(--tx2)",marginTop:4}}>🚗 Ingresan con vehículo propio{a.vehiculo_patente?` · ${a.vehiculo_patente}`:""}</div>}
     {a.notas&&<div style={{fontSize:12,color:"var(--tx2)",marginTop:4}}>📝 {a.notas}</div>}
     {a.estado!=="pendiente"&&a.estado_por_nombre&&<div style={{fontSize:11,color:"var(--tx3)",marginTop:4}}>{AV_EST[a.estado]?AV_EST[a.estado].t:a.estado} por {a.estado_por_nombre}{a.estado_at?` · ${fmtTs(a.estado_at)}`:""}{a.respuesta?` — "${a.respuesta}"`:""}</div>}
+    {verSH&&<div style={{fontSize:11,marginTop:4,color:vs.length?"#60A5FA":"var(--tx3)"}}>S&H: {vs.length?"✓ visto por "+vs.map(v=>`${v.nombre}${v.at?` (${fmtTs(v.at)})`:""}`).join(", "):"todavía no lo vio nadie"}</div>}
     {extra&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>{extra}</div>}
   </div>;
 }
-function AvisoIngresoModal({user,onClose,pagina}){
+// Calendario de rango: primer toque = ingreso, segundo = egreso (o egreso indefinido)
+function AvRango({desde,hasta,indef,onChange}){
   const hoy=today();
-  const vacia=()=>({dni:"",empresa:"",nombre:"",apellido:"",enBase:null});
+  const[mes,setMes]=useState((desde||hoy).slice(0,7));
+  const[esperaFin,setEsperaFin]=useState(false);
+  const[y,m]=mes.split("-").map(Number);
+  const n=new Date(y,m,0).getDate(),off=(new Date(y,m-1,1).getDay()+6)%7;
+  const nombreMes=cap1(new Date(y,m-1,1).toLocaleDateString("es-AR",{month:"long",year:"numeric"}));
+  const mover=(k)=>{const dt=new Date(y,m-1+k,1);setMes(`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}`);};
+  const fin=indef?null:hasta;
+  const tocar=(iso)=>{
+    if(indef){onChange({desde:iso,hasta:null,indef:true});return;}
+    if(!esperaFin||!desde||iso<desde){onChange({desde:iso,hasta:iso,indef:false});setEsperaFin(true);}
+    else{onChange({desde,hasta:iso,indef:false});setEsperaFin(false);}
+  };
+  return <div>
+    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,maxWidth:360}}>
+      <button className="bsm" onClick={()=>mover(-1)} disabled={mes<=hoy.slice(0,7)} style={{opacity:mes<=hoy.slice(0,7)?.3:1}}>‹</button>
+      <div style={{flex:1,textAlign:"center",fontFamily:"var(--fh)",fontWeight:700,fontSize:17}}>{nombreMes}</div>
+      <button className="bsm" onClick={()=>mover(1)}>›</button>
+    </div>
+    <div className="jo-cal">
+      {["L","M","M","J","V","S","D"].map((x,i)=><div key={i} className="jo-dow">{x}</div>)}
+      {Array.from({length:off}).map((_,i)=><div key={"e"+i}/>)}
+      {Array.from({length:n}).map((_,i)=>{const iso=`${mes}-${String(i+1).padStart(2,"0")}`;
+        const extremo=iso===desde||iso===fin,dentro=desde&&fin&&iso>desde&&iso<fin;
+        return <button key={iso} className={`jo-day${extremo?" on":""}${iso===hoy?" hoy":""}`} disabled={iso<hoy} onClick={()=>tocar(iso)}
+          style={dentro?{background:"rgba(245,158,11,.22)",borderColor:"rgba(245,158,11,.5)"}:undefined}>
+          <div>{i+1}</div><div className="jo-dh">{iso===desde?"ingr.":iso===fin?"egr.":""}</div>
+        </button>;})}
+    </div>
+    <div style={{fontSize:13,marginTop:8}}>Ingreso: <b>{desde?cmdFmtDate(desde):"—"}</b> · Egreso: <b>{indef?"indefinido":fin?cmdFmtDate(fin):"—"}</b>{!indef&&desde&&fin?<span style={{color:"var(--tx3)"}}> · {avDiasTxt(desde,fin)}</span>:null}</div>
+    <div style={{fontSize:11,color:"var(--tx3)",marginTop:2}}>{indef?"Tocá el día de ingreso.":esperaFin?"Ahora tocá el día de egreso (si es por el día, tocá el mismo).":"Tocá el día de ingreso y después el de egreso."}</div>
+    <label style={{display:"flex",alignItems:"center",gap:8,fontSize:14,cursor:"pointer",padding:"6px 0 0"}}><input type="checkbox" checked={!!indef} style={{width:"auto",accentColor:"var(--acc)"}}
+      onChange={e=>{onChange({desde,hasta:e.target.checked?null:(hasta||desde),indef:e.target.checked});setEsperaFin(false);}}/> Egreso indefinido (todavía no se sabe)</label>
+  </div>;
+}
+function AvisoIngresoModal({user,onClose,pagina}){
+  const hoy=today(),manana=cmdAddDays(hoy,1);
   const[tab,setTab]=useState("nuevo");
-  const[pers,setPers]=useState([vacia()]);
-  const[fecha,setFecha]=useState(cmdAddDays(hoy,1));
-  const[dur,setDur]=useState("corto"); // corto = 7 días o menos | largo = más de 7 días
-  const[dias,setDias]=useState(1);
-  const[hasta,setHasta]=useState("");
-  const[indef,setIndef]=useState(false);
+  const[rango,setRango]=useState({desde:manana,hasta:manana,indef:false}); // fechas para todos
+  const vacia=(r)=>({dni:"",empresa:"",nombre:"",apellido:"",enBase:null,ingreso:r.desde,egreso:r.hasta,indef:r.indef,propia:false});
+  const[pers,setPers]=useState(()=>[vacia({desde:manana,hasta:manana,indef:false})]);
   const[estadia,setEstadia]=useState(false);
   const[viandas,setViandas]=useState(false);
   const[traslado,setTraslado]=useState(false);
   const[origen,setOrigen]=useState("");
   const[destino,setDestino]=useState("");
   const[pasaje,setPasaje]=useState(false);
+  const[vehPropio,setVehPropio]=useState(false);
+  const[patente,setPatente]=useState("");
   const[notas,setNotas]=useState("");
+  const[verPegar,setVerPegar]=useState(false);
+  const[pegado,setPegado]=useState("");
   const[busy,setBusy]=useState(false);
   const[enviado,setEnviado]=useState(false);
   const[empresas,setEmpresas]=useState([]);
@@ -2466,49 +2551,72 @@ function AvisoIngresoModal({user,onClose,pagina}){
     if(data)setEmpresas([...new Set(data.map(p=>(p.empresa||"").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"es")));});},[]);
   const cargarMios=async()=>{const{data}=await db.sel("avisos_ingreso",{f:[["creado_por","eq",user.id]],ord:"creado_at.desc",lim:60});setMios(data===null?{err:true}:data);};
   useEffect(()=>{if(tab==="mios")cargarMios();},[tab]);
-  const setP=(i,k,v)=>setPers(l=>l.map((x,j)=>j===i?{...x,[k]:v}:x));
+  const setP=(i,patch)=>setPers(l=>l.map((x,j)=>j===i?{...x,...patch}:x));
+  // Cambiar las fechas "para todos" mueve a quienes no tienen fechas propias
+  const cambiarRango=(r)=>{setRango(r);setPers(l=>l.map(p=>p.propia?p:{...p,ingreso:r.desde,egreso:r.hasta,indef:r.indef}));};
+  const igualarTodos=()=>setPers(l=>l.map(p=>({...p,ingreso:rango.desde,egreso:rango.hasta,indef:rango.indef,propia:false})));
   // Al escribir el DNI se busca en Personal: si ya está, se completan los datos que falten
   const buscarDni=async(i)=>{
-    const d=avDni(pers[i].dni);if(d.length<6){setP(i,"enBase",null);return;}
+    const d=avDni(pers[i].dni);if(d.length<6){setP(i,{enBase:null});return;}
     const{data}=await db.sel("personas",{cols:"nombre,apellido,empresa,deleted_at",f:[["dni","ilike",d]],lim:1});
     const p=data&&data[0]&&!data[0].deleted_at?data[0]:null;
     setPers(l=>l.map((x,j)=>j!==i?x:(p?{...x,enBase:p,nombre:x.nombre||p.nombre||"",apellido:x.apellido||p.apellido||"",empresa:x.empresa||p.empresa||""}:{...x,enBase:false})));
   };
-  const minHasta=cmdAddDays(fecha||hoy,7);
+  // Pegar una lista desde Excel: un renglón por persona con DNI, empresa, nombre y apellido
+  const pegar=async()=>{
+    const filas=pegado.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>(l.includes("\t")?l.split("\t"):l.includes(";")?l.split(";"):l.split(",")).map(x=>x.trim()));
+    const nuevas=filas.filter(c=>/\d/.test(c[0]||"")).map(c=>({...vacia(rango),dni:c[0]||"",empresa:c[1]||"",nombre:c[2]||"",apellido:c[3]||""}));
+    if(!nuevas.length){alert("No encontré renglones con DNI. Pegá una persona por renglón: DNI, empresa, nombre, apellido (como columnas de Excel).");return;}
+    const dnis=[...new Set(nuevas.map(x=>avDni(x.dni)).filter(d=>d.length>=6))];
+    const m={};
+    for(let i=0;i<dnis.length;i+=150){const{data}=await db.sel("personas",{cols:"dni,nombre,apellido,empresa,deleted_at",inFilter:["dni",dnis.slice(i,i+150)],lim:2000});(data||[]).forEach(p=>{if(!p.deleted_at)m[avDni(p.dni)]=p;});}
+    const comp=nuevas.map(x=>{const p=m[avDni(x.dni)];return p?{...x,enBase:p,nombre:x.nombre||p.nombre||"",apellido:x.apellido||p.apellido||"",empresa:x.empresa||p.empresa||""}:{...x,enBase:false};});
+    setPers(l=>[...l.filter(p=>p.dni.trim()||p.nombre.trim()||p.apellido.trim()||p.empresa.trim()),...comp]);
+    setPegado("");setVerPegar(false);
+  };
+  const dniCont={};pers.forEach(p=>{const d=avDni(p.dni);if(d)dniCont[d]=(dniCont[d]||0)+1;});
+  const repetidos=Object.keys(dniCont).filter(d=>dniCont[d]>1);
+  const datosMal=pers.filter(p=>!p.empresa.trim()||!p.nombre.trim()||!p.apellido.trim()||avDni(p.dni).length<6).length;
+  const fechasMal=pers.filter(p=>!p.ingreso||(!p.indef&&(!p.egreso||p.egreso<p.ingreso))).length;
   const falta=[
-    pers.some(p=>!p.empresa.trim()||!p.nombre.trim()||!p.apellido.trim()||avDni(p.dni).length<6)&&"empresa, nombre, apellido y DNI de cada persona",
-    !fecha&&"fecha de ingreso",
-    dur==="largo"&&!indef&&!hasta&&"hasta cuándo se queda (o tildá indefinido)",
-    dur==="largo"&&!indef&&hasta&&hasta<minHasta&&"para menos de 8 días elegí \"7 días o menos\"",
+    datosMal&&`completar DNI, empresa, nombre y apellido (${datosMal===1?"1 persona":datosMal+" personas"})`,
+    fechasMal&&`revisar ingreso y egreso (${fechasMal===1?"1 persona":fechasMal+" personas"})`,
+    repetidos.length&&`DNI repetido: ${repetidos.join(", ")}`,
     traslado&&(!origen.trim()||!destino.trim())&&"origen y destino del traslado",
   ].filter(Boolean);
   const enviar=async()=>{
     if(falta.length||busy)return;
     setBusy(true);
-    const payload={creado_por:user.id,creado_por_nombre:user.nombre||user.email||"",
-      personas:pers.map(p=>({empresa:p.empresa.trim(),nombre:p.nombre.trim(),apellido:p.apellido.trim(),dni:avDni(p.dni)})),
-      fecha_ingreso:fecha,dias:dur==="corto"?Number(dias):null,hasta:dur==="largo"&&!indef?hasta:null,indefinido:dur==="largo"&&indef,
+    const personas=pers.map(p=>({empresa:p.empresa.trim(),nombre:p.nombre.trim(),apellido:p.apellido.trim(),dni:avDni(p.dni),ingreso:p.ingreso,egreso:p.indef?null:p.egreso,indefinido:!!p.indef}));
+    const algunaInd=personas.some(p=>p.indefinido);
+    const payload={creado_por:user.id,creado_por_nombre:user.nombre||user.email||"",personas,
+      fecha_ingreso:personas.reduce((m,p)=>!m||p.ingreso<m?p.ingreso:m,null),dias:null,
+      hasta:algunaInd?null:personas.reduce((m,p)=>!m||p.egreso>m?p.egreso:m,null),indefinido:algunaInd,
       estadia,viandas,traslado,traslado_origen:traslado?origen.trim():null,traslado_destino:traslado?destino.trim():null,compra_pasaje:traslado&&pasaje,
-      notas:notas.trim()||null};
+      notas:notas.trim()||null,
+      // solo si se tildó: así funciona aunque la base todavía no tenga estas columnas
+      ...(vehPropio?{vehiculo_propio:true,vehiculo_patente:patente.trim().toUpperCase()||null}:{})};
     const r=await db.ins("avisos_ingreso",payload);
     setBusy(false);
     if(!r.ok){
       if(SIM_ACTIVO)return; // modo "Ver como": ya avisó que no se guarda
       const t=JSON.stringify(r.data||"");
-      alert(/avisos_ingreso|PGRST205|42P01|42501/.test(t)
-        ?"Todavía no está habilitado el aviso de ingreso: un admin tiene que correr el SQL (está en la campanita 🔔 de los admins)."
+      alert(/avisos_ingreso|vehiculo_|PGRST20[45]|42P01|42501/.test(t)
+        ?"Falta actualizar la base para el aviso de ingreso: un admin tiene que correr el SQL (está en la campanita 🔔 de los admins)."
         :"No se pudo enviar el aviso. Revisá la conexión y probá de nuevo.\n\nDetalle: "+t.slice(0,200));
       return;
     }
     setEnviado(true);
   };
-  const nuevo=()=>{setPers([vacia()]);setNotas("");setEnviado(false);};
+  const nuevo=()=>{setPers([vacia(rango)]);setNotas("");setEnviado(false);};
   const chk=(v,set,lbl)=><label style={{display:"flex",alignItems:"center",gap:8,fontSize:14,cursor:"pointer",padding:"4px 0"}}><input type="checkbox" checked={v} onChange={e=>set(e.target.checked)} style={{width:"auto",accentColor:"var(--acc)"}}/> {lbl}</label>;
-  const anular=async(a)=>{if(!confirm("¿Anular este aviso?"))return;const r=await db.upd("avisos_ingreso",{estado:"anulado",estado_por:user.id,estado_por_nombre:user.nombre||user.email||"",estado_at:new Date().toISOString()},[["id","eq",a.id]]);if(!r.ok)alert("No se pudo anular.");cargarMios();};
+  const anular=async(a)=>{if(!confirm("¿Anular este aviso?"))return;const r=await db.upd("avisos_ingreso",{estado:"anulado",estado_por:user.id,estado_por_nombre:user.nombre||user.email||"",estado_at:new Date().toISOString()},[["id","eq",a.id]]);if(!r.ok&&!SIM_ACTIVO)alert("No se pudo anular.");cargarMios();};
+  const ci={padding:"6px 8px",fontSize:13,minWidth:0};
+  const hayPropias=pers.some(p=>p.propia);
   // Rev141: con pagina=true se muestra como pantalla (solapa "Aviso de ingreso" de Habilitaciones) en vez de ventana
   const envolver=(contenido)=>pagina
-    ?<div><div className="ph2"><div className="ptit">Aviso de <span>ingreso</span></div></div><div className="jo-wrap" style={{maxWidth:820,padding:"16px 18px"}}>{contenido}</div></div>
-    :<div className="mo"><div className="md md-lg"><div className="mh"><div className="mt">📨 Aviso de ingreso</div><button className="mc" onClick={onClose}>x</button></div>{contenido}</div></div>;
+    ?<div><div className="ph2"><div className="ptit">Aviso de <span>ingreso</span></div></div><div className="jo-wrap" style={{maxWidth:1100,padding:"16px 18px"}}>{contenido}</div></div>
+    :<div className="mo"><div className="md md-lg" style={{maxWidth:1000}}><div className="mh"><div className="mt">📨 Aviso de ingreso</div><button className="mc" onClick={onClose}>x</button></div>{contenido}</div></div>;
   return envolver(<>
     <div className={pagina?"":"mb"}>
       <div className="jo-tabs">
@@ -2521,50 +2629,66 @@ function AvisoIngresoModal({user,onClose,pagina}){
       :enviado?<div style={{textAlign:"center",padding:"20px 10px"}}>
         <div style={{fontSize:40}}>✅</div>
         <div style={{fontFamily:"var(--fh)",fontSize:20,fontWeight:800,margin:"6px 0"}}>AVISO ENVIADO</div>
-        <div style={{fontSize:13,color:"var(--tx2)",marginBottom:16}}>Les llega a los admins. En "Mis avisos" ves cuando lo marquen como visto o resuelto.</div>
+        <div style={{fontSize:13,color:"var(--tx2)",marginBottom:16}}>Les llega a administración y Control de Personal. En "Mis avisos" ves cuando lo marquen como visto o resuelto.</div>
         <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}><button className="bsm" onClick={nuevo}>Enviar otro aviso</button><button className="bsm" onClick={()=>setTab("mios")}>Ver mis avisos</button></div>
       </div>:<>
         <datalist id="av-empresas">{empresas.map(e=><option key={e} value={e}/>)}</datalist>
-        <div className="jo-h" style={{marginTop:4}}>Quién ingresa</div>
-        {pers.map((p,i)=><div key={i} style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"10px 12px",marginBottom:8}}>
-          <div style={{display:"flex",alignItems:"center",marginBottom:6}}>
-            <span style={{fontSize:12,color:"var(--tx2)",fontFamily:"var(--fm)"}}>PERSONA {i+1}</span>
-            {p.enBase&&<span style={{fontSize:11,color:"var(--gr)",marginLeft:8}}>✓ ya está en Personal</span>}
-            {p.enBase===false&&<span style={{fontSize:11,color:"var(--acc)",marginLeft:8}}>no está en Personal</span>}
-            {pers.length>1&&<button className="bsm" style={{marginLeft:"auto",padding:"2px 8px"}} onClick={()=>setPers(l=>l.filter((_,j)=>j!==i))}>Quitar</button>}
+        <div style={{display:"flex",gap:18,flexWrap:"wrap",alignItems:"flex-start"}}>
+          <div style={{flex:"0 1 380px"}}>
+            <div className="jo-h">1 · Fechas (para todos)</div>
+            <AvRango desde={rango.desde} hasta={rango.hasta} indef={rango.indef} onChange={cambiarRango}/>
+            {hayPropias&&<div style={{fontSize:11,color:"var(--tx3)",marginTop:6}}>Hay personas con fechas propias (no se mueven con el calendario). <a href="#" onClick={e=>{e.preventDefault();igualarTodos();}} style={{color:"var(--acc2)"}}>Poner estas fechas a todas</a></div>}
           </div>
-          <div className="row2"><div className="f"><label>DNI *</label><input value={p.dni} onChange={e=>setP(i,"dni",e.target.value)} onBlur={()=>buscarDni(i)} placeholder="30456789" inputMode="numeric"/></div>
-            <div className="f"><label>Empresa *</label><input value={p.empresa} onChange={e=>setP(i,"empresa",e.target.value)} list="av-empresas" placeholder="Ej: ALUSA"/></div></div>
-          <div className="row2" style={{marginBottom:-14}}><div className="f"><label>Nombre *</label><input value={p.nombre} onChange={e=>setP(i,"nombre",e.target.value)}/></div>
-            <div className="f"><label>Apellido *</label><input value={p.apellido} onChange={e=>setP(i,"apellido",e.target.value)}/></div></div>
-        </div>)}
-        <button className="bsm" style={{marginBottom:16}} onClick={()=>setPers(l=>[...l,vacia()])}>+ Agregar otra persona</button>
-
-        <div className="jo-h">Cuándo y por cuánto tiempo</div>
-        <div className="f"><label>Fecha de ingreso *</label><input type="date" value={fecha} onChange={e=>setFecha(e.target.value)}/></div>
-        <div className="jo-tabs">
-          <button className={`jo-tab${dur==="corto"?" on":""}`} onClick={()=>setDur("corto")}>7 días o menos</button>
-          <button className={`jo-tab${dur==="largo"?" on":""}`} onClick={()=>setDur("largo")}>Más de 7 días</button>
+          <div style={{flex:"1 1 300px"}}>
+            <div className="jo-h">2 · A cargo de Obras y Sistemas</div>
+            {chk(estadia,setEstadia,"🛏️ Estadía")}
+            {chk(viandas,setViandas,"🍽️ Servicio de viandas")}
+            {chk(traslado,setTraslado,"🚌 Traslado")}
+            {traslado&&<div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"10px 12px",margin:"6px 0 10px"}}>
+              <div className="row2"><div className="f"><label>Origen *</label><input value={origen} onChange={e=>setOrigen(e.target.value)} placeholder="Ej: Buenos Aires"/></div>
+                <div className="f"><label>Destino *</label><input value={destino} onChange={e=>setDestino(e.target.value)} placeholder="Ej: Bariloche"/></div></div>
+              {chk(pasaje,setPasaje,"Incluye compra de pasaje")}
+            </div>}
+            <div className="jo-h" style={{marginTop:10}}>Vehículo</div>
+            {chk(vehPropio,setVehPropio,"🚗 Ingresan con vehículo propio")}
+            {vehPropio&&<div className="f" style={{marginTop:4}}><label>Patente (opcional)</label><input value={patente} onChange={e=>setPatente(e.target.value)} placeholder="Ej: AB123CD"/></div>}
+          </div>
         </div>
-        {dur==="corto"
-          ?<div className="f"><label>Cuántos días se queda</label><select value={dias} onChange={e=>setDias(e.target.value)}>
-            {[1,2,3,4,5,6,7].map(n=><option key={n} value={n}>{n===1?"1 día (solo ese día)":`${n} días`}{fecha?` — hasta el ${cmdFmtDate(cmdAddDays(fecha,n-1))}`:""}</option>)}
-          </select></div>
-          :<div className="row2" style={{alignItems:"flex-end"}}>
-            <div className="f"><label>Hasta</label><input type="date" value={hasta} min={minHasta} disabled={indef} onChange={e=>setHasta(e.target.value)}/></div>
-            <div className="f">{chk(indef,setIndef,"Indefinido (todavía no se sabe)")}</div>
-          </div>}
 
-        <div className="jo-h" style={{marginTop:6}}>A cargo de Obras y Sistemas</div>
-        {chk(estadia,setEstadia,"🛏️ Estadía")}
-        {chk(viandas,setViandas,"🍽️ Servicio de viandas")}
-        {chk(traslado,setTraslado,"🚌 Traslado")}
-        {traslado&&<div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"10px 12px",margin:"6px 0 10px"}}>
-          <div className="row2"><div className="f"><label>Origen *</label><input value={origen} onChange={e=>setOrigen(e.target.value)} placeholder="Ej: Buenos Aires"/></div>
-            <div className="f"><label>Destino *</label><input value={destino} onChange={e=>setDestino(e.target.value)} placeholder="Ej: Bariloche"/></div></div>
-          {chk(pasaje,setPasaje,"Incluye compra de pasaje")}
+        <div className="jo-h" style={{marginTop:16,justifyContent:"space-between"}}>
+          <span>3 · Quiénes ingresan ({pers.length})</span>
+          <span style={{display:"flex",gap:6,textTransform:"none",letterSpacing:0}}>
+            <button className="bsm" onClick={()=>setPers(l=>[...l,vacia(rango)])}>+ Agregar persona</button>
+            <button className="bsm" onClick={()=>setVerPegar(v=>!v)}>📋 Pegar lista de Excel</button>
+          </span>
+        </div>
+        {verPegar&&<div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"10px 12px",marginBottom:10}}>
+          <div style={{fontSize:12,color:"var(--tx2)",marginBottom:6}}>Copiá de Excel las columnas <b>DNI · Empresa · Nombre · Apellido</b> (una persona por renglón) y pegalas acá. Si alguien ya está en Personal, se completan sus datos.</div>
+          <textarea value={pegado} onChange={e=>setPegado(e.target.value)} rows={5} placeholder={"30456789\tALUSA\tJuan\tPérez\n28123456\tALUSA\tAna\tGómez"} style={{width:"100%",background:"var(--bg)",border:"1px solid var(--bd)",borderRadius:4,color:"var(--tx)",padding:8,fontFamily:"var(--fm)",fontSize:12}}/>
+          <div style={{display:"flex",gap:6,marginTop:6}}><button className="bsm" onClick={pegar} disabled={!pegado.trim()}>Agregar a la lista</button><button className="bsm" onClick={()=>setVerPegar(false)}>Cancelar</button></div>
         </div>}
-        <div className="f" style={{marginTop:8}}><label>Notas (opcional)</label><textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Algo más que convenga saber"/></div>
+        <div className="tw" style={{maxHeight:"none"}}><table style={{minWidth:900}}>
+          <thead><tr><th>#</th><th>DNI *</th><th>Empresa *</th><th>Nombre *</th><th>Apellido *</th><th>Ingreso</th><th>Egreso</th><th></th></tr></thead>
+          <tbody>{pers.map((p,i)=>{const malF=!p.ingreso||(!p.indef&&(!p.egreso||p.egreso<p.ingreso));const rep=repetidos.includes(avDni(p.dni));
+            return <tr key={i}>
+              <td className="mn" style={{color:"var(--tx3)"}}>{i+1}</td>
+              <td><input className="fi" style={{...ci,width:110,borderColor:rep?"var(--rd)":undefined}} value={p.dni} inputMode="numeric" placeholder="30456789" onChange={e=>setP(i,{dni:e.target.value})} onBlur={()=>buscarDni(i)}/>
+                {p.enBase&&<div style={{fontSize:10,color:"var(--gr)",marginTop:2}}>✓ en Personal</div>}{p.enBase===false&&<div style={{fontSize:10,color:"var(--acc)",marginTop:2}}>no está en Personal</div>}</td>
+              <td><input className="fi" style={{...ci,width:150}} list="av-empresas" value={p.empresa} placeholder="Ej: ALUSA" onChange={e=>setP(i,{empresa:e.target.value})}/></td>
+              <td><input className="fi" style={{...ci,width:130}} value={p.nombre} onChange={e=>setP(i,{nombre:e.target.value})}/></td>
+              <td><input className="fi" style={{...ci,width:130}} value={p.apellido} onChange={e=>setP(i,{apellido:e.target.value})}/></td>
+              <td><input className="fi" type="date" style={{...ci,width:140,borderColor:malF?"var(--rd)":p.propia?"var(--acc2)":undefined}} value={p.ingreso||""} min={hoy} onChange={e=>setP(i,{ingreso:e.target.value,propia:true})}/></td>
+              <td style={{whiteSpace:"nowrap"}}>
+                {p.indef?<span style={{fontSize:12,color:"var(--tx2)",display:"inline-block",width:140}}>indefinido</span>
+                  :<input className="fi" type="date" style={{...ci,width:140,borderColor:malF?"var(--rd)":p.propia?"var(--acc2)":undefined}} value={p.egreso||""} min={p.ingreso||hoy} onChange={e=>setP(i,{egreso:e.target.value,propia:true})}/>}
+                <label style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"var(--tx2)",marginLeft:6,cursor:"pointer"}}><input type="checkbox" checked={!!p.indef} style={{width:"auto"}} onChange={e=>setP(i,{indef:e.target.checked,egreso:e.target.checked?null:(p.egreso||p.ingreso),propia:true})}/> indef.</label>
+                {!p.indef&&p.ingreso&&p.egreso&&p.egreso>=p.ingreso&&<div style={{fontSize:10,color:"var(--tx3)"}}>{avDiasTxt(p.ingreso,p.egreso)}</div>}
+              </td>
+              <td>{pers.length>1&&<button className="bsm" style={{padding:"3px 8px"}} title="Quitar" onClick={()=>setPers(l=>l.filter((_,j)=>j!==i))}>✕</button>}</td>
+            </tr>;})}</tbody>
+        </table></div>
+        <div style={{fontSize:11,color:"var(--tx3)",marginTop:6}}>Las fechas de cada persona salen del calendario; si alguien viene o se va otro día, cambiale las fechas en su fila (quedan marcadas en azul).</div>
+        <div className="f" style={{marginTop:14}}><label>Notas (opcional)</label><textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Algo más que convenga saber"/></div>
         {falta.length>0&&<div style={{fontSize:12,color:"var(--tx3)"}}>Falta: {falta.join(" · ")}</div>}
       </>}
     </div>
@@ -2574,26 +2698,30 @@ function AvisoIngresoModal({user,onClose,pagina}){
     </div>}
   </>);
 }
-// Campanita de los admins: avisos pendientes (se revisa cada minuto)
+// Campanita: admin y CP ven los pendientes; S&H, los que todavía no marcó como vistos (se revisa cada minuto)
 function AvisosCampana({user}){
+  const modo=AV_GESTION.includes(user.rol)?"gestion":"sh";
   const[pend,setPend]=useState(0);
   const[falta,setFalta]=useState(false);
   const[ver,setVer]=useState(false);
   const check=useCallback(async()=>{
-    const{data}=await db.sel("avisos_ingreso",{cols:"id",f:[["estado","eq","pendiente"]],lim:500});
+    const{data}=await db.sel("avisos_ingreso",{cols:"id,estado,vistos_sh",ord:"creado_at.desc",lim:300});
     if(data===null){setFalta(true);return;}
-    setFalta(false);setPend(data.length);
-  },[]);
+    setFalta(false);
+    setPend(modo==="sh"?data.filter(a=>a.estado!=="anulado"&&a.estado!=="rechazado"&&!avVistoPorMi(a,user.id)).length:data.filter(a=>a.estado==="pendiente").length);
+  },[modo,user.id]);
   useEffect(()=>{check();const i=setInterval(check,60000);return()=>clearInterval(i);},[check]);
+  const tit=falta?"Aviso de ingreso: falta actualizar la base":pend?(modo==="sh"?`${pend} aviso${pend===1?"":"s"} de ingreso sin ver`:`${pend} aviso${pend===1?"":"s"} de ingreso pendiente${pend===1?"":"s"}`):"Avisos de ingreso";
   return <>
-    <button className="btn-out" onClick={()=>setVer(true)} title={falta?"Aviso de ingreso: falta habilitarlo":pend?`${pend} aviso${pend===1?"":"s"} de ingreso pendiente${pend===1?"":"s"}`:"Avisos de ingreso"}
+    <button className="btn-out" onClick={()=>setVer(true)} title={tit}
       style={{position:"relative",padding:"5px 10px",flexShrink:0,borderColor:pend?"var(--acc)":undefined,animation:pend?"pulseWarn 2s infinite":undefined}}>
       🔔{pend>0&&<span style={{position:"absolute",top:-7,right:-7,background:"var(--rd)",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 5px",lineHeight:"14px"}}>{pend}</span>}
     </button>
-    {ver&&<AvisosPanel user={user} falta={falta} onClose={()=>{setVer(false);check();}}/>}
+    {ver&&<AvisosPanel user={user} modo={modo} falta={falta} onClose={()=>{setVer(false);check();}}/>}
   </>;
 }
-function AvisosPanel({user,falta,onClose}){
+function AvisosPanel({user,modo,falta,onClose}){
+  const esSH=modo==="sh";
   const[lista,setLista]=useState(null);
   const[filtro,setFiltro]=useState("abiertos");
   const[enBase,setEnBase]=useState({});
@@ -2602,11 +2730,12 @@ function AvisosPanel({user,falta,onClose}){
     const{data}=await db.sel("avisos_ingreso",{ord:"creado_at.desc",lim:300});
     if(data===null){setLista({err:true});return;}
     setLista(data);
+    if(esSH)return;
     const dnis=[...new Set(data.flatMap(a=>(a.personas||[]).map(p=>avDni(p.dni))).filter(Boolean))];
     const m={};
     for(let i=0;i<dnis.length;i+=150){const{data:ps}=await db.sel("personas",{cols:"dni,deleted_at",inFilter:["dni",dnis.slice(i,i+150)],lim:2000});(ps||[]).forEach(p=>{if(!p.deleted_at)m[avDni(p.dni)]=true;});}
     setEnBase(m);
-  },[]);
+  },[esSH]);
   useEffect(()=>{if(!falta)cargar();},[cargar,falta]);
   const estado=async(a,e)=>{
     let resp=a.respuesta||null;
@@ -2614,7 +2743,12 @@ function AvisosPanel({user,falta,onClose}){
     setBusy(a.id);
     const r=await db.upd("avisos_ingreso",{estado:e,estado_por:user.id,estado_por_nombre:user.nombre||user.email||"",estado_at:new Date().toISOString(),respuesta:resp},[["id","eq",a.id]]);
     setBusy(null);
-    if(!r.ok||(Array.isArray(r.data)&&!r.data.length)){alert("No se pudo guardar. Revisá la conexión.");return;}
+    if(!r.ok||(Array.isArray(r.data)&&!r.data.length)){if(!SIM_ACTIVO)alert("No se pudo guardar. Revisá la conexión.");return;}
+    cargar();
+  };
+  const vistoSH=async(a)=>{
+    setBusy(a.id);const r=await db.rpc("aviso_visto_sh",{p_aviso:a.id});setBusy(null);
+    if(!r.ok){if(SIM_ACTIVO)return;alert(/aviso_visto_sh|PGRST202/.test(JSON.stringify(r.data||""))?"Falta actualizar la base: un admin tiene que correr el SQL nuevo del aviso de ingreso.":"No se pudo marcar como visto. Revisá la conexión.");return;}
     cargar();
   };
   const alta=async(p)=>{
@@ -2623,36 +2757,47 @@ function AvisosPanel({user,falta,onClose}){
     let r;
     if(ex&&ex[0])r=await db.upd("personas",{nombre:p.nombre,apellido:p.apellido,empresa:p.empresa,deleted_at:null},[["id","eq",ex[0].id]]);
     else r=await db.ins("personas",{dni:p.dni,nombre:p.nombre,apellido:p.apellido,empresa:p.empresa});
-    if(!r.ok){alert("No se pudo dar de alta.\n\nDetalle: "+JSON.stringify(r.data).slice(0,200));return;}
+    if(!r.ok){if(!SIM_ACTIVO)alert("No se pudo dar de alta.\n\nDetalle: "+JSON.stringify(r.data).slice(0,200));return;}
     cargar();
   };
   const copiar=async()=>{try{await navigator.clipboard.writeText(AVISO_SQL);alert("SQL copiado");}catch(e){prompt("Copiá el SQL:",AVISO_SQL);}};
-  const vis=lista&&!lista.err?lista.filter(a=>filtro==="todos"||a.estado==="pendiente"||a.estado==="visto"):[];
-  const nPend=lista&&!lista.err?lista.filter(a=>a.estado==="pendiente").length:0;
-  return <div className="mo"><div className="md md-lg" style={{maxWidth:760}}>
-    <div className="mh"><div className="mt">🔔 Avisos de ingreso{nPend?` · ${nPend} pendiente${nPend===1?"":"s"}`:""}</div><button className="mc" onClick={onClose}>x</button></div>
+  const ok=lista&&!lista.err;
+  const vis=!ok?[]:esSH
+    ?lista.filter(a=>a.estado!=="anulado"&&(filtro==="todos"||!avVistoPorMi(a,user.id)))
+    :lista.filter(a=>filtro==="todos"||a.estado==="pendiente"||a.estado==="visto");
+  const nPend=!ok?0:esSH?lista.filter(a=>a.estado!=="anulado"&&a.estado!=="rechazado"&&!avVistoPorMi(a,user.id)).length:lista.filter(a=>a.estado==="pendiente").length;
+  return <div className="mo"><div className="md md-lg" style={{maxWidth:900}}>
+    <div className="mh"><div className="mt">🔔 Avisos de ingreso{nPend?` · ${nPend} ${esSH?"sin ver":"pendiente"+(nPend===1?"":"s")}`:""}</div><button className="mc" onClick={onClose}>x</button></div>
     <div className="mb">
-      {falta||(lista&&lista.err)?<div className="jo-wrap" style={{borderColor:"rgba(245,158,11,.5)"}}>
-        <div className="jo-h" style={{color:"var(--acc)"}}>⚠️ Falta habilitar el aviso de ingreso</div>
-        <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Corré este SQL una sola vez en Supabase (SQL Editor) y recargá la página. Crea la tabla con permisos: cada usuario ve sus avisos y los admins ven y responden todos.</div>
-        <pre className="jo-pre">{AVISO_SQL}</pre>
-        <button className="bsm" style={{marginTop:8}} onClick={copiar}>📋 Copiar SQL</button>
-      </div>:lista===null?<Spin/>:<>
+      {falta||(lista&&lista.err)?(esSH
+        ?<div className="warn">Todavía no está habilitado. Un admin tiene que actualizar la base del aviso de ingreso.</div>
+        :<div className="jo-wrap" style={{borderColor:"rgba(245,158,11,.5)"}}>
+          <div className="jo-h" style={{color:"var(--acc)"}}>⚠️ Falta actualizar la base del aviso de ingreso</div>
+          <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Corré este SQL una vez en Supabase (SQL Editor) y recargá la página. Sirve aunque ya se haya corrido el anterior: suma lo nuevo (vehículo propio, "visto" de S&H) y los permisos (cada uno ve sus avisos; admin, CP y S&H ven todos; S&H solo marca visto).</div>
+          <pre className="jo-pre">{AVISO_SQL}</pre>
+          <button className="bsm" style={{marginTop:8}} onClick={copiar}>📋 Copiar SQL</button>
+        </div>)
+      :lista===null?<Spin/>:<>
         <div className="jo-tabs">
-          <button className={`jo-tab${filtro==="abiertos"?" on":""}`} onClick={()=>setFiltro("abiertos")}>Pendientes y vistos</button>
+          <button className={`jo-tab${filtro==="abiertos"?" on":""}`} onClick={()=>setFiltro("abiertos")}>{esSH?"Sin ver":"Pendientes y vistos"}</button>
           <button className={`jo-tab${filtro==="todos"?" on":""}`} onClick={()=>setFiltro("todos")}>Todos</button>
           <button className="bsm" style={{marginLeft:"auto"}} onClick={cargar}>↻ Actualizar</button>
         </div>
-        {vis.length===0?<div style={{color:"var(--tx3)",fontSize:13,padding:10}}>{filtro==="abiertos"?"No hay avisos pendientes. 🎉":"Todavía no hay avisos."}</div>
-          :vis.map(a=><AvisoCard key={a.id} a={a}
-            personaExtra={(p)=>enBase[avDni(p.dni)]?<span style={{fontSize:11,color:"var(--gr)"}}>✓ en Personal</span>
-              :<button className="bsm" style={{padding:"2px 8px",fontSize:11}} onClick={()=>alta(p)}>+ Dar de alta en Personal</button>}
-            extra={<>
-              {a.estado==="pendiente"&&<button className="bsm" disabled={busy===a.id} onClick={()=>estado(a,"visto")}>👁 Visto</button>}
-              {(a.estado==="pendiente"||a.estado==="visto")&&<button className="bsm" style={{color:"var(--gr)",borderColor:"rgba(16,185,129,.45)"}} disabled={busy===a.id} onClick={()=>estado(a,"resuelto")}>✓ Resuelto</button>}
-              {(a.estado==="pendiente"||a.estado==="visto")&&<button className="bsm" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.4)"}} disabled={busy===a.id} onClick={()=>estado(a,"rechazado")}>✗ Rechazar</button>}
-              {a.estado!=="pendiente"&&a.estado!=="anulado"&&<button className="bsm" disabled={busy===a.id} onClick={()=>estado(a,"pendiente")}>↺ Volver a pendiente</button>}
-            </>}/>)}
+        {esSH&&<div style={{fontSize:12,color:"var(--tx2)",marginBottom:10}}>Marcá "visto" cuando lo leas. Lo gestionan administración y Control de Personal.</div>}
+        {vis.length===0?<div style={{color:"var(--tx3)",fontSize:13,padding:10}}>{filtro==="abiertos"?(esSH?"No hay avisos sin ver. 🎉":"No hay avisos pendientes. 🎉"):"Todavía no hay avisos."}</div>
+          :vis.map(a=>esSH
+            ?<AvisoCard key={a.id} a={a} extra={avVistoPorMi(a,user.id)
+              ?<span style={{fontSize:12,color:"#60A5FA"}}>✓ Lo marcaste como visto{(()=>{const v=(a.vistos_sh||[]).find(x=>x.por===user.id);return v&&v.at?` · ${fmtTs(v.at)}`:"";})()}</span>
+              :<button className="bsm" disabled={busy===a.id} onClick={()=>vistoSH(a)}>👁 Marcar visto</button>}/>
+            :<AvisoCard key={a.id} a={a} verSH
+              personaExtra={(p)=>enBase[avDni(p.dni)]?<span style={{fontSize:11,color:"var(--gr)",whiteSpace:"nowrap"}}>✓ en Personal</span>
+                :<button className="bsm" style={{padding:"2px 8px",fontSize:11,whiteSpace:"nowrap"}} onClick={()=>alta(p)}>+ Dar de alta</button>}
+              extra={<>
+                {a.estado==="pendiente"&&<button className="bsm" disabled={busy===a.id} onClick={()=>estado(a,"visto")}>👁 Visto</button>}
+                {(a.estado==="pendiente"||a.estado==="visto")&&<button className="bsm" style={{color:"var(--gr)",borderColor:"rgba(16,185,129,.45)"}} disabled={busy===a.id} onClick={()=>estado(a,"resuelto")}>✓ Resuelto</button>}
+                {(a.estado==="pendiente"||a.estado==="visto")&&<button className="bsm" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.4)"}} disabled={busy===a.id} onClick={()=>estado(a,"rechazado")}>✗ Rechazar</button>}
+                {a.estado!=="pendiente"&&a.estado!=="anulado"&&<button className="bsm" disabled={busy===a.id} onClick={()=>estado(a,"pendiente")}>↺ Volver a pendiente</button>}
+              </>}/>)}
       </>}
     </div>
   </div></div>;
@@ -6604,7 +6749,7 @@ function PublicDashboard({onBack,embedTab}){
   return <div className={embedTab?"":"pub-wrap"}>
     {!embedTab&&<>
     <div className="pub-bar">
-      <div className="brand">CONTROL<span>OBRA</span> <span style={{fontSize:13,fontWeight:400,color:"var(--tx2)",marginLeft:6,fontFamily:"var(--fb)"}}>vista publica</span> <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3}}>{APP_REV}</span></div>
+      <div className="brand">CONTROL<span>OBRA</span> <span style={{fontSize:13,fontWeight:400,color:"var(--tx2)",marginLeft:6,fontFamily:"var(--fb)"}}>vista publica</span> <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3}}>{APP_VER}</span></div>
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         <div className="pub-badge"><div className="pub-dot"/>EN VIVO</div>
         <button className="btn-out" onClick={onBack}>Iniciar sesion</button>
@@ -7967,7 +8112,7 @@ function Login({onLogin,onPublic}){
     onLogin(data[0]);setLoading(false);
   };
   return <div className="lwrap"><div className="lcard">
-    <div className="llogo">CONTROL<span>OBRA</span> <span style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3,verticalAlign:"middle"}}>{APP_REV}</span></div>
+    <div className="llogo">CONTROL<span>OBRA</span> <span style={{fontSize:11,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3,verticalAlign:"middle"}}>{APP_VER}</span></div>
     <div className="lsub">Sistema de control de puestos</div>
     {err&&<div className="err">{err}</div>}
     <div className="f"><label>Email</label><input type="email" placeholder="usuario@obrasysistemas.com.ar" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} autoFocus/></div>
@@ -8099,10 +8244,10 @@ function App(){
   const tabs=TABS[uv.rol]||[];
   return <div className="app">
     <div className="topbar">
-      <div className="brand">CONTROL<span>OBRA</span> <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3}}>{APP_REV}</span></div>
+      <div className="brand">CONTROL<span>OBRA</span> <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3}}>{APP_VER}</span></div>
       <div className="tr" style={{gap:8,flexWrap:"nowrap"}}>
         {user.rol==="admin"&&<button className="btn-out" style={{flexShrink:0,padding:"5px 10px",borderColor:sim?"var(--acc)":undefined,color:sim?"var(--acc)":undefined}} onClick={()=>setVerSim(true)} title="Ver la app como la ve otro rol">👁<span className="top-nom"> Ver como</span></button>}
-        {uv.rol==="admin"&&<AvisosCampana user={uv}/>}
+        {["admin","cp","sh"].includes(uv.rol)&&<AvisosCampana user={uv}/>}
         <span className="top-nom" style={{fontSize:12,color:"var(--tx2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:80}}>{uv.nombre}</span>
         <span className="rol" style={{flexShrink:0}}>{uv.rol==="puesto"?uv.puesto_nombre||"Puesto":(ROL_LBL[uv.rol]||uv.rol).toUpperCase()}</span>
         <button className="btn-out" onClick={logout} style={{flexShrink:0}}>Salir</button>
