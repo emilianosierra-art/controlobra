@@ -448,7 +448,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev140";
+const APP_REV="Rev141";
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
 let _tok=null,_uid=null;
@@ -2170,7 +2170,6 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const[showModal,setShowModal]=useState(false);
   const[showMasivo,setShowMasivo]=useState(false);
   const[showMasivoTodo,setShowMasivoTodo]=useState(false);
-  const[verAviso,setVerAviso]=useState(false); // Rev139
   const[editP,setEditP]=useState(null);
   const[registroP,setRegistroP]=useState(null);
   const[detalleP,setDetalleP]=useState(null);
@@ -2187,7 +2186,8 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
   const loadSeq=useRef(0);
   const canSH=userRole==="sh"||userRole==="admin";
   const canCP=userRole==="cp"||userRole==="admin";
-  const readOnly=userRole==="puesto"||userRole==="logistica";
+  // Rev141: sobrestante y jefe de obra ven Personal como logística (solo lectura; tocando a la persona, su historial)
+  const readOnly=userRole==="puesto"||userRole==="logistica"||userRole==="sobrestante"||userRole==="jefe_obra";
   const onHabSaved=(newHab)=>{
     setHabs(prev=>{
       // Remove old hab for same entity+tipo+proyecto
@@ -2301,7 +2301,6 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
     return ids.size;
   })();
   const btns=[];
-  if(user)btns.push(<button key="aviso" className="badd" style={{background:"rgba(59,130,246,.16)",border:"1px solid var(--acc2)",color:"#60A5FA"}} onClick={()=>setVerAviso(true)} title="Avisar que va a ingresar alguien">📨 Aviso de ingreso</button>);
   if(!readOnly&&(canSH||canCP))btns.push(<button key="add" className="badd" onClick={()=>{setEditP(null);setShowModal(true);}}>+ Nuevo</button>);
   if(canSH)btns.push(<button key="mas" className="badd" style={{background:"var(--acc2)",marginLeft:6}} onClick={()=>setShowMasivo(true)}>Hab. masiva por empresa</button>);
   if(userRole==="admin")btns.push(<button key="todo" className="badd" style={{background:"rgba(16,185,129,.2)",border:"1px solid var(--gr)",color:"var(--gr)",marginLeft:6}} onClick={()=>setShowMasivoTodo(true)}>⭐ Habilitar todo</button>);
@@ -2375,7 +2374,6 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
     {showModal&&<PersonModal p={editP} onClose={()=>setShowModal(false)} onSave={saveP} onVer={x=>verPersona(x.dni,"Ya estaba dada de alta"+(x.empresa?" ("+x.empresa+")":"")+" — si cambió de empresa, usá Editar")}/>}
     {detalleP&&<PersonaDetalleModal persona={detalleP} proyectoId={proyectoId} onClose={()=>setDetalleP(null)}/>}
     {registroP&&user&&<RegistroManualAcceso persona={registroP} user={user} proyectoId={proyectoId} onClose={()=>setRegistroP(null)} onSaved={()=>setRegistroP(null)}/>}
-    {verAviso&&<AvisoIngresoModal user={user} onClose={()=>setVerAviso(false)}/>}
     {showMasivoTodo&&<HabTodoModal proyectoId={proyectoId} currentUserId={currentUserId} tipo="persona" porNombre={user&&(user.nombre||user.email)} onClose={()=>setShowMasivoTodo(false)} onSaved={load}/>}
     {showMasivo&&<HabMasivaModal proyectoId={proyectoId} currentUserId={currentUserId} habs={habs} onClose={()=>setShowMasivo(false)} onSaved={load}/>}
   </div>;
@@ -2443,7 +2441,7 @@ function AvisoCard({a,extra,personaExtra}){
     {extra&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>{extra}</div>}
   </div>;
 }
-function AvisoIngresoModal({user,onClose}){
+function AvisoIngresoModal({user,onClose,pagina}){
   const hoy=today();
   const vacia=()=>({dni:"",empresa:"",nombre:"",apellido:"",enBase:null});
   const[tab,setTab]=useState("nuevo");
@@ -2507,9 +2505,12 @@ function AvisoIngresoModal({user,onClose}){
   const nuevo=()=>{setPers([vacia()]);setNotas("");setEnviado(false);};
   const chk=(v,set,lbl)=><label style={{display:"flex",alignItems:"center",gap:8,fontSize:14,cursor:"pointer",padding:"4px 0"}}><input type="checkbox" checked={v} onChange={e=>set(e.target.checked)} style={{width:"auto",accentColor:"var(--acc)"}}/> {lbl}</label>;
   const anular=async(a)=>{if(!confirm("¿Anular este aviso?"))return;const r=await db.upd("avisos_ingreso",{estado:"anulado",estado_por:user.id,estado_por_nombre:user.nombre||user.email||"",estado_at:new Date().toISOString()},[["id","eq",a.id]]);if(!r.ok)alert("No se pudo anular.");cargarMios();};
-  return <div className="mo"><div className="md md-lg">
-    <div className="mh"><div className="mt">📨 Aviso de ingreso</div><button className="mc" onClick={onClose}>x</button></div>
-    <div className="mb">
+  // Rev141: con pagina=true se muestra como pantalla (solapa "Aviso de ingreso" de Habilitaciones) en vez de ventana
+  const envolver=(contenido)=>pagina
+    ?<div><div className="ph2"><div className="ptit">Aviso de <span>ingreso</span></div></div><div className="jo-wrap" style={{maxWidth:820,padding:"16px 18px"}}>{contenido}</div></div>
+    :<div className="mo"><div className="md md-lg"><div className="mh"><div className="mt">📨 Aviso de ingreso</div><button className="mc" onClick={onClose}>x</button></div>{contenido}</div></div>;
+  return envolver(<>
+    <div className={pagina?"":"mb"}>
       <div className="jo-tabs">
         <button className={`jo-tab${tab==="nuevo"?" on":""}`} onClick={()=>setTab("nuevo")}>Nuevo aviso</button>
         <button className={`jo-tab${tab==="mios"?" on":""}`} onClick={()=>setTab("mios")}>Mis avisos</button>
@@ -2567,11 +2568,11 @@ function AvisoIngresoModal({user,onClose}){
         {falta.length>0&&<div style={{fontSize:12,color:"var(--tx3)"}}>Falta: {falta.join(" · ")}</div>}
       </>}
     </div>
-    {tab==="nuevo"&&!enviado&&<div className="mf">
-      <button className="bcanc" onClick={onClose}>Cancelar</button>
+    {tab==="nuevo"&&!enviado&&<div className={pagina?"":"mf"} style={pagina?{display:"flex",gap:10,marginTop:14}:undefined}>
+      {!pagina&&<button className="bcanc" onClick={onClose}>Cancelar</button>}
       <button className="bp" onClick={enviar} disabled={busy||falta.length>0}>{busy?"Enviando…":`Enviar aviso${pers.length>1?` (${pers.length} personas)`:""}`}</button>
     </div>}
-  </div></div>;
+  </>);
 }
 // Campanita de los admins: avisos pendientes (se revisa cada minuto)
 function AvisosCampana({user}){
@@ -2709,7 +2710,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
   const[filter,setFilter]=useState("");
   const[filterEst,setFilterEst]=useState("");
   const canSH=userRole==="sh"||userRole==="admin";
-  const canEditVeh=canSH||userRole==="logistica";
+  const canEditVeh=canSH||userRole==="logistica"||userRole==="sobrestante"||userRole==="jefe_obra"; // Rev141: como logística
   const readOnly=userRole==="puesto";
   const onHabSaved=(newHab)=>{
     setHabs(prev=>{
@@ -7613,6 +7614,8 @@ function JoParteDiarioSec({user}){
   const ir=(k)=>{setSub(k);try{localStorage.setItem("jo_sub",k);}catch(e){}};
   return <div>
     <div className="jo-sub">{[["areas","Áreas o subcontratos"],["gen","Generar parte diario"]].map(([k,l])=><button key={k} className={`jo-subb${sub===k?" on":""}`} onClick={()=>ir(k)}>{l}</button>)}</div>
+    {/* Rev141: el aviso de quienes pasaron por P1 sin área aparece solo acá (antes en toda la app) */}
+    {sub==="gen"&&user&&user.rol==="sobrestante"&&<div style={{marginBottom:12}}><CmdErrBoundary><JoAvisoSinArea user={user}/></CmdErrBoundary></div>}
     {sub==="areas"?<JoAreas user={user}/>:<JoParteDiario user={user}/>}
   </div>;
 }
@@ -8006,7 +8009,6 @@ function App(){
   const[proyectos,setProyectos]=useState([]);
   const[checking,setChecking]=useState(true);
   const[publicMode,setPublicMode]=useState(false);
-  const[verAviso,setVerAviso]=useState(false); // Rev139: aviso de ingreso desde la barra de arriba
   const pid=proyectos.length>0?proyectos[0].id:null;
 
   useEffect(()=>{
@@ -8065,26 +8067,27 @@ function App(){
   const logout=async()=>{setSim(null);await authApi.signOut();setUser(null);setTab(null);setProyectos([]);};
 
   // "cvc" = Conteo Viandas Chalet (el conteo viejo, renombrado). "vi" = Viandas (módulo comedor nuevo).
-  const TABS_SOB=[{k:"reg",l:"Registros"},{k:"pc",l:"Conteo de personal"},{k:"ph",l:"Consulta habilitaciones"},{k:"pm",l:"Movimientos del día"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"}];
+  // Rev141: sobrestante y jefe de obra: Habilitaciones (Personal, Vehículos, Aviso de ingreso) en lugar de Movimientos de obra
+  const TABS_SOB=[{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"}];
+  // Rev141: "Aviso de ingreso" es una solapa de Habilitaciones para todos menos los puestos
   const TABS={
     puesto:           [{k:"sc",l:"Escanear"},{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
-    sh:               [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
-    cp:               [{k:"per",l:"Personal"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
-    logistica:        [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
-    cocina_campamento:[{k:"vi",l:"Viandas"}],
-    cocina_chalet:    [{k:"vi",l:"Viandas"}],
-    admin_viandas:    [{k:"vi",l:"Viandas"}],
+    sh:               [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
+    cp:               [{k:"per",l:"Personal"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
+    logistica:        [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
+    cocina_campamento:[{k:"avi",l:"Aviso de ingreso"},{k:"vi",l:"Viandas"}],
+    cocina_chalet:    [{k:"avi",l:"Aviso de ingreso"},{k:"vi",l:"Viandas"}],
+    admin_viandas:    [{k:"avi",l:"Aviso de ingreso"},{k:"vi",l:"Viandas"}],
     // Rev112: lo mismo que la vista sin login (como solapas) + Reportes JO completo. Rev114: + Registros (solo ver).
     sobrestante:      TABS_SOB,
     jefe_obra:        TABS_SOB,
-    admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"},{k:"cvc",l:"Chalet"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"},{k:"adm",l:"Usuarios"}],
+    admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"},{k:"cvc",l:"Chalet"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"},{k:"adm",l:"Usuarios"}],
   };
   // Agrupación visual de solapas (cada rol ve solo los grupos donde tiene alguna solapa)
   const NAV_GROUPS=[
-    {t:"Habilitaciones",    ks:["per","veh"]},
+    {t:"Habilitaciones",    ks:["per","veh","avi"]},
     {t:"Control de puestos",ks:["sc","reg"]},
     {t:"Gastronomía",       ks:["vi","cvc"]},
-    {t:"Movimientos de obra",ks:["pc","ph","pm"]},
     {t:"Reportes JO",       ks:["jpd","jhs"]},
     {t:"Administración",    ks:["adm"]},
   ];
@@ -8100,7 +8103,6 @@ function App(){
       <div className="tr" style={{gap:8,flexWrap:"nowrap"}}>
         {user.rol==="admin"&&<button className="btn-out" style={{flexShrink:0,padding:"5px 10px",borderColor:sim?"var(--acc)":undefined,color:sim?"var(--acc)":undefined}} onClick={()=>setVerSim(true)} title="Ver la app como la ve otro rol">👁<span className="top-nom"> Ver como</span></button>}
         {uv.rol==="admin"&&<AvisosCampana user={uv}/>}
-        {!(TABS[uv.rol]||[]).some(t=>t.k==="per")&&<button className="btn-out" style={{flexShrink:0,padding:"5px 10px"}} onClick={()=>setVerAviso(true)} title="Avisar que va a ingresar alguien">📨<span className="top-nom"> Aviso de ingreso</span></button>}
         <span className="top-nom" style={{fontSize:12,color:"var(--tx2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:80}}>{uv.nombre}</span>
         <span className="rol" style={{flexShrink:0}}>{uv.rol==="puesto"?uv.puesto_nombre||"Puesto":(ROL_LBL[uv.rol]||uv.rol).toUpperCase()}</span>
         <button className="btn-out" onClick={logout} style={{flexShrink:0}}>Salir</button>
@@ -8114,8 +8116,6 @@ function App(){
     </div>}
     {verSim&&<VerComoModal actual={sim} onElegir={(r)=>{setSim(r);setVerSim(false);}} onClose={()=>setVerSim(false)}/>}
     {pid&&<div style={{background:"var(--s2)",borderBottom:"1px solid var(--bd)",padding:"5px 12px",display:"flex",alignItems:"center",gap:8,overflowX:"auto"}}><ChaletMini proyectoId={pid} user={uv}/></div>}
-    {/* Rev116: el aviso de ingresos sin área es solo para sobrestantes (no para jefe de obra). */}
-    {uv.rol==="sobrestante"&&<CmdErrBoundary><JoAvisoSinArea user={uv}/></CmdErrBoundary>}
     {uv.rol==="admin"&&cpForzadoActivo()&&<div style={{background:"rgba(245,158,11,.16)",borderBottom:"2px solid var(--acc)",color:"var(--acc)",padding:"8px 20px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",fontSize:13}}>
       <span style={{fontSize:18}}>⚠️</span>
       <span style={{flex:1,minWidth:220}}><b>HABILITACIÓN PERMANENTE DE CP ACTIVADA</b> {CP_FORZADO.hasta?"hasta el "+cmdFmtDate(CP_FORZADO.hasta):"(sin fecha de fin)"}: CP Ingreso no se toma del Radar y figuran todos habilitados.{CP_FORZADO.por?" Activada por "+CP_FORZADO.por+(CP_FORZADO.at?" el "+fmtTs(CP_FORZADO.at):""):""}</span>
@@ -8129,8 +8129,8 @@ function App(){
         <div className="ngrp-b">{gt.map(t=><button key={t.k} className={`nb${tab===t.k?" on":""}`} onClick={()=>setTab(t.k)}>{t.l}</button>)}</div>
       </div>;
     })}</div>}
-    {verAviso&&<AvisoIngresoModal user={uv} onClose={()=>setVerAviso(false)}/>}
     <div className="main">
+      {tab==="avi"&&<AvisoIngresoModal user={uv} pagina/>}
       {tab==="per"&&<PersonalPanel userRole={uv.rol} currentUserId={uv.id} proyectoId={pid} user={uv}/>}
       {tab==="veh"&&<VehiculosPanel userRole={uv.rol} currentUserId={uv.id} proyectoId={pid}/>}
       {tab==="reg"&&<Registros defaultPuesto={uv.rol==="puesto"?uv.puesto_nombre:""} user={uv}/>}
