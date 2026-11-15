@@ -339,6 +339,45 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .cmd-citem{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--s2);border:1px solid var(--bd);border-radius:6px;padding:10px 12px;cursor:pointer;text-align:left;color:var(--tx);font-family:var(--fh);}
 .cmd-citem:hover{border-color:var(--cmd-pri);}
 @media(max-width:700px){.cmd-mcards{grid-template-columns:1fr 1fr}.cmd-tabs{overflow-x:auto}.cmd-tab{white-space:nowrap;font-size:12px;padding:10px 8px}}
+/* Rev148: Bajada chalet */
+.bj-aviso{border:1px solid var(--bd);border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:14px;line-height:1.45}
+.bj-aviso.mal{border-color:rgba(239,68,68,.5);background:rgba(239,68,68,.08)}
+.bj-aviso.bien{border-color:rgba(16,185,129,.4);background:rgba(16,185,129,.07)}
+.bj-acc{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px}
+.bj-ayuda{font-size:12px;color:var(--tx2);margin:6px 0 12px;line-height:1.45}
+.bj-w{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:12px;align-items:start}
+@media(max-width:700px){.bj-w{grid-template-columns:minmax(0,1fr)}}
+.bj-col{background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:12px;min-height:80px}
+.bj-g{margin-bottom:10px}
+.bj-gt{display:inline-flex;align-items:center;gap:8px;font-family:var(--fh);font-size:15px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;padding:3px 8px;margin:0 0 5px -8px;border-radius:4px;user-select:none}
+.bj-gt span{font-family:var(--fm);font-size:11px;color:var(--tx2)}
+.bj-gt:hover,.bj-gt.sel{background:rgba(59,130,246,.15);color:var(--acc2)}
+.bj-p{display:inline-block;font-size:13px;padding:5px 9px;margin:0 5px 5px 0;border-radius:4px;border:1px solid var(--bd);background:var(--s2);cursor:pointer;user-select:none;line-height:1.25}
+.bj-v .bj-p{background:var(--s1)}
+.bj-p small{font-size:11px;color:var(--tx2)}
+.bj-p .bj-sube{color:var(--acc2)}
+.bj-p.sel{background:rgba(59,130,246,.25);border-color:var(--acc2);color:#fff}
+.bj-v{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin-bottom:10px;transition:border-color .15s}
+.bj-v.drop{border-color:var(--acc2);cursor:pointer;box-shadow:0 0 0 1px var(--acc2)}
+.bj-v.over{border-color:var(--rd)}
+.bj-v.off{opacity:.55}
+.bj-vh{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.bj-vt{font-size:15px}.bj-vt .mn{font-size:15px;font-weight:600}
+.bj-cnt{margin-left:auto;font-family:var(--fh);font-size:20px;font-weight:800}
+.bj-vd{font-size:12px;color:var(--tx2);margin:2px 0 6px}
+.bj-bar{height:5px;border-radius:3px;background:var(--s1);margin-bottom:8px;overflow:hidden}.bj-bar i{display:block;height:100%;background:var(--gr)}
+.bj-v.over .bj-bar i{background:var(--rd)}
+.bj-va{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.bj-chk{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--tx2);cursor:pointer}.bj-chk input{width:auto;accent-color:var(--acc)}
+.bj-vacia{font-size:12px;color:var(--tx3)}
+.bj-selbar{position:sticky;bottom:8px;z-index:50;margin-top:12px;background:var(--s1);border:1px solid var(--acc2);border-radius:8px;padding:8px 10px;box-shadow:0 8px 30px rgba(0,0,0,.6)}
+.bj-selt{font-size:13px;margin-bottom:6px}
+.bj-selb{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}.bj-selb .bsm{white-space:nowrap;flex-shrink:0;padding:7px 10px;font-size:13px}
+.bj-wa{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px}
+.bj-wab{background:#25D366}
+.bj-txt{white-space:pre-wrap;font-family:var(--fm);font-size:12px;background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:12px;margin-top:10px;max-width:100%;overflow-x:auto}
+.bj-pick{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--bd);cursor:pointer}.bj-pick:hover{background:rgba(59,130,246,.08)}
+.bj-pick.dis{opacity:.45;cursor:not-allowed}
 /* Rev144: aviso de ingreso en pasos */
 .av-preg{font-family:var(--fh);font-size:22px;font-weight:800;letter-spacing:.02em;margin:4px 0 4px}
 .av-ayuda{font-size:13px;color:var(--tx2);margin-bottom:14px;line-height:1.45}
@@ -469,10 +508,10 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev147";
+const APP_REV="Rev148";
 // Rev143: número de versión que se muestra al lado de CONTROLOBRA: AAMM.revisión.DD con la fecha de la revisión
 // (ej. 2611.143.14 = revisión 143 del 14/11/2026). En cada revisión nueva se actualizan APP_REV y APP_FECHA.
-const APP_FECHA="2026-11-14";
+const APP_FECHA="2026-11-15";
 const APP_VER=APP_FECHA.slice(2,4)+APP_FECHA.slice(5,7)+"."+APP_REV.replace(/\D/g,"")+"."+APP_FECHA.slice(8,10);
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
@@ -1118,7 +1157,8 @@ const calcPosicionesMontana=async()=>{
     const s=sesById[r.sesion_id];if(!s)return;
     const key=normKey(r.persona_id,r.dni_raw);
     if(!personEvents[key])personEvents[key]=[];
-    personEvents[key].push({t:new Date(s.cerrada_at).getTime(),puesto:s.puesto,dir:s.direccion});
+    // Rev148: + vehículo con el que pasó (Bajada chalet: con qué vehículo subió cada uno)
+    personEvents[key].push({t:new Date(s.cerrada_at).getTime(),puesto:s.puesto,dir:s.direccion,veh:s.vehiculo_id||(s.vehiculo_razon&&String(s.vehiculo_razon).startsWith("No registrado:")?s.vehiculo_razon:null)});
   });
   man.forEach(m=>{
     const key=normKey(m.persona_id,m.dni_raw)||("m_"+m.id);
@@ -3040,6 +3080,326 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
     {detalleV&&<VehiculoDetalleModal vehiculo={detalleV} proyectoId={proyectoId} onClose={()=>setDetalleV(null)}/>}
     {showMasivoTodoVeh&&<HabTodoModal proyectoId={proyectoId} currentUserId={currentUserId} tipo="vehiculo" onClose={()=>setShowMasivoTodoVeh(false)} onSaved={load}/>}
     {showMasivoVeh&&<HabMasivaVehModal proyectoId={proyectoId} currentUserId={currentUserId} habs={habs} onClose={()=>setShowMasivoVeh(false)} onSaved={load}/>}
+  </div>;
+}
+
+// ─── BAJADA CHALET (Rev148) ───────────────────────────────────────────────────
+// Logística arma cada tarde el reparto de la gente del chalet en los vehículos que están arriba (o subiendo) y lo
+// copia para WhatsApp. Personas y vehículos salen de calcPosicionesMontana (lo mismo que el contador del chalet):
+// cuentan los que están en el chalet y los que SUBEN (pasaron P2 y todavía no llegaron a P3); los que ya salieron por
+// P3 bajando no se cuentan. No se guarda en la base: el reparto queda solo en este dispositivo durante el día
+// (localStorage). La capacidad de cada vehículo es el total CON chofer; las "camionetas a subir" traen su chofer
+// desde abajo, así que para la gente del chalet dejan un lugar menos.
+const BJ_CAP=5;      // capacidad que se supone si el vehículo no la tiene cargada
+const BJ_NO="_no";   // destino "no baja en camioneta" (baja a pie o se queda)
+const bjKey=()=>"bajada_chalet_"+today();
+const bjLeer=()=>{
+  try{const x=JSON.parse(localStorage.getItem(bjKey())||"null");
+    if(x&&typeof x==="object")return{a:x.a||{},extras:x.extras||[],cap:x.cap||{},emp:x.emp||{},off:x.off||[]};}catch(e){}
+  return{a:{},extras:[],cap:{},emp:{},off:[]};
+};
+const bjGuardar=(x)=>{try{localStorage.setItem(bjKey(),JSON.stringify(x));}catch(e){}};
+const bjNom=(p)=>p._synth?("DNI "+p.dni):(`${p.nombre||""} ${p.apellido||""}`.trim()||("DNI "+p.dni));
+const bjEsUUID=(k)=>typeof k==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(k);
+const bjHora=(t)=>String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0");
+const bjFecha=(t)=>["dom","lun","mar","mié","jue","vie","sáb"][t.getDay()]+" "+String(t.getDate()).padStart(2,"0")+"/"+String(t.getMonth()+1).padStart(2,"0");
+const BJ_COLS_VEH="id,patente,descripcion,tipo,empresa,capacidad";
+const bjCargar=async()=>{
+  const pos=await calcPosicionesMontana();
+  // "chalet" = última fichada P3 entrada; "sube" = última P2 entrada (todavía no llegó a P3). P3 salida = bajando.
+  const donde=(last)=>!last?null:(last.puesto==="Puesto 3"&&last.dir==="entrada")?"chalet":(last.puesto==="Puesto 2"&&last.dir==="entrada")?"sube":null;
+  const pk=[],vk=[];let bajP=0,bajV=0;
+  Object.entries(pos.persona).forEach(([k,p])=>{if(p!=="chalet"&&p!=="camino")return;const d=donde(pos.personaLast[k]);if(d)pk.push([k,d]);else bajP++;});
+  Object.entries(pos.vehiculo).forEach(([k,p])=>{if(p!=="chalet"&&p!=="camino")return;const d=donde(pos.vehiculoLast[k]);if(d)vk.push([k,d]);else bajV++;});
+  const ids=pk.map(([k])=>k).filter(bjEsUUID);
+  const persMap={};
+  for(let i=0;i<ids.length;i+=100){
+    const{data}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,dni",inFilter:["id",ids.slice(i,i+100)]});
+    if(data===null)throw new Error("personas");
+    data.forEach(p=>{persMap[p.id]=p;});
+  }
+  const[{data:vehs},{data:habs}]=await Promise.all([
+    db.sel("vehiculos",{cols:BJ_COLS_VEH,f:[["activo","eq",true]],ord:"patente.asc",lim:3000}),
+    db.sel("habilitaciones",{cols:"vehiculo_id",f:[["entity_type","eq","vehiculo"],["tipo","eq","sh_manejo"],["suspendida","eq",true]],lim:3000}),
+  ]);
+  if(vehs===null)throw new Error("vehiculos");
+  const vm={};vehs.forEach(v=>{vm[v.id]=v;});
+  const faltan=vk.map(([k])=>k).filter(k=>bjEsUUID(k)&&!vm[k]);
+  if(faltan.length){const{data}=await db.sel("vehiculos",{cols:BJ_COLS_VEH,inFilter:["id",faltan]});(data||[]).forEach(v=>{vm[v.id]=v;});}
+  const pers=pk.map(([k,d])=>{
+    const p=persMap[k];
+    const base=p?{...p,_synth:false}:{nombre:"",apellido:"",empresa:"",dni:String(k).startsWith("m_")?"sin DNI":k,_synth:true};
+    return{...base,k,pos:d,veh:(pos.personaLast[k]&&pos.personaLast[k].veh)||null,grp:base._synth?"SIN REGISTRAR":String(empresaGrupo(base.empresa)).toUpperCase()};
+  });
+  const up=vk.map(([k,d])=>{
+    const v=vm[k];
+    const base=v?{...v,_synth:false}:{id:null,patente:String(k).replace("No registrado:","").trim()||"?",descripcion:"No registrado en la base",tipo:"Camioneta",empresa:"",capacidad:null,_synth:true};
+    return{...base,k,pos:d,nSube:pers.filter(p=>p.pos==="sube"&&p.veh===k).length};
+  });
+  up.sort((a,b)=>a.pos===b.pos?String(a.patente).localeCompare(String(b.patente)):(a.pos==="chalet"?-1:1));
+  return{pers,up,todos:vehs,susp:new Set((habs||[]).map(h=>h.vehiculo_id)),bajP,bajV,at:new Date()};
+};
+
+function BjVehModal({v,empresas,onClose,onGuardar}){
+  const[cap,setCap]=useState(v.capSup?"":String(v.cap));
+  const[emp,setEmp]=useState(v.empresa||"");
+  const[busy,setBusy]=useState(false);
+  const n=Number(cap);const ok=Number.isInteger(n)&&n>=1&&n<=80;
+  const guardar=async()=>{setBusy(true);const r=await onGuardar({capacidad:n,empresa:emp.trim().toUpperCase()});setBusy(false);if(r!==false)onClose();};
+  return <div className="mo" onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div className="md">
+    <div className="mh"><div className="mt">{VI[v.tipo]||"🛻"} {v.patente}</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      {v.descripcion&&<div style={{fontSize:13,color:"var(--tx2)",marginBottom:12}}>{v.descripcion}</div>}
+      <div className="row2">
+        <div className="f"><label>Capacidad (con chofer)</label><input type="number" inputMode="numeric" min="1" placeholder={String(BJ_CAP)} value={cap} onChange={e=>setCap(e.target.value)}/></div>
+        <div className="f"><label>Empresa</label><input list="bj-emps" placeholder="Ej: ALUSA" value={emp} onChange={e=>setEmp(e.target.value)}/></div>
+      </div>
+      <datalist id="bj-emps">{empresas.map(e=><option key={e} value={e}/>)}</datalist>
+      <div style={{fontSize:12,color:"var(--tx2)",lineHeight:1.45}}>{v.id
+        ?"Se guarda en el vehículo: también cambia en Habilitaciones → Vehículos. La empresa sirve para que \"Completar automático\" ponga a cada uno en las camionetas de su empresa."
+        :"Este vehículo no está en la base: el cambio queda solo para este reparto."}</div>
+    </div>
+    <div className="mf"><button className="bcanc" onClick={onClose}>Cancelar</button><button className="bp" disabled={!ok||busy} onClick={guardar}>{busy?"Guardando...":"Guardar"}</button></div>
+  </div></div>;
+}
+
+function BjAgregarModal({todos,usados,susp,onClose,onAgregar}){
+  const[q,setQ]=useState("");
+  const[cap,setCap]=useState(String(BJ_CAP));
+  const qn=empNorm(q);
+  const lista=todos.filter(v=>!usados.has(v.id)&&(!qn||empNorm(`${v.patente} ${v.descripcion||""} ${v.empresa||""}`).includes(qn))).slice(0,80);
+  return <div className="mo" onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div className="md">
+    <div className="mh"><div className="mt">Camioneta a subir</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.45}}>Elegí la que vas a mandar. Su chofer sube desde abajo, así que para la gente del chalet queda un lugar menos.</div>
+      <input className="fi" style={{width:"100%",marginBottom:8}} placeholder="Buscar patente, descripción o empresa..." value={q} onChange={e=>setQ(e.target.value)}/>
+      <div style={{maxHeight:300,overflowY:"auto",border:"1px solid var(--bd)",borderRadius:6}}>
+        {lista.map(v=>{const no=susp.has(v.id);return <div key={v.id} className={"bj-pick"+(no?" dis":"")} onClick={()=>{if(!no)onAgregar({id:v.id,patente:v.patente,descripcion:v.descripcion||"",empresa:v.empresa||"",tipo:v.tipo,capacidad:v.capacidad});}}>
+          <span>{VI[v.tipo]||"🚗"} <b className="mn" style={{fontSize:14}}>{v.patente}</b> <span style={{color:"var(--tx2)",fontSize:12}}>{v.descripcion||""}{v.empresa?" · "+v.empresa:""}</span></span>
+          <span style={{fontSize:12,color:no?"var(--rd)":"var(--tx2)",whiteSpace:"nowrap"}}>{no?"no sube (Sub. Chalet susp.)":(v.capacidad?v.capacidad+" lugares":"sin capacidad")}</span>
+        </div>;})}
+        {!lista.length&&<div style={{padding:14,color:"var(--tx2)",fontSize:13}}>No hay vehículos con esa búsqueda.</div>}
+      </div>
+      <div style={{display:"flex",gap:8,alignItems:"center",marginTop:14,flexWrap:"wrap"}}>
+        <span style={{fontSize:13,color:"var(--tx2)"}}>¿Todavía no sabés cuál? Una de</span>
+        <input className="fi" type="number" inputMode="numeric" min="2" style={{width:64}} value={cap} onChange={e=>setCap(e.target.value)}/>
+        <span style={{fontSize:13,color:"var(--tx2)"}}>lugares</span>
+        <button className="bsm" onClick={()=>{const n=Number(cap);if(!(Number.isInteger(n)&&n>=2)){alert("Poné cuántos lugares tiene, contando al chofer.");return;}onAgregar({id:null,patente:"",descripcion:"",empresa:"",tipo:"Camioneta",capacidad:n});}}>Agregar sin patente</button>
+      </div>
+    </div>
+  </div></div>;
+}
+
+function BajadaChalet({user}){
+  const[d,setD]=useState(null);
+  const[err,setErr]=useState("");
+  const[cargando,setCargando]=useState(false);
+  const[plan,setPlanRaw]=useState(bjLeer);
+  const setPlan=(fn)=>setPlanRaw(prev=>{const n=typeof fn==="function"?fn(prev):fn;bjGuardar(n);return n;});
+  const[sel,setSel]=useState(()=>new Set());
+  const[editar,setEditar]=useState(null);
+  const[agregar,setAgregar]=useState(false);
+  const[verTxt,setVerTxt]=useState(false);
+  const[copiado,setCopiado]=useState(false);
+  const arrastre=useRef(null);
+  const cargar=async(silencioso)=>{
+    if(!silencioso)setCargando(true);
+    try{const x=await bjCargar();setD(x);setErr("");}
+    catch(e){if(!silencioso)setErr("No se pudo leer quién está en el chalet. Revisá la conexión y tocá Actualizar.");}
+    if(!silencioso)setCargando(false);
+  };
+  useEffect(()=>{cargar(false);const i=setInterval(()=>cargar(true),60000);return()=>clearInterval(i);},[]);
+  if(!d)return <div>{err?<div className="warn">{err} <button className="bsm" onClick={()=>cargar(false)}>Reintentar</button></div>:<Spin t="Leyendo quién está en el chalet..."/>}</div>;
+
+  // ── vehículos del reparto: los de arriba, los que suben y los "a subir" ──
+  const off=new Set(plan.off);
+  let nExtra=0;
+  const V=[...d.up.map(v=>({...v,extra:false})),...plan.extras.map(x=>({...x,pos:"subir",extra:true}))].map(v=>{
+    const local=!v.extra&&!v.id; // vehículo no registrado: capacidad y empresa quedan en el reparto
+    const capC=local&&plan.cap[v.k]!=null?plan.cap[v.k]:v.capacidad;
+    const cap=Number(capC)>0?Number(capC):BJ_CAP;
+    return{...v,
+      patente:v.patente||("A subir "+(++nExtra)),
+      empresa:local&&plan.emp[v.k]!=null?plan.emp[v.k]:(v.empresa||""),
+      cap,capSup:!(Number(capC)>0),lug:Math.max(0,cap-(v.extra?1:0)),cuenta:!off.has(v.k)};
+  });
+  const Vc=V.filter(v=>v.cuenta);
+  const vOk=new Set(Vc.map(v=>v.k));
+  const enV={};Vc.forEach(v=>{enV[v.k]=[];});
+  const sinLugar=[],noBaja=[];
+  d.pers.forEach(p=>{const a=plan.a[p.k];if(a===BJ_NO)noBaja.push(p);else if(a&&vOk.has(a))enV[a].push(p);else sinLugar.push(p);});
+  const nBajan=d.pers.length-noBaja.length;
+  const lugares=Vc.reduce((s,v)=>s+v.lug,0);
+  const dif=lugares-nBajan; // negativo = faltan lugares
+  const subir=dif<0?Math.ceil(-dif/(BJ_CAP-1)):0;
+  const nChalet=d.pers.filter(p=>p.pos==="chalet").length,nSube=d.pers.length-nChalet;
+  const empresas=[...new Set([...d.todos.map(v=>String(v.empresa||"").trim().toUpperCase()),...d.pers.filter(p=>!p._synth).map(p=>p.grp)].filter(x=>x&&x!=="SIN EMPRESA"))].sort();
+  const ordP=(ps)=>ps.slice().sort((a,b)=>bjNom(a).localeCompare(bjNom(b)));
+  const patDe=(k)=>{const v=V.find(x=>x.k===k);return v?v.patente:"";};
+
+  // ── acciones ──
+  const mover=(ks,dest)=>{if(!ks||!ks.length)return;setPlan(p=>{const a={...p.a};ks.forEach(k=>{if(dest)a[k]=dest;else delete a[k];});return{...p,a};});setSel(new Set());};
+  const togSel=(k)=>setSel(s=>{const n=new Set(s);n.has(k)?n.delete(k):n.add(k);return n;});
+  const togGrupo=(ks)=>setSel(s=>{const n=new Set(s);const todos=ks.every(k=>n.has(k));ks.forEach(k=>todos?n.delete(k):n.add(k));return n;});
+  const arrastrar=(ks)=>(e)=>{arrastre.current=ks;try{e.dataTransfer.setData("text/plain","bajada");}catch(_){}};
+  const soltarEn=(dest)=>({onDragOver:e=>e.preventDefault(),onDrop:e=>{e.preventDefault();const ks=arrastre.current;arrastre.current=null;mover(ks,dest);}});
+  // Completa solo a los que no tienen lugar (no toca lo que ya se acomodó): 1) con el vehículo en el que subió,
+  // 2) en vehículos de su empresa, 3) el resto por empresa, tratando de no separar a los de la misma empresa.
+  const auto=()=>{
+    const a={...plan.a};const ocup={};Vc.forEach(v=>{ocup[v.k]=enV[v.k].length;});
+    const libre=v=>v.lug-ocup[v.k];
+    const pon=(p,v)=>{a[p.k]=v.k;ocup[v.k]++;};
+    let resto=sinLugar.slice();
+    resto=resto.filter(p=>{const v=Vc.find(x=>!x.extra&&x.k===p.veh);if(v&&libre(v)>0){pon(p,v);return false;}return true;});
+    resto=resto.filter(p=>{const v=Vc.filter(x=>x.empresa&&String(empresaGrupo(x.empresa)).toUpperCase()===p.grp&&libre(x)>0).sort((x,y)=>libre(y)-libre(x))[0];if(v){pon(p,v);return false;}return true;});
+    const g={};resto.forEach(p=>(g[p.grp]=g[p.grp]||[]).push(p));
+    Object.values(g).sort((x,y)=>y.length-x.length).forEach(ps=>{
+      const r=ps.slice();
+      while(r.length){
+        const l=Vc.filter(v=>libre(v)>0);if(!l.length)return;
+        const v=l.filter(v=>libre(v)>=r.length).sort((x,y)=>libre(x)-libre(y))[0]||l.sort((x,y)=>libre(y)-libre(x))[0];
+        r.splice(0,libre(v)).forEach(p=>pon(p,v));
+      }
+    });
+    setPlan(p=>({...p,a}));setSel(new Set());
+  };
+  const vaciar=()=>{if(confirm("¿Vaciar el reparto? Todos vuelven a \"Sin camioneta\" (las camionetas a subir quedan)."))setPlan(p=>({...p,a:{}}));setSel(new Set());};
+  const guardarVeh=async(v,f)=>{
+    if(v.id){
+      const{ok}=await db.upd("vehiculos",{capacidad:f.capacidad,empresa:f.empresa},[["id","eq",v.id]]);
+      if(!ok){alert("No se pudo guardar el vehículo. Reintentá.");return false;}
+      if(v.extra)setPlan(p=>({...p,extras:p.extras.map(x=>x.k===v.k?{...x,capacidad:f.capacidad,empresa:f.empresa}:x)}));
+      else await cargar(true);
+      return true;
+    }
+    if(v.extra)setPlan(p=>({...p,extras:p.extras.map(x=>x.k===v.k?{...x,capacidad:f.capacidad,empresa:f.empresa}:x)}));
+    else setPlan(p=>({...p,cap:{...p.cap,[v.k]:f.capacidad},emp:{...p.emp,[v.k]:f.empresa}}));
+    return true;
+  };
+  const usados=new Set([...d.up.map(v=>v.id),...plan.extras.map(x=>x.id)].filter(Boolean));
+
+  // ── texto para WhatsApp ──
+  const texto=()=>{
+    const ah=new Date();
+    const l=[`🚐 *BAJADA CHALET* · ${bjFecha(ah)} ${bjHora(ah)}`,
+      `👷 ${nBajan} personas para bajar · 🛻 ${Vc.length} vehículos · ${lugares} lugares`];
+    if(dif<0)l.push(`⚠️ Faltan ${-dif} lugar${-dif>1?"es":""}`);
+    Vc.forEach(v=>{
+      const ps=ordP(enV[v.k]);
+      l.push("");
+      l.push(`${VI[v.tipo]||"🛻"} *${v.patente}*${v.descripcion&&!v.extra?" · "+v.descripcion:""}${v.empresa?" · "+v.empresa:""} (${ps.length}/${v.lug})${v.pos==="sube"?" — subiendo":v.extra?" — A SUBIR (+ chofer)":""}`);
+      if(ps.length)ps.forEach(p=>l.push(`• ${bjNom(p)} (${p.grp})`));else l.push("_vacía_");
+    });
+    if(sinLugar.length){l.push("");l.push(`⚠️ *Sin lugar todavía* (${sinLugar.length})`);ordP(sinLugar).forEach(p=>l.push(`• ${bjNom(p)} (${p.grp})`));}
+    if(noBaja.length){l.push("");l.push(`🚶 *No bajan en camioneta* (${noBaja.length})`);ordP(noBaja).forEach(p=>l.push(`• ${bjNom(p)} (${p.grp})`));}
+    return l.join("\n");
+  };
+  const copiar=async()=>{
+    const t=texto();let ok=false;
+    try{await navigator.clipboard.writeText(t);ok=true;}catch(e){}
+    if(!ok){try{const ta=document.createElement("textarea");ta.value=t;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.select();ok=document.execCommand("copy");ta.remove();}catch(e){}}
+    if(ok){setCopiado(true);setTimeout(()=>setCopiado(false),2000);}
+    else{setVerTxt(true);alert("No se pudo copiar solo. Abajo está el texto: copialo a mano.");}
+  };
+  const whatsapp=()=>{window.open("https://wa.me/?text="+encodeURIComponent(texto()),"_blank");};
+
+  // ── pantalla ──
+  const chip=(p,conGrp)=><span key={p.k} className={"bj-p"+(sel.has(p.k)?" sel":"")} draggable
+    onDragStart={arrastrar(sel.has(p.k)?[...sel]:[p.k])}
+    onClick={e=>{e.stopPropagation();togSel(p.k);}}
+    title={p._synth?"DNI que no está en la base":(p.empresa||"")}>
+    {bjNom(p)}{conGrp&&<small> · {p.grp}</small>}{p.pos==="sube"&&<small className="bj-sube"> ↑ {patDe(p.veh)||"subiendo"}</small>}
+  </span>;
+  const tarjeta=(v)=>{
+    const ps=v.cuenta?ordP(enV[v.k]):[];const over=ps.length>v.lug;
+    return <div key={v.k} className={"bj-v"+(sel.size&&v.cuenta?" drop":"")+(over?" over":"")+(v.cuenta?"":" off")}
+      onClick={()=>{if(sel.size&&v.cuenta)mover([...sel],v.k);}} {...(v.cuenta?soltarEn(v.k):{})}>
+      <div className="bj-vh">
+        <span className="bj-vt">{VI[v.tipo]||"🛻"} <b className="mn">{v.patente}</b></span>
+        <span className={"tag "+(v.pos==="chalet"?"t-a":v.pos==="sube"?"t-p":"t-e")}>{v.pos==="chalet"?"en chalet":v.pos==="sube"?"subiendo":"a subir"}</span>
+        <span className="bj-cnt" style={{color:over?"var(--rd)":(v.cuenta&&ps.length===v.lug?"var(--gr)":"var(--tx2)")}}>{v.cuenta?`${ps.length}/${v.lug}`:"—"}</span>
+      </div>
+      <div className="bj-vd">
+        {[!v.extra&&v.descripcion,v.empresa||"sin empresa"].filter(Boolean).join(" · ")}
+        {v.pos==="sube"&&` · viene con ${v.nSube} pers.`}
+        {v.extra&&` · ${v.cap} lugares, uno es su chofer`}
+        {v.capSup&&<span style={{color:"var(--acc)"}}> · sin capacidad cargada (supongo {BJ_CAP})</span>}
+      </div>
+      {v.cuenta&&<div className="bj-bar"><i style={{width:Math.min(100,v.lug?Math.round(ps.length/v.lug*100):0)+"%"}}/></div>}
+      {v.cuenta&&<div>{ps.map(p=>chip(p,true))}{!ps.length&&<span className="bj-vacia">Vacía{sel.size?" — tocá para poner acá":""}</span>}</div>}
+      <div className="bj-va" onClick={e=>e.stopPropagation()}>
+        <button className="bsm" onClick={()=>setEditar(v)}>✏️ Capacidad / empresa</button>
+        {v.pos==="sube"&&<label className="bj-chk"><input type="checkbox" checked={v.cuenta} onChange={e=>{const on=e.target.checked;setPlan(p=>({...p,off:on?p.off.filter(k=>k!==v.k):[...p.off,v.k]}));}}/> Contarla para bajar</label>}
+        {v.extra&&<button className="bsm bsm-r" onClick={()=>setPlan(p=>({...p,extras:p.extras.filter(x=>x.k!==v.k)}))}>Quitar</button>}
+      </div>
+    </div>;
+  };
+  const grupos={};sinLugar.forEach(p=>(grupos[p.grp]=grupos[p.grp]||[]).push(p));
+  const gOrd=Object.entries(grupos).sort((a,b)=>b[1].length-a[1].length||a[0].localeCompare(b[0]));
+
+  return <div>
+    <div className="ph2">
+      <div className="ptit">Bajada <span>chalet</span></div>
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        <span style={{fontSize:11,color:"var(--tx3)",fontFamily:"var(--fm)"}}>actualizado {bjHora(d.at)}</span>
+        <button className="bsm" disabled={cargando} onClick={()=>cargar(false)}>{cargando?"Leyendo...":"↻ Actualizar"}</button>
+      </div>
+    </div>
+    {err&&<div className="warn">{err}</div>}
+    <div className="sg">
+      <div className="sc"><div className="sv">{nChalet}</div><div className="slb">En el chalet</div></div>
+      <div className="sc"><div className="sv" style={{color:"var(--acc2)"}}>{nSube}</div><div className="slb">Subiendo ahora</div></div>
+      <div className="sc"><div className="sv">{lugares}</div><div className="slb">Lugares · {Vc.length} vehíc.</div></div>
+      <div className="sc"><div className="sv" style={{color:dif<0?"var(--rd)":"var(--gr)"}}>{Math.abs(dif)}</div><div className="slb">{dif<0?"Faltan lugares":"Lugares libres"}</div></div>
+    </div>
+    <div className={"bj-aviso "+(dif<0?"mal":"bien")}>
+      {dif<0?<span>⚠️ Con lo que hay arriba no alcanza: <b>hay que subir {subir} camioneta{subir>1?"s":""}</b> (contando camionetas de {BJ_CAP} con su chofer).</span>:<span>✅ Alcanza con lo que hay arriba.</span>}
+      {noBaja.length>0&&<span> {noBaja.length} no baja{noBaja.length>1?"n":""} en camioneta.</span>}
+      {(d.bajP>0||d.bajV>0)&&<span style={{color:"var(--tx2)"}}> Bajando ahora (no se cuentan): {d.bajP} pers. y {d.bajV} vehíc.</span>}
+    </div>
+    <div className="bj-acc">
+      <button className="badd" onClick={auto}>⚡ Completar automático</button>
+      <button className="bsm" onClick={()=>setAgregar(true)}>+ Camioneta a subir</button>
+      <button className="bsm" onClick={vaciar}>Vaciar reparto</button>
+    </div>
+    <div className="bj-ayuda">Tocá una empresa o personas sueltas y después el vehículo (en la PC también se puede arrastrar). Para cambiar a alguien de vehículo, tocalo y tocá el otro. "Completar automático" acomoda solo a los que no tienen lugar: primero en el vehículo en que subieron, después en los de su empresa y el resto por empresa.</div>
+    <div className="bj-w">
+      <div className="bj-col" {...soltarEn(null)}>
+        <div className="slbl">Sin camioneta ({sinLugar.length})</div>
+        {gOrd.map(([g,ps])=>{const ks=ps.map(p=>p.k);const todos=ks.every(k=>sel.has(k));return <div key={g} className="bj-g">
+          <div className={"bj-gt"+(todos?" sel":"")} draggable onDragStart={arrastrar(ks)} onClick={()=>togGrupo(ks)}>👥 {g} <span>{ps.length}</span></div>
+          <div>{ordP(ps).map(p=>chip(p,false))}</div>
+        </div>;})}
+        {!sinLugar.length&&<div className="bj-vacia" style={{color:"var(--gr)"}}>{d.pers.length?"✓ Todos tienen lugar":"No hay nadie en el chalet ni subiendo."}</div>}
+        {noBaja.length>0&&<div className="bj-g" style={{marginTop:16}} {...soltarEn(BJ_NO)}>
+          <div className="slbl">🚶 No bajan en camioneta ({noBaja.length})</div>
+          <div>{ordP(noBaja).map(p=>chip(p,true))}</div>
+        </div>}
+      </div>
+      <div className="bj-col">
+        <div className="slbl">Vehículos</div>
+        {V.map(tarjeta)}
+        {!V.length&&<div className="bj-vacia">No hay vehículos arriba ni subiendo. Agregá las camionetas a subir.</div>}
+      </div>
+    </div>
+    {sel.size>0&&<div className="bj-selbar">
+      <div className="bj-selt"><b>{sel.size}</b> seleccionad{sel.size===1?"a":"as"}: tocá a dónde van</div>
+      <div className="bj-selb">
+        {Vc.map(v=>{const n=enV[v.k].length;return <button key={v.k} className="bsm" onClick={()=>mover([...sel],v.k)}>{v.patente} <span style={{color:n>=v.lug?"var(--rd)":"var(--gr)"}}>{n}/{v.lug}</span></button>;})}
+        <button className="bsm" onClick={()=>mover([...sel],BJ_NO)}>🚶 No baja en camioneta</button>
+        <button className="bsm" onClick={()=>mover([...sel],null)}>Sacar</button>
+        <button className="bsm bsm-r" onClick={()=>setSel(new Set())}>✕</button>
+      </div>
+    </div>}
+    <div className="bj-wa">
+      <button className="badd bj-wab" onClick={copiar}>{copiado?"✓ Copiado":"📋 Copiar para WhatsApp"}</button>
+      <button className="bsm" onClick={whatsapp}>Abrir WhatsApp</button>
+      <button className="bsm" onClick={()=>setVerTxt(!verTxt)}>{verTxt?"Ocultar texto":"Ver texto"}</button>
+    </div>
+    {verTxt&&<pre className="bj-txt">{texto()}</pre>}
+    <div className="bj-ayuda" style={{marginTop:10}}>El reparto no se guarda en el sistema: queda en este dispositivo hasta que termine el día.</div>
+    {editar&&<BjVehModal v={editar} empresas={empresas} onClose={()=>setEditar(null)} onGuardar={f=>guardarVeh(editar,f)}/>}
+    {agregar&&<BjAgregarModal todos={d.todos} usados={usados} susp={d.susp} onClose={()=>setAgregar(false)} onAgregar={x=>{setPlan(p=>({...p,extras:[...p.extras,{...x,k:"x"+Date.now()}]}));setAgregar(false);}}/>}
   </div>;
 }
 
@@ -8288,7 +8648,7 @@ function App(){
     puesto:           [{k:"sc",l:"Escanear"},{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
     sh:               [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
     cp:               [{k:"per",l:"Personal"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
-    logistica:        [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
+    logistica:        [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"baj",l:"Bajada chalet"},{k:"cvc",l:"Chalet"}],
     cocina_campamento:[{k:"avi",l:"Aviso de ingreso"},{k:"vi",l:"Viandas"}],
     cocina_chalet:    [{k:"avi",l:"Aviso de ingreso"},{k:"vi",l:"Viandas"}],
     admin_viandas:    [{k:"avi",l:"Aviso de ingreso"},{k:"vi",l:"Viandas"}],
@@ -8299,12 +8659,12 @@ function App(){
     // Rev112: lo mismo que la vista sin login (como solapas) + Reportes JO completo. Rev114: + Registros (solo ver).
     sobrestante:      TABS_SOB,
     jefe_obra:        TABS_SOB,
-    admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"vi",l:"Viandas"},{k:"cvc",l:"Chalet"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"},{k:"adm",l:"Usuarios"}],
+    admin:            [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"sc",l:"Puestos"},{k:"reg",l:"Registros"},{k:"baj",l:"Bajada chalet"},{k:"vi",l:"Viandas"},{k:"cvc",l:"Chalet"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"},{k:"adm",l:"Usuarios"}],
   };
   // Agrupación visual de solapas (cada rol ve solo los grupos donde tiene alguna solapa)
   const NAV_GROUPS=[
     {t:"Habilitaciones",    ks:["per","veh","avi"]},
-    {t:"Control de puestos",ks:["sc","reg"]},
+    {t:"Control de puestos",ks:["sc","reg","baj"]},
     {t:"Gastronomía",       ks:["vi","cvc"]},
     {t:"Reportes JO",       ks:["jpd","jhs"]},
     {t:"Administración",    ks:["adm"]},
@@ -8352,6 +8712,7 @@ function App(){
       {tab==="per"&&<PersonalPanel userRole={uv.rol} currentUserId={uv.id} proyectoId={pid} user={uv}/>}
       {tab==="veh"&&<VehiculosPanel userRole={uv.rol} currentUserId={uv.id} proyectoId={pid}/>}
       {tab==="reg"&&<Registros defaultPuesto={uv.rol==="puesto"?uv.puesto_nombre:""} user={uv}/>}
+      {tab==="baj"&&<CmdErrBoundary><BajadaChalet user={uv}/></CmdErrBoundary>}
       {tab==="sc" &&<Puesto user={uv} pid={pid}/>}
       {tab==="cvc"&&<ConteoViandasChalet user={uv} proyectoId={pid}/>}
       {tab==="vi" &&<Comedor user={uv} proyectoId={pid}/>}
