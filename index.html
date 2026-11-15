@@ -378,6 +378,8 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .bj-txt{white-space:pre-wrap;font-family:var(--fm);font-size:12px;background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:12px;margin-top:10px;max-width:100%;overflow-x:auto}
 .bj-pick{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:9px 12px;border-bottom:1px solid var(--bd);cursor:pointer}.bj-pick:hover{background:rgba(59,130,246,.08)}
 .bj-pick.dis{opacity:.45;cursor:not-allowed}
+.bj-est{font-size:12px;color:var(--tx2);font-family:var(--fm)}.bj-est.ok{color:var(--gr)}
+.bj-ro .bj-p,.bj-ro .bj-gt{cursor:default}.bj-ro .bj-gt:hover{background:none;color:inherit}
 /* Rev144: aviso de ingreso en pasos */
 .av-preg{font-family:var(--fh);font-size:22px;font-weight:800;letter-spacing:.02em;margin:4px 0 4px}
 .av-ayuda{font-size:13px;color:var(--tx2);margin-bottom:14px;line-height:1.45}
@@ -3087,18 +3089,17 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
 // Logística arma cada tarde el reparto de la gente del chalet en los vehículos que están arriba (o subiendo) y lo
 // copia para WhatsApp. Personas y vehículos salen de calcPosicionesMontana (lo mismo que el contador del chalet):
 // cuentan los que están en el chalet y los que SUBEN (pasaron P2 y todavía no llegaron a P3); los que ya salieron por
-// P3 bajando no se cuentan. No se guarda en la base: el reparto queda solo en este dispositivo durante el día
-// (localStorage). La capacidad de cada vehículo es el total CON chofer; las "camionetas a subir" traen su chofer
-// desde abajo, así que para la gente del chalet dejan un lugar menos.
+// P3 bajando no se cuentan. El reparto se guarda en obra.bajada_chalet (1 fila por día, el reparto en jsonb) con el RPC
+// obra.bajada_guardar (solo admin y logística, con control de versión: si otro lo cambió en el medio se carga la versión
+// del otro). Lo ven logística, admin y los puestos (solo mirar). Es solo informativo: no cambia nada de los puestos ni
+// de los conteos. La capacidad de cada vehículo es el total CON chofer; las "camionetas a subir" traen su chofer desde
+// abajo, así que para la gente del chalet dejan un lugar menos.
 const BJ_CAP=5;      // capacidad que se supone si el vehículo no la tiene cargada
 const BJ_NO="_no";   // destino "no baja en camioneta" (baja a pie o se queda)
-const bjKey=()=>"bajada_chalet_"+today();
-const bjLeer=()=>{
-  try{const x=JSON.parse(localStorage.getItem(bjKey())||"null");
-    if(x&&typeof x==="object")return{a:x.a||{},extras:x.extras||[],cap:x.cap||{},emp:x.emp||{},off:x.off||[]};}catch(e){}
-  return{a:{},extras:[],cap:{},emp:{},off:[]};
-};
-const bjGuardar=(x)=>{try{localStorage.setItem(bjKey(),JSON.stringify(x));}catch(e){}};
+const BJ_EDITAN=["admin","logistica"];
+const bjNorm=(x)=>(x&&typeof x==="object"&&!Array.isArray(x))
+  ?{a:x.a||{},extras:Array.isArray(x.extras)?x.extras:[],cap:x.cap||{},emp:x.emp||{},off:Array.isArray(x.off)?x.off:[]}
+  :{a:{},extras:[],cap:{},emp:{},off:[]};
 const bjNom=(p)=>p._synth?("DNI "+p.dni):(`${p.nombre||""} ${p.apellido||""}`.trim()||("DNI "+p.dni));
 const bjEsUUID=(k)=>typeof k==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(k);
 const bjHora=(t)=>String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0");
@@ -3191,25 +3192,87 @@ function BjAgregarModal({todos,usados,susp,onClose,onAgregar}){
 }
 
 function BajadaChalet({user}){
+  const puedeEditar=!!user&&BJ_EDITAN.includes(user.rol);
+  const[fecha]=useState(today);
   const[d,setD]=useState(null);
   const[err,setErr]=useState("");
   const[cargando,setCargando]=useState(false);
-  const[plan,setPlanRaw]=useState(bjLeer);
-  const setPlan=(fn)=>setPlanRaw(prev=>{const n=typeof fn==="function"?fn(prev):fn;bjGuardar(n);return n;});
+  const[plan,setPlanRaw]=useState(()=>bjNorm(null));
+  const planRef=useRef(plan);
+  const verRef=useRef(0);           // versión guardada que tengo cargada
+  const cambios=useRef(0);          // cambios hechos acá
+  const guardadoN=useRef(0);        // hasta qué cambio quedó guardado
+  const guardandoRef=useRef(false);
+  const textoRef=useRef(null);
+  const[tick,setTick]=useState(0);
+  const[estado,setEstado]=useState({t:"ok",msg:""}); // ok | pend | guardando | error
+  const[srv,setSrv]=useState({leido:false,existe:false,por:"",at:null,err:""});
+  const[aviso,setAviso]=useState("");
   const[sel,setSel]=useState(()=>new Set());
   const[editar,setEditar]=useState(null);
   const[agregar,setAgregar]=useState(false);
   const[verTxt,setVerTxt]=useState(false);
   const[copiado,setCopiado]=useState(false);
   const arrastre=useRef(null);
+  const aplicar=(x)=>{const n=bjNorm(x);planRef.current=n;setPlanRaw(n);};
+  const setPlan=(fn)=>{
+    if(!puedeEditar)return;
+    const n=bjNorm(typeof fn==="function"?fn(planRef.current):fn);
+    planRef.current=n;setPlanRaw(n);cambios.current++;setEstado({t:"pend",msg:""});setTick(t=>t+1);
+  };
   const cargar=async(silencioso)=>{
     if(!silencioso)setCargando(true);
     try{const x=await bjCargar();setD(x);setErr("");}
     catch(e){if(!silencioso)setErr("No se pudo leer quién está en el chalet. Revisá la conexión y tocá Actualizar.");}
     if(!silencioso)setCargando(false);
   };
-  useEffect(()=>{cargar(false);const i=setInterval(()=>cargar(true),60000);return()=>clearInterval(i);},[]);
-  if(!d)return <div>{err?<div className="warn">{err} <button className="bsm" onClick={()=>cargar(false)}>Reintentar</button></div>:<Spin t="Leyendo quién está en el chalet..."/>}</div>;
+  // Trae el reparto guardado de hoy. Si acá no hay cambios sin guardar y el de la base es más nuevo, lo carga.
+  const leerPlan=async(silencioso)=>{
+    const{data}=await db.sel("bajada_chalet",{cols:"plan,version,actualizado_nombre,actualizado_at",f:[["fecha","eq",fecha]],lim:1});
+    if(data===null){
+      setSrv(s=>({...s,leido:true,err:silencioso&&s.leido?s.err:"No se pudo leer el reparto guardado. Si es la primera vez, falta correr el SQL de la Rev148 en Supabase."}));
+      return;
+    }
+    const r=data[0];
+    setSrv(s=>({...s,leido:true,err:"",existe:!!r,...(r?{por:r.actualizado_nombre||"",at:r.actualizado_at}:{})}));
+    if(r&&r.version>verRef.current&&cambios.current===guardadoN.current&&!guardandoRef.current){verRef.current=r.version;aplicar(r.plan);}
+  };
+  const guardar=async()=>{
+    if(!puedeEditar||guardandoRef.current)return;
+    if(cambios.current===guardadoN.current){setEstado({t:"ok",msg:""});return;}
+    guardandoRef.current=true;const n0=cambios.current;setEstado({t:"guardando",msg:""});
+    let txt=null;try{txt=textoRef.current?textoRef.current():null;}catch(e){}
+    const r=await db.rpc("bajada_guardar",{p_fecha:fecha,p_plan:planRef.current,p_version:verRef.current,p_texto:txt});
+    guardandoRef.current=false;
+    const x=r.data;
+    if(r.ok&&x&&x.ok){
+      verRef.current=x.version;guardadoN.current=n0;
+      setSrv(s=>({...s,existe:true,por:x.por||"",at:x.at,err:""}));
+      if(cambios.current!==n0)guardar();else setEstado({t:"ok",msg:""});
+      return;
+    }
+    if(r.ok&&x&&x.conflicto){
+      // Otro usuario guardó en el medio: se carga su versión (lo de acá se descarta) y se avisa
+      verRef.current=x.version;guardadoN.current=cambios.current;aplicar(x.plan);setSel(new Set());
+      setSrv(s=>({...s,existe:true,por:x.por||"",at:x.at,err:""}));
+      setEstado({t:"ok",msg:""});
+      setAviso(`${x.por||"Otro usuario"} cambió el reparto${x.at?" a las "+bjHora(new Date(x.at)):""} mientras lo armabas: se cargó su versión. Revisá y seguí desde ahí.`);
+      return;
+    }
+    const e=(x&&typeof x==="object")?x:{};const m=String(e.message||"");
+    setEstado({t:"error",msg:SIM_ACTIVO?"modo \"Ver como\", no se guarda."
+      :(e.code==="PGRST202"||/bajada_guardar|bajada_chalet/.test(m))?"falta correr el SQL de la Rev148 en Supabase."
+      :(e.code==="42501"||/permiso/i.test(m))?"tu usuario no tiene permiso para guardar el reparto."
+      :x===null?"sin conexión.":"error del servidor ("+(m||"sin detalle")+")."});
+  };
+  // Guarda solo, 1,2 s después del último cambio
+  useEffect(()=>{if(!tick)return;const t=setTimeout(guardar,1200);return()=>clearTimeout(t);},[tick]);
+  useEffect(()=>{
+    cargar(false);leerPlan(false);
+    const i=setInterval(()=>{cargar(true);leerPlan(true);if(cambios.current!==guardadoN.current&&!guardandoRef.current)guardar();},30000);
+    return()=>{clearInterval(i);if(cambios.current!==guardadoN.current)guardar();}; // al salir de la solapa, guarda lo pendiente
+  },[]);
+  if(!d||!srv.leido)return <div>{err?<div className="warn">{err} <button className="bsm" onClick={()=>cargar(false)}>Reintentar</button></div>:<Spin t="Leyendo quién está en el chalet..."/>}</div>;
 
   // ── vehículos del reparto: los de arriba, los que suben y los "a subir" ──
   const off=new Set(plan.off);
@@ -3295,19 +3358,20 @@ function BajadaChalet({user}){
     if(ok){setCopiado(true);setTimeout(()=>setCopiado(false),2000);}
     else{setVerTxt(true);alert("No se pudo copiar solo. Abajo está el texto: copialo a mano.");}
   };
+  textoRef.current=texto;
   const whatsapp=()=>{window.open("https://wa.me/?text="+encodeURIComponent(texto()),"_blank");};
 
   // ── pantalla ──
-  const chip=(p,conGrp)=><span key={p.k} className={"bj-p"+(sel.has(p.k)?" sel":"")} draggable
-    onDragStart={arrastrar(sel.has(p.k)?[...sel]:[p.k])}
-    onClick={e=>{e.stopPropagation();togSel(p.k);}}
+  const chip=(p,conGrp)=><span key={p.k} className={"bj-p"+(sel.has(p.k)?" sel":"")} draggable={puedeEditar}
+    onDragStart={puedeEditar?arrastrar(sel.has(p.k)?[...sel]:[p.k]):undefined}
+    onClick={puedeEditar?(e=>{e.stopPropagation();togSel(p.k);}):undefined}
     title={p._synth?"DNI que no está en la base":(p.empresa||"")}>
     {bjNom(p)}{conGrp&&<small> · {p.grp}</small>}{p.pos==="sube"&&<small className="bj-sube"> ↑ {patDe(p.veh)||"subiendo"}</small>}
   </span>;
   const tarjeta=(v)=>{
     const ps=v.cuenta?ordP(enV[v.k]):[];const over=ps.length>v.lug;
     return <div key={v.k} className={"bj-v"+(sel.size&&v.cuenta?" drop":"")+(over?" over":"")+(v.cuenta?"":" off")}
-      onClick={()=>{if(sel.size&&v.cuenta)mover([...sel],v.k);}} {...(v.cuenta?soltarEn(v.k):{})}>
+      onClick={()=>{if(sel.size&&v.cuenta)mover([...sel],v.k);}} {...(v.cuenta&&puedeEditar?soltarEn(v.k):{})}>
       <div className="bj-vh">
         <span className="bj-vt">{VI[v.tipo]||"🛻"} <b className="mn">{v.patente}</b></span>
         <span className={"tag "+(v.pos==="chalet"?"t-a":v.pos==="sube"?"t-p":"t-e")}>{v.pos==="chalet"?"en chalet":v.pos==="sube"?"subiendo":"a subir"}</span>
@@ -3321,13 +3385,21 @@ function BajadaChalet({user}){
       </div>
       {v.cuenta&&<div className="bj-bar"><i style={{width:Math.min(100,v.lug?Math.round(ps.length/v.lug*100):0)+"%"}}/></div>}
       {v.cuenta&&<div>{ps.map(p=>chip(p,true))}{!ps.length&&<span className="bj-vacia">Vacía{sel.size?" — tocá para poner acá":""}</span>}</div>}
-      <div className="bj-va" onClick={e=>e.stopPropagation()}>
+      {puedeEditar&&<div className="bj-va" onClick={e=>e.stopPropagation()}>
         <button className="bsm" onClick={()=>setEditar(v)}>✏️ Capacidad / empresa</button>
         {v.pos==="sube"&&<label className="bj-chk"><input type="checkbox" checked={v.cuenta} onChange={e=>{const on=e.target.checked;setPlan(p=>({...p,off:on?p.off.filter(k=>k!==v.k):[...p.off,v.k]}));}}/> Contarla para bajar</label>}
         {v.extra&&<button className="bsm bsm-r" onClick={()=>setPlan(p=>({...p,extras:p.extras.filter(x=>x.k!==v.k)}))}>Quitar</button>}
-      </div>
+      </div>}
+      {!puedeEditar&&v.pos==="sube"&&!v.cuenta&&<div className="bj-vacia">Logística no la cuenta para bajar.</div>}
     </div>;
   };
+  const hhmm=(t)=>t?bjHora(new Date(t)):"";
+  const estTxt=!puedeEditar
+    ?(srv.existe?`Armado por ${srv.por||"logística"} · ${hhmm(srv.at)}`:"Logística todavía no armó el reparto de hoy")
+    :estado.t==="guardando"?"Guardando..."
+    :estado.t==="pend"?"Cambios sin guardar..."
+    :estado.t==="error"?"⚠️ Sin guardar"
+    :srv.existe?`✓ Guardado ${hhmm(srv.at)}${srv.por?" · "+srv.por:""}`:"Todavía no se guardó nada hoy";
   const grupos={};sinLugar.forEach(p=>(grupos[p.grp]=grupos[p.grp]||[]).push(p));
   const gOrd=Object.entries(grupos).sort((a,b)=>b[1].length-a[1].length||a[0].localeCompare(b[0]));
 
@@ -3335,11 +3407,14 @@ function BajadaChalet({user}){
     <div className="ph2">
       <div className="ptit">Bajada <span>chalet</span></div>
       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-        <span style={{fontSize:11,color:"var(--tx3)",fontFamily:"var(--fm)"}}>actualizado {bjHora(d.at)}</span>
+        <span className={"bj-est"+(estado.t==="ok"&&srv.existe?" ok":"")}>{estTxt}</span>
         <button className="bsm" disabled={cargando} onClick={()=>cargar(false)}>{cargando?"Leyendo...":"↻ Actualizar"}</button>
       </div>
     </div>
     {err&&<div className="warn">{err}</div>}
+    {srv.err&&<div className="warn">⚠️ {srv.err}</div>}
+    {puedeEditar&&estado.t==="error"&&<div className="warn">⚠️ No se guardó el reparto: {estado.msg} <button className="bsm" onClick={guardar}>Reintentar</button></div>}
+    {aviso&&<div className="warn">⚠️ {aviso} <button className="bsm" onClick={()=>setAviso("")}>Entendido</button></div>}
     <div className="sg">
       <div className="sc"><div className="sv">{nChalet}</div><div className="slb">En el chalet</div></div>
       <div className="sc"><div className="sv" style={{color:"var(--acc2)"}}>{nSube}</div><div className="slb">Subiendo ahora</div></div>
@@ -3354,21 +3429,23 @@ function BajadaChalet({user}){
       {noBaja.length>0&&<span> {noBaja.length} no baja{noBaja.length>1?"n":""} en camioneta.</span>}
       {(d.bajP>0||d.bajV>0)&&<span style={{color:"var(--tx2)"}}> Bajando ahora (no se cuentan): {d.bajP} pers. y {d.bajV} vehíc.</span>}
     </div>
+    {puedeEditar?<>
     <div className="bj-acc">
       <button className="badd" onClick={auto}>⚡ Completar automático</button>
       <button className="bsm" onClick={()=>setAgregar(true)}>+ Camioneta a subir</button>
       <button className="bsm" onClick={vaciar}>Vaciar reparto</button>
     </div>
     <div className="bj-ayuda">Tocá una empresa o personas sueltas y después el vehículo (en la PC también se puede arrastrar). Para cambiar a alguien de vehículo, tocalo y tocá el otro. "Completar automático" acomoda solo a los que no tienen lugar, en el vehículo en el que subieron o en uno de su empresa: no mezcla empresas, así que los que no tienen vehículo de su empresa quedan sin ubicar para que los acomodes vos. Las camionetas "a subir" y la casilla "Contarla para bajar" son solo para armar este reparto: no cambian nada de los puestos ni de los conteos.</div>
-    <div className="bj-w">
-      <div className="bj-col" {...soltarEn(null)}>
+    </>:<div className="bj-ayuda">Lo arma logística. Acá ves la última versión guardada; se actualiza sola cada 30 segundos.</div>}
+    <div className={"bj-w"+(puedeEditar?"":" bj-ro")}>
+      <div className="bj-col" {...(puedeEditar?soltarEn(null):{})}>
         <div className="slbl">Sin camioneta ({sinLugar.length})</div>
         {gOrd.map(([g,ps])=>{const ks=ps.map(p=>p.k);const todos=ks.every(k=>sel.has(k));return <div key={g} className="bj-g">
-          <div className={"bj-gt"+(todos?" sel":"")} draggable onDragStart={arrastrar(ks)} onClick={()=>togGrupo(ks)}>👥 {g} <span>{ps.length}</span></div>
+          <div className={"bj-gt"+(todos?" sel":"")} draggable={puedeEditar} onDragStart={puedeEditar?arrastrar(ks):undefined} onClick={puedeEditar?()=>togGrupo(ks):undefined}>👥 {g} <span>{ps.length}</span></div>
           <div>{ordP(ps).map(p=>chip(p,false))}</div>
         </div>;})}
         {!sinLugar.length&&<div className="bj-vacia" style={{color:"var(--gr)"}}>{d.pers.length?"✓ Todos tienen lugar":"No hay nadie en el chalet ni subiendo."}</div>}
-        {noBaja.length>0&&<div className="bj-g" style={{marginTop:16}} {...soltarEn(BJ_NO)}>
+        {noBaja.length>0&&<div className="bj-g" style={{marginTop:16}} {...(puedeEditar?soltarEn(BJ_NO):{})}>
           <div className="slbl">🚶 No bajan en camioneta ({noBaja.length})</div>
           <div>{ordP(noBaja).map(p=>chip(p,true))}</div>
         </div>}
@@ -3379,7 +3456,7 @@ function BajadaChalet({user}){
         {!V.length&&<div className="bj-vacia">No hay vehículos arriba ni subiendo. Agregá las camionetas a subir.</div>}
       </div>
     </div>
-    {sel.size>0&&<div className="bj-selbar">
+    {puedeEditar&&sel.size>0&&<div className="bj-selbar">
       <div className="bj-selt"><b>{sel.size}</b> seleccionad{sel.size===1?"a":"as"}: tocá a dónde van</div>
       <div className="bj-selb">
         {Vc.map(v=>{const n=enV[v.k].length;return <button key={v.k} className="bsm" onClick={()=>mover([...sel],v.k)}>{v.patente} <span style={{color:n>=v.lug?"var(--rd)":"var(--gr)"}}>{n}/{v.lug}</span></button>;})}
@@ -3394,7 +3471,7 @@ function BajadaChalet({user}){
       <button className="bsm" onClick={()=>setVerTxt(!verTxt)}>{verTxt?"Ocultar texto":"Ver texto"}</button>
     </div>
     {verTxt&&<pre className="bj-txt">{texto()}</pre>}
-    <div className="bj-ayuda" style={{marginTop:10}}>El reparto no se guarda en el sistema: queda en este dispositivo hasta que termine el día.</div>
+    <div className="bj-ayuda" style={{marginTop:10}}>Personas y vehículos leídos a las {bjHora(d.at)}. {puedeEditar?"El reparto se guarda solo (uno por día) y lo ven logística, admin y los puestos. Es solo informativo: no cambia nada de los puestos ni de los conteos.":""}</div>
     {editar&&<BjVehModal v={editar} empresas={empresas} onClose={()=>setEditar(null)} onGuardar={f=>guardarVeh(editar,f)}/>}
     {agregar&&<BjAgregarModal todos={d.todos} usados={usados} susp={d.susp} onClose={()=>setAgregar(false)} onAgregar={x=>{setPlan(p=>({...p,extras:[...p.extras,{...x,k:"x"+Date.now()}]}));setAgregar(false);}}/>}
   </div>;
@@ -8642,7 +8719,7 @@ function App(){
   const TABS_SOB=[{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"}];
   // Rev141: "Aviso de ingreso" es una solapa de Habilitaciones para todos menos los puestos
   const TABS={
-    puesto:           [{k:"sc",l:"Escanear"},{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
+    puesto:           [{k:"sc",l:"Escanear"},{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"baj",l:"Bajada chalet"},{k:"cvc",l:"Chalet"}],
     sh:               [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
     cp:               [{k:"per",l:"Personal"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"cvc",l:"Chalet"}],
     logistica:        [{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"baj",l:"Bajada chalet"},{k:"cvc",l:"Chalet"}],
