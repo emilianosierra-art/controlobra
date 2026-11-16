@@ -380,6 +380,17 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .bj-pick.dis{opacity:.45;cursor:not-allowed}
 .bj-est{font-size:12px;color:var(--tx2);font-family:var(--fm)}.bj-est.ok{color:var(--gr)}
 .bj-ro .bj-p,.bj-ro .bj-gt{cursor:default}.bj-ro .bj-gt:hover{background:none;color:inherit}
+/* Rev149: choferes y vehículos que suben a buscar gente */
+.bj-gch{border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.05);border-radius:6px;padding:8px 10px 6px;margin-bottom:14px}
+.bj-p.bj-fuera{opacity:.55}
+.bj-e-chalet{color:var(--gr)!important}.bj-e-sube{color:var(--acc2)!important}.bj-e-campamento{color:var(--acc)!important}.bj-e-bajando,.bj-e-fuera{color:var(--tx3)!important}
+.bj-p .bj-dest{color:var(--tx)!important;font-weight:600}
+.bj-chof-t{font-family:var(--fm);font-size:9px;letter-spacing:.06em;color:var(--acc);margin-right:2px}
+.bj-chof{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;margin:0 0 6px}
+.bj-chof small{font-size:11px;color:var(--tx2)}
+.bj-chof select{background:var(--s1);border:1px solid var(--bd);color:var(--tx);border-radius:4px;padding:4px 6px;font-size:12px;max-width:100%}
+.bj-pick-h{font-family:var(--fm);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);padding:8px 12px 4px;background:var(--s2);border-bottom:1px solid var(--bd)}
+.bj-pick-v{padding:10px 12px;color:var(--tx2);font-size:13px}
 /* Rev144: aviso de ingreso en pasos */
 .av-preg{font-family:var(--fh);font-size:22px;font-weight:800;letter-spacing:.02em;margin:4px 0 4px}
 .av-ayuda{font-size:13px;color:var(--tx2);margin-bottom:14px;line-height:1.45}
@@ -510,10 +521,10 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev148";
+const APP_REV="Rev149";
 // Rev143: número de versión que se muestra al lado de CONTROLOBRA: AAMM.revisión.DD con la fecha de la revisión
 // (ej. 2611.143.14 = revisión 143 del 14/11/2026). En cada revisión nueva se actualizan APP_REV y APP_FECHA.
-const APP_FECHA="2026-11-15";
+const APP_FECHA="2026-11-16";
 const APP_VER=APP_FECHA.slice(2,4)+APP_FECHA.slice(5,7)+"."+APP_REV.replace(/\D/g,"")+"."+APP_FECHA.slice(8,10);
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
@@ -2993,16 +3004,16 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
   useEffect(()=>{load();},[]);
   const saveV=async f=>{
     if(editV){
-      const{ok,data}=await db.upd("vehiculos",f,[["id","eq",editV.id]]);
-      if(!ok){alert("No se pudo actualizar el vehiculo.\n\nDetalle: "+JSON.stringify(data));return;}
+      const r=await vehEditar(editV.id,f); // Rev149: por RPC (antes un UPDATE sin permiso no daba error y no guardaba)
+      if(!r.ok){alert("No se pudo actualizar el vehiculo.\n\n"+r.msg);return;}
     } else {
       // Blindaje contra duplicados por patente
       const{data:exist}=await db.sel("vehiculos",{f:[["patente","eq",f.patente]],lim:1});
       if(exist&&exist[0]){
         if(!exist[0].activo){
           // Restaurar el que estaba inactivo con los datos nuevos
-          const{ok,data}=await db.upd("vehiculos",{...f,activo:true},[["id","eq",exist[0].id]]);
-          if(!ok){alert("No se pudo restaurar el vehiculo inactivo.\n\nDetalle: "+JSON.stringify(data));return;}
+          const r=await vehEditar(exist[0].id,{...f,activo:true});
+          if(!r.ok){alert("No se pudo restaurar el vehiculo inactivo.\n\n"+r.msg);return;}
         } else {
           alert("Ya existe un vehiculo ACTIVO con la patente "+f.patente+". No se guarda para evitar duplicado.\n\nUsá el que ya existe o desactivalo antes de crear otro.");
           return;
@@ -3014,7 +3025,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
     }
     load();
   };
-  const delV=async id=>{if(!confirm("Eliminar?"))return;await db.upd("vehiculos",{activo:false},[["id","eq",id]]);load();};
+  const delV=async id=>{if(!confirm("Eliminar?"))return;const r=await vehEditar(id,{activo:false});if(!r.ok)alert("No se pudo eliminar el vehiculo.\n\n"+r.msg);load();};
   let filtered=vehiculos.filter(v=>!filter||`${v.patente} ${v.descripcion||""} ${v.empresa||""}`.toLowerCase().includes(filter.toLowerCase()));
   if(filterEst==="venc"){
     const hoyISO=today();const hoyT=new Date(hoyISO).getTime();const limT=hoyT+3*24*60*60*1000;
@@ -3085,107 +3096,207 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
   </div>;
 }
 
-// ─── BAJADA CHALET (Rev148) ───────────────────────────────────────────────────
+// ─── BAJADA CHALET (Rev148 · Rev149) ─────────────────────────────────────────
 // Logística arma cada tarde el reparto de la gente del chalet en los vehículos que están arriba (o subiendo) y lo
 // copia para WhatsApp. Personas y vehículos salen de calcPosicionesMontana (lo mismo que el contador del chalet):
 // cuentan los que están en el chalet y los que SUBEN (pasaron P2 y todavía no llegaron a P3); los que ya salieron por
 // P3 bajando no se cuentan. El reparto se guarda en obra.bajada_chalet (1 fila por día, el reparto en jsonb) con el RPC
 // obra.bajada_guardar (solo admin y logística, con control de versión: si otro lo cambió en el medio se carga la versión
 // del otro). Lo ven logística, admin y los puestos (solo mirar). Es solo informativo: no cambia nada de los puestos ni
-// de los conteos. La capacidad de cada vehículo es el total CON chofer; las "camionetas a subir" traen su chofer desde
-// abajo, así que para la gente del chalet dejan un lugar menos.
+// de los conteos. La capacidad de cada vehículo es el total CON chofer.
+// Rev149: CHOFERES aparte y arriba de todo (todos, estén o no en la montaña). Chofer = cargo con CHOFER/CONDUCTOR, o
+// persona del área "Choferes" de Reportes JO, o marcado a mano por logística en obra.bajada_choferes (que también sirve
+// para sacar a alguien que no lo es). Cada vehículo muestra su chofer. "Vehículos que suben a buscar gente": un vehículo
+// de abajo (se ofrecen primero los que están en el campamento) con un chofer de abajo; para la gente del chalet deja un
+// lugar menos (el del chofer).
 const BJ_CAP=5;      // capacidad que se supone si el vehículo no la tiene cargada
 const BJ_NO="_no";   // destino "no baja en camioneta" (baja a pie o se queda)
 const BJ_EDITAN=["admin","logistica"];
 const bjNorm=(x)=>(x&&typeof x==="object"&&!Array.isArray(x))
-  ?{a:x.a||{},extras:Array.isArray(x.extras)?x.extras:[],cap:x.cap||{},emp:x.emp||{},off:Array.isArray(x.off)?x.off:[]}
-  :{a:{},extras:[],cap:{},emp:{},off:[]};
-const bjNom=(p)=>p._synth?("DNI "+p.dni):(`${p.nombre||""} ${p.apellido||""}`.trim()||("DNI "+p.dni));
+  ?{a:x.a||{},extras:Array.isArray(x.extras)?x.extras:[],cap:x.cap||{},emp:x.emp||{},off:Array.isArray(x.off)?x.off:[],chof:x.chof||{}}
+  :{a:{},extras:[],cap:{},emp:{},off:[],chof:{}};
+const bjNom=(p)=>!p?"?":p._synth?("DNI "+p.dni):(`${p.nombre||""} ${p.apellido||""}`.trim()||("DNI "+p.dni));
 const bjEsUUID=(k)=>typeof k==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(k);
 const bjHora=(t)=>String(t.getHours()).padStart(2,"0")+":"+String(t.getMinutes()).padStart(2,"0");
 const bjFecha=(t)=>["dom","lun","mar","mié","jue","vie","sáb"][t.getDay()]+" "+String(t.getDate()).padStart(2,"0")+"/"+String(t.getMonth()+1).padStart(2,"0");
 const BJ_COLS_VEH="id,patente,descripcion,tipo,empresa,capacidad";
+const BJ_COLS_PER="id,nombre,apellido,empresa,dni,cargo";
+const BJ_TIPOS=["Camioneta","Combi","Colectivo","Camion","Auto","Maquinaria","Otro"];
+const bjEsChoferCargo=(c)=>/(^| )(CHOFER|CHOFERES|CONDUCTOR|CONDUCTORA)( |$)/.test(joNorm(c));
+const BJ_EST_LBL={chalet:"en chalet",sube:"subiendo",bajando:"bajando",campamento:"en campamento",fuera:"fuera del predio"};
+const BJ_EST_ORD={chalet:0,sube:1,campamento:2,bajando:3,fuera:4};
+
+// Rev149: editar un vehículo por la función obra.vehiculo_editar (los permisos de la tabla no dejaban guardar a todos los
+// roles que editan vehículos). Si la función todavía no existe en la base, prueba directo y avisa si no se guardó nada
+// (con permisos de la tabla, un UPDATE bloqueado no da error: devuelve 0 filas).
+const vehEditar=async(id,datos)=>{
+  const r=await db.rpc("vehiculo_editar",{p_id:id,p_datos:datos});
+  if(r.ok)return{ok:true};
+  const e=(r.data&&typeof r.data==="object")?r.data:{};
+  if(SIM_ACTIVO)return{ok:false,msg:'Modo "Ver como": no se guardan cambios.'};
+  if(e.code==="PGRST202"){
+    const u=await db.upd("vehiculos",datos,[["id","eq",id]]);
+    if(u.ok&&Array.isArray(u.data)&&u.data.length)return{ok:true};
+    return{ok:false,msg:u.ok?"La base no dejó guardar el cambio (permisos). Falta correr el SQL de la Rev149 en Supabase.":"Detalle del servidor: "+JSON.stringify(u.data)};
+  }
+  return{ok:false,msg:r.data===null?"Sin conexión.":(e.message||JSON.stringify(e))};
+};
+
 const bjCargar=async()=>{
   const pos=await calcPosicionesMontana();
   // "chalet" = última fichada P3 entrada; "sube" = última P2 entrada (todavía no llegó a P3). P3 salida = bajando.
   const donde=(last)=>!last?null:(last.puesto==="Puesto 3"&&last.dir==="entrada")?"chalet":(last.puesto==="Puesto 2"&&last.dir==="entrada")?"sube":null;
-  const pk=[],vk=[];let bajP=0,bajV=0;
-  Object.entries(pos.persona).forEach(([k,p])=>{if(p!=="chalet"&&p!=="camino")return;const d=donde(pos.personaLast[k]);if(d)pk.push([k,d]);else bajP++;});
+  const pk=[],vk=[],bajK=new Set();let bajV=0;
+  Object.entries(pos.persona).forEach(([k,p])=>{if(p!=="chalet"&&p!=="camino")return;const d=donde(pos.personaLast[k]);if(d)pk.push([k,d]);else bajK.add(k);});
   Object.entries(pos.vehiculo).forEach(([k,p])=>{if(p!=="chalet"&&p!=="camino")return;const d=donde(pos.vehiculoLast[k]);if(d)vk.push([k,d]);else bajV++;});
-  const ids=pk.map(([k])=>k).filter(bjEsUUID);
-  const persMap={};
-  for(let i=0;i<ids.length;i+=100){
-    const{data}=await db.sel("personas",{cols:"id,nombre,apellido,empresa,dni",inFilter:["id",ids.slice(i,i+100)]});
-    if(data===null)throw new Error("personas");
-    data.forEach(p=>{persMap[p.id]=p;});
-  }
-  const[{data:vehs},{data:habs}]=await Promise.all([
+  const noBorr=["deleted_at","is","null"];
+  const[c1,c2,man,areas,{data:vehs},{data:habs}]=await Promise.all([
+    db.sel("personas",{cols:BJ_COLS_PER,f:[["cargo","ilike","*chofer*"],noBorr],lim:3000}),
+    db.sel("personas",{cols:BJ_COLS_PER,f:[["cargo","ilike","*conductor*"],noBorr],lim:3000}),
+    db.sel("bajada_choferes",{cols:"persona_id,es_chofer",lim:5000}),
+    db.sel("jo_areas",{cols:"id,nombre",lim:2000}),
     db.sel("vehiculos",{cols:BJ_COLS_VEH,f:[["activo","eq",true]],ord:"patente.asc",lim:3000}),
     db.sel("habilitaciones",{cols:"vehiculo_id",f:[["entity_type","eq","vehiculo"],["tipo","eq","sh_manejo"],["suspendida","eq",true]],lim:3000}),
   ]);
   if(vehs===null)throw new Error("vehiculos");
+  // Choferes: por cargo, por el área "Choferes" de Reportes JO y los marcados a mano (que mandan: también sacan)
+  const persMap={},chof=new Set();
+  [...(c1.data||[]),...(c2.data||[])].forEach(p=>{if(bjEsChoferCargo(p.cargo)){persMap[p.id]=p;chof.add(p.id);}});
+  const aCh=(areas.data||[]).find(a=>joNorm(a.nombre)==="CHOFERES");
+  if(aCh){const{data}=await db.sel("jo_area_personas",{cols:"persona_id",f:[["area_id","eq",aCh.id]],lim:3000});(data||[]).forEach(r=>chof.add(r.persona_id));}
+  const manual={};(man.data||[]).forEach(r=>{manual[r.persona_id]=!!r.es_chofer;if(r.es_chofer)chof.add(r.persona_id);else chof.delete(r.persona_id);});
+  const mont=new Set(pk.map(([k])=>k));
+  const faltanP=[...new Set([...mont,...chof])].filter(k=>bjEsUUID(k)&&!persMap[k]);
+  for(let i=0;i<faltanP.length;i+=100){
+    const{data}=await db.sel("personas",{cols:BJ_COLS_PER+",deleted_at",inFilter:["id",faltanP.slice(i,i+100)]});
+    if(data===null)throw new Error("personas");
+    data.forEach(p=>{persMap[p.id]=p;});
+  }
+  // Dónde está cada chofer que no está en la montaña: en el predio (campamento) o afuera
+  const abajo=[...chof].filter(k=>!mont.has(k)&&!bajK.has(k)&&persMap[k]&&!persMap[k].deleted_at);
+  const ult={};
+  for(let i=0;i<abajo.length;i+=100){
+    const{data}=await db.sel("v_ultima_fichada",{cols:"clave,puesto,direccion",f:[["ts","gte",OPERATIVA_DESDE]],inFilter:["clave",abajo.slice(i,i+100)]});
+    (data||[]).forEach(r=>{ult[r.clave]=r;});
+  }
+  const base=(k)=>{const p=persMap[k];return p?{...p,_synth:false}:{nombre:"",apellido:"",empresa:"",dni:String(k).startsWith("m_")?"sin DNI":k,_synth:true};};
+  const grpDe=(b)=>b._synth?"SIN REGISTRAR":String(empresaGrupo(b.empresa)).toUpperCase();
   const vm={};vehs.forEach(v=>{vm[v.id]=v;});
-  const faltan=vk.map(([k])=>k).filter(k=>bjEsUUID(k)&&!vm[k]);
-  if(faltan.length){const{data}=await db.sel("vehiculos",{cols:BJ_COLS_VEH,inFilter:["id",faltan]});(data||[]).forEach(v=>{vm[v.id]=v;});}
-  const pers=pk.map(([k,d])=>{
-    const p=persMap[k];
-    const base=p?{...p,_synth:false}:{nombre:"",apellido:"",empresa:"",dni:String(k).startsWith("m_")?"sin DNI":k,_synth:true};
-    return{...base,k,pos:d,veh:(pos.personaLast[k]&&pos.personaLast[k].veh)||null,grp:base._synth?"SIN REGISTRAR":String(empresaGrupo(base.empresa)).toUpperCase()};
-  });
+  const faltanV=vk.map(([k])=>k).filter(k=>bjEsUUID(k)&&!vm[k]);
+  if(faltanV.length){const{data}=await db.sel("vehiculos",{cols:BJ_COLS_VEH,inFilter:["id",faltanV]});(data||[]).forEach(v=>{vm[v.id]=v;});}
+  const pers=pk.map(([k,d])=>{const b=base(k);return{...b,k,pos:d,veh:(pos.personaLast[k]&&pos.personaLast[k].veh)||null,grp:grpDe(b),chofer:chof.has(k)};});
+  const choferes=[
+    ...pers.filter(p=>p.chofer).map(p=>({...p,estado:p.pos})),
+    ...[...chof].filter(k=>bajK.has(k)&&persMap[k]).map(k=>{const b=base(k);return{...b,k,estado:"bajando",grp:grpDe(b),chofer:true};}),
+    ...abajo.map(k=>{const b=base(k);const u=ult[k];return{...b,k,estado:u&&!(u.puesto==="Puesto 1"&&u.direccion==="salida")?"campamento":"fuera",grp:grpDe(b),chofer:true};}),
+  ].map(c=>({...c,manual:manual[c.k]}));
+  choferes.sort((a,b)=>(BJ_EST_ORD[a.estado]-BJ_EST_ORD[b.estado])||bjNom(a).localeCompare(bjNom(b)));
   const up=vk.map(([k,d])=>{
     const v=vm[k];
-    const base=v?{...v,_synth:false}:{id:null,patente:String(k).replace("No registrado:","").trim()||"?",descripcion:"No registrado en la base",tipo:"Camioneta",empresa:"",capacidad:null,_synth:true};
-    return{...base,k,pos:d,nSube:pers.filter(p=>p.pos==="sube"&&p.veh===k).length};
+    const b=v?{...v,_synth:false}:{id:null,patente:String(k).replace("No registrado:","").trim()||"?",descripcion:"No registrado en la base",tipo:"Camioneta",empresa:"",capacidad:null,_synth:true};
+    return{...b,k,pos:d,nSube:pers.filter(p=>p.pos==="sube"&&p.veh===k).length};
   });
   up.sort((a,b)=>a.pos===b.pos?String(a.patente).localeCompare(String(b.patente)):(a.pos==="chalet"?-1:1));
-  return{pers,up,todos:vehs,susp:new Set((habs||[]).map(h=>h.vehiculo_id)),bajP,bajV,at:new Date()};
+  return{pers,up,choferes,todos:vehs,susp:new Set((habs||[]).map(h=>h.vehiculo_id)),bajP:bajK.size,bajV,at:new Date(),manualOk:man.data!==null};
+};
+// Vehículos cuya última pasada por Puesto 1 (últimos 30 días) fue una entrada y que no están en la montaña: están en el campamento.
+const bjVehCampamento=async(enMontana)=>{
+  const desde=new Date(Date.now()-30*864e5).toISOString();
+  const{data}=await db.sel("sesiones_acceso",{cols:"vehiculo_id,direccion,cerrada_at",f:[["puesto","eq","Puesto 1"],["vehiculo_id","not.is","null"],["cerrada_at","gte",desde]],ord:"cerrada_at.desc",lim:5000});
+  const vis=new Set(),out=new Set();
+  (data||[]).forEach(s=>{if(vis.has(s.vehiculo_id))return;vis.add(s.vehiculo_id);if(s.direccion==="entrada"&&!enMontana.has(s.vehiculo_id))out.add(s.vehiculo_id);});
+  return out;
 };
 
 function BjVehModal({v,empresas,onClose,onGuardar}){
   const[cap,setCap]=useState(v.capSup?"":String(v.cap));
   const[emp,setEmp]=useState(v.empresa||"");
+  const[desc,setDesc]=useState(v.descripcion||"");
+  const[tipo,setTipo]=useState(v.tipo||"Camioneta");
   const[busy,setBusy]=useState(false);
   const n=Number(cap);const ok=Number.isInteger(n)&&n>=1&&n<=80;
-  const guardar=async()=>{setBusy(true);const r=await onGuardar({capacidad:n,empresa:emp.trim().toUpperCase()});setBusy(false);if(r!==false)onClose();};
+  const enBase=!!v.id;
+  const guardar=async()=>{setBusy(true);const r=await onGuardar(enBase?{capacidad:n,empresa:emp.trim().toUpperCase(),descripcion:desc.trim(),tipo}:{capacidad:n,empresa:emp.trim().toUpperCase()});setBusy(false);if(r!==false)onClose();};
+  const tipos=BJ_TIPOS.includes(tipo)?BJ_TIPOS:[tipo,...BJ_TIPOS];
   return <div className="mo" onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div className="md">
     <div className="mh"><div className="mt">{VI[v.tipo]||"🛻"} {v.patente}</div><button className="mc" onClick={onClose}>x</button></div>
     <div className="mb">
-      {v.descripcion&&<div style={{fontSize:13,color:"var(--tx2)",marginBottom:12}}>{v.descripcion}</div>}
+      {enBase&&<div className="row2">
+        <div className="f"><label>Descripción (marca / modelo)</label><input placeholder="Ford Ranger blanca" value={desc} onChange={e=>setDesc(e.target.value)}/></div>
+        <div className="f"><label>Tipo</label><select value={tipo} onChange={e=>setTipo(e.target.value)}>{tipos.map(t=><option key={t}>{t}</option>)}</select></div>
+      </div>}
       <div className="row2">
-        <div className="f"><label>Capacidad (con chofer)</label><input type="number" inputMode="numeric" min="1" placeholder={String(BJ_CAP)} value={cap} onChange={e=>setCap(e.target.value)}/></div>
+        <div className="f"><label>Pasajeros (con chofer)</label><input type="number" inputMode="numeric" min="1" placeholder={String(BJ_CAP)} value={cap} onChange={e=>setCap(e.target.value)}/></div>
         <div className="f"><label>Empresa</label><input list="bj-emps" placeholder="Ej: ALUSA" value={emp} onChange={e=>setEmp(e.target.value)}/></div>
       </div>
       <datalist id="bj-emps">{empresas.map(e=><option key={e} value={e}/>)}</datalist>
-      <div style={{fontSize:12,color:"var(--tx2)",lineHeight:1.45}}>{v.id
-        ?"Se guarda en el vehículo: también cambia en Habilitaciones → Vehículos. La empresa sirve para que \"Completar automático\" ponga a cada uno en las camionetas de su empresa."
+      <div style={{fontSize:12,color:"var(--tx2)",lineHeight:1.45}}>{enBase
+        ?"Se guarda en el vehículo: también cambia en Habilitaciones → Vehículos. La empresa sirve para que \"Completar automático\" ponga a cada uno en los vehículos de su empresa."
         :"Este vehículo no está en la base: el cambio queda solo para este reparto."}</div>
     </div>
     <div className="mf"><button className="bcanc" onClick={onClose}>Cancelar</button><button className="bp" disabled={!ok||busy} onClick={guardar}>{busy?"Guardando...":"Guardar"}</button></div>
   </div></div>;
 }
 
-function BjAgregarModal({todos,usados,susp,onClose,onAgregar}){
+function BjSubirModal({todos,usados,susp,choferes,ocupados,onClose,onAgregar}){
   const[q,setQ]=useState("");
   const[cap,setCap]=useState(String(BJ_CAP));
+  const[chofer,setChofer]=useState("");
+  const[camp,setCamp]=useState(null);
+  useEffect(()=>{bjVehCampamento(usados).then(setCamp).catch(()=>setCamp(new Set()));},[]);
   const qn=empNorm(q);
-  const lista=todos.filter(v=>!usados.has(v.id)&&(!qn||empNorm(`${v.patente} ${v.descripcion||""} ${v.empresa||""}`).includes(qn))).slice(0,80);
+  const pasa=(v)=>!usados.has(v.id)&&(!qn||empNorm(`${v.patente} ${v.descripcion||""} ${v.empresa||""}`).includes(qn));
+  const enCamp=camp?todos.filter(v=>pasa(v)&&camp.has(v.id)):[];
+  const otros=todos.filter(v=>pasa(v)&&!(camp&&camp.has(v.id))).slice(0,60);
+  const libres=choferes.filter(c=>c.estado!=="chalet"&&c.estado!=="sube"&&!ocupados.has(c.k));
+  const fila=(v)=>{const no=susp.has(v.id);return <div key={v.id} className={"bj-pick"+(no?" dis":"")} onClick={()=>{if(!no)onAgregar({id:v.id,patente:v.patente,descripcion:v.descripcion||"",empresa:v.empresa||"",tipo:v.tipo,capacidad:v.capacidad},chofer);}}>
+    <span>{VI[v.tipo]||"🚗"} <b className="mn" style={{fontSize:14}}>{v.patente}</b> <span style={{color:"var(--tx2)",fontSize:12}}>{v.descripcion||""}{v.empresa?" · "+v.empresa:""}</span></span>
+    <span style={{fontSize:12,color:no?"var(--rd)":"var(--tx2)",whiteSpace:"nowrap"}}>{no?"no sube (Sub. Chalet susp.)":(v.capacidad?v.capacidad+" pasajeros":"sin capacidad")}</span>
+  </div>;};
   return <div className="mo" onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div className="md">
-    <div className="mh"><div className="mt">Camioneta a subir</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mh"><div className="mt">Subir vehículo a buscar gente</div><button className="mc" onClick={onClose}>x</button></div>
     <div className="mb">
-      <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.45}}>Elegí la que vas a mandar. Su chofer sube desde abajo, así que para la gente del chalet queda un lugar menos.</div>
+      <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.45}}>Elegí quién maneja y el vehículo que sube. El chofer sale de abajo, así que para la gente del chalet queda un lugar menos. Es solo para organizar: no registra nada en los puestos.</div>
+      <div className="f"><label>Chofer</label><select value={chofer} onChange={e=>setChofer(e.target.value)}>
+        <option value="">Elegir después</option>
+        {libres.map(c=><option key={c.k} value={c.k}>{bjNom(c)} · {c.grp} · {BJ_EST_LBL[c.estado]}</option>)}
+      </select></div>
       <input className="fi" style={{width:"100%",marginBottom:8}} placeholder="Buscar patente, descripción o empresa..." value={q} onChange={e=>setQ(e.target.value)}/>
-      <div style={{maxHeight:300,overflowY:"auto",border:"1px solid var(--bd)",borderRadius:6}}>
-        {lista.map(v=>{const no=susp.has(v.id);return <div key={v.id} className={"bj-pick"+(no?" dis":"")} onClick={()=>{if(!no)onAgregar({id:v.id,patente:v.patente,descripcion:v.descripcion||"",empresa:v.empresa||"",tipo:v.tipo,capacidad:v.capacidad});}}>
-          <span>{VI[v.tipo]||"🚗"} <b className="mn" style={{fontSize:14}}>{v.patente}</b> <span style={{color:"var(--tx2)",fontSize:12}}>{v.descripcion||""}{v.empresa?" · "+v.empresa:""}</span></span>
-          <span style={{fontSize:12,color:no?"var(--rd)":"var(--tx2)",whiteSpace:"nowrap"}}>{no?"no sube (Sub. Chalet susp.)":(v.capacidad?v.capacidad+" lugares":"sin capacidad")}</span>
-        </div>;})}
-        {!lista.length&&<div style={{padding:14,color:"var(--tx2)",fontSize:13}}>No hay vehículos con esa búsqueda.</div>}
+      <div style={{maxHeight:320,overflowY:"auto",border:"1px solid var(--bd)",borderRadius:6}}>
+        <div className="bj-pick-h">En el campamento</div>
+        {camp===null?<div className="bj-pick-v">Buscando...</div>:enCamp.length?enCamp.map(fila):<div className="bj-pick-v">Ninguno{qn?" con esa búsqueda":""}.</div>}
+        <div className="bj-pick-h">Otros vehículos</div>
+        {otros.length?otros.map(fila):<div className="bj-pick-v">No hay vehículos con esa búsqueda.</div>}
       </div>
       <div style={{display:"flex",gap:8,alignItems:"center",marginTop:14,flexWrap:"wrap"}}>
-        <span style={{fontSize:13,color:"var(--tx2)"}}>¿Todavía no sabés cuál? Una de</span>
+        <span style={{fontSize:13,color:"var(--tx2)"}}>¿Todavía no sabés cuál? Uno de</span>
         <input className="fi" type="number" inputMode="numeric" min="2" style={{width:64}} value={cap} onChange={e=>setCap(e.target.value)}/>
-        <span style={{fontSize:13,color:"var(--tx2)"}}>lugares</span>
-        <button className="bsm" onClick={()=>{const n=Number(cap);if(!(Number.isInteger(n)&&n>=2)){alert("Poné cuántos lugares tiene, contando al chofer.");return;}onAgregar({id:null,patente:"",descripcion:"",empresa:"",tipo:"Camioneta",capacidad:n});}}>Agregar sin patente</button>
+        <span style={{fontSize:13,color:"var(--tx2)"}}>pasajeros</span>
+        <button className="bsm" onClick={()=>{const n=Number(cap);if(!(Number.isInteger(n)&&n>=2)){alert("Poné cuántos pasajeros lleva, contando al chofer.");return;}onAgregar({id:null,patente:"",descripcion:"",empresa:"",tipo:"Camioneta",capacidad:n},chofer);}}>Agregar sin patente</button>
+      </div>
+    </div>
+  </div></div>;
+}
+
+function BjChoferModal({actuales,onClose,onAgregar}){
+  const[todas,setTodas]=useState(null);
+  const[q,setQ]=useState("");
+  const[busy,setBusy]=useState(false);
+  useEffect(()=>{dbSelAll("personas",{cols:BJ_COLS_PER+",deleted_at",ord:"id.asc"}).then(({data})=>setTodas((data||[]).filter(p=>!p.deleted_at)));},[]);
+  const lista=todas?joFiltra(todas.filter(p=>!actuales.has(p.id)),q).sort(joPorApe).slice(0,60):[];
+  return <div className="mo" onClick={e=>{if(e.target===e.currentTarget)onClose();}}><div className="md">
+    <div className="mh"><div className="mt">Agregar chofer</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.45}}>Queda marcado como chofer para todos los días (no cambia nada de su ficha ni de los partes).</div>
+      <input className="fi" style={{width:"100%",marginBottom:8}} placeholder="Buscar nombre, apellido, DNI o empresa..." value={q} onChange={e=>setQ(e.target.value)} autoFocus/>
+      <div style={{maxHeight:320,overflowY:"auto",border:"1px solid var(--bd)",borderRadius:6}}>
+        {todas===null?<div className="bj-pick-v">Cargando personas...</div>
+          :!q.trim()?<div className="bj-pick-v">Escribí para buscar.</div>
+          :lista.length?lista.map(p=><div key={p.id} className={"bj-pick"+(busy?" dis":"")} onClick={async()=>{if(busy)return;setBusy(true);await onAgregar(p.id);setBusy(false);}}>
+            <span><b>{p.nombre} {p.apellido}</b> <span style={{color:"var(--tx2)",fontSize:12}}>{p.empresa||""}{p.cargo?" · "+p.cargo:""}</span></span>
+            <span className="mn" style={{color:"var(--tx2)"}}>{p.dni}</span>
+          </div>)
+          :<div className="bj-pick-v">No hay nadie con esa búsqueda.</div>}
       </div>
     </div>
   </div></div>;
@@ -3210,7 +3321,9 @@ function BajadaChalet({user}){
   const[aviso,setAviso]=useState("");
   const[sel,setSel]=useState(()=>new Set());
   const[editar,setEditar]=useState(null);
-  const[agregar,setAgregar]=useState(false);
+  const[subir,setSubir]=useState(false);
+  const[addChofer,setAddChofer]=useState(false);
+  const[verFuera,setVerFuera]=useState(false);
   const[verTxt,setVerTxt]=useState(false);
   const[copiado,setCopiado]=useState(false);
   const arrastre=useRef(null);
@@ -3274,7 +3387,7 @@ function BajadaChalet({user}){
   },[]);
   if(!d||!srv.leido)return <div>{err?<div className="warn">{err} <button className="bsm" onClick={()=>cargar(false)}>Reintentar</button></div>:<Spin t="Leyendo quién está en el chalet..."/>}</div>;
 
-  // ── vehículos del reparto: los de arriba, los que suben y los "a subir" ──
+  // ── vehículos del reparto: los del chalet, los que suben con gente y los que suben a buscar gente ──
   const off=new Set(plan.off);
   let nExtra=0;
   const V=[...d.up.map(v=>({...v,extra:false})),...plan.extras.map(x=>({...x,pos:"subir",extra:true}))].map(v=>{
@@ -3291,6 +3404,22 @@ function BajadaChalet({user}){
   const enV={};Vc.forEach(v=>{enV[v.k]=[];});
   const sinLugar=[],noBaja=[];
   d.pers.forEach(p=>{const a=plan.a[p.k];if(a===BJ_NO)noBaja.push(p);else if(a&&vOk.has(a))enV[a].push(p);else sinLugar.push(p);});
+  const montK=new Set(d.pers.map(p=>p.k));
+  const persByK={};d.pers.forEach(p=>{persByK[p.k]=p;});
+  const choferByK={};d.choferes.forEach(c=>{choferByK[c.k]=c;});
+  const personaDe=(k)=>persByK[k]||choferByK[k]||null;
+  // Chofer de cada vehículo. Los del chalet: el elegido (si va en ese vehículo) o el primer chofer que va en él.
+  // Los que suben a buscar gente: un chofer de abajo.
+  const chofDe={};
+  Vc.forEach(v=>{
+    const c=plan.chof[v.k];
+    if(v.extra){if(c&&choferByK[c]&&!montK.has(c))chofDe[v.k]=c;return;}
+    const ps=enV[v.k];
+    if(c&&ps.some(p=>p.k===c))chofDe[v.k]=c;
+    else{const x=ps.find(p=>p.chofer);if(x)chofDe[v.k]=x.k;}
+  });
+  const manejaExtra={};Vc.forEach(v=>{if(v.extra&&chofDe[v.k])manejaExtra[chofDe[v.k]]=v.k;});
+  const sinChofer=Vc.filter(v=>!chofDe[v.k]&&(v.extra||enV[v.k].length>0));
   const nBajan=d.pers.length-noBaja.length;
   const lugares=Vc.reduce((s,v)=>s+v.lug,0);
   const libres=Vc.reduce((s,v)=>s+Math.max(0,v.lug-enV[v.k].length),0);
@@ -3298,40 +3427,71 @@ function BajadaChalet({user}){
   const pl=(n,uno,varios)=>n===1?uno:varios;
   const nSin=sinLugar.length,persTxt=pl(nSin,"persona","personas");
   const nChalet=d.pers.filter(p=>p.pos==="chalet").length,nSube=d.pers.length-nChalet;
+  const chAbajo=d.choferes.filter(c=>c.estado==="campamento"&&!manejaExtra[c.k]).length;
   const empresas=[...new Set([...d.todos.map(v=>String(v.empresa||"").trim().toUpperCase()),...d.pers.filter(p=>!p._synth).map(p=>p.grp)].filter(x=>x&&x!=="SIN EMPRESA"))].sort();
   const ordP=(ps)=>ps.slice().sort((a,b)=>bjNom(a).localeCompare(bjNom(b)));
   const patDe=(k)=>{const v=V.find(x=>x.k===k);return v?v.patente:"";};
 
   // ── acciones ──
-  const mover=(ks,dest)=>{if(!ks||!ks.length)return;setPlan(p=>{const a={...p.a};ks.forEach(k=>{if(dest)a[k]=dest;else delete a[k];});return{...p,a};});setSel(new Set());};
+  const quitarCh=(chof,c)=>Object.keys(chof).forEach(vk=>{if(chof[vk]===c)delete chof[vk];});
+  // Mover: la gente de la montaña va de pasajera; un chofer de abajo solo puede manejar un vehículo que sube a buscar gente.
+  const mover=(ks,dest)=>{
+    if(!ks||!ks.length)return;
+    const vDest=dest&&dest!==BJ_NO?V.find(v=>v.k===dest):null;
+    const deMont=ks.filter(k=>montK.has(k)),deAbajo=ks.filter(k=>!montK.has(k)&&choferByK[k]);
+    if(deAbajo.length&&dest&&!(vDest&&vDest.extra)){
+      alert((deAbajo.length===1?bjNom(choferByK[deAbajo[0]])+" no está":"Hay choferes que no están")+" en la montaña: solo pueden manejar un vehículo que sube a buscar gente (tocá uno de esos vehículos).");
+      if(!deMont.length){setSel(new Set());return;}
+    }
+    if(vDest&&vDest.extra&&deAbajo.length>1)alert("Cada vehículo lleva un solo chofer: quedó "+bjNom(choferByK[deAbajo[0]])+".");
+    setPlan(p=>{
+      const a={...p.a},chof={...p.chof};
+      deMont.forEach(k=>{if(dest)a[k]=dest;else delete a[k];});
+      if(!dest)deAbajo.forEach(c=>quitarCh(chof,c));
+      else if(vDest&&vDest.extra&&deAbajo.length){quitarCh(chof,deAbajo[0]);chof[dest]=deAbajo[0];}
+      return{...p,a,chof};
+    });
+    setSel(new Set());
+  };
+  const ponerChofer=(vk,c)=>setPlan(p=>{const chof={...p.chof};if(c)quitarCh(chof,c);if(c)chof[vk]=c;else delete chof[vk];return{...p,chof};});
   const togSel=(k)=>setSel(s=>{const n=new Set(s);n.has(k)?n.delete(k):n.add(k);return n;});
   const togGrupo=(ks)=>setSel(s=>{const n=new Set(s);const todos=ks.every(k=>n.has(k));ks.forEach(k=>todos?n.delete(k):n.add(k));return n;});
   const arrastrar=(ks)=>(e)=>{arrastre.current=ks;try{e.dataTransfer.setData("text/plain","bajada");}catch(_){}};
   const soltarEn=(dest)=>({onDragOver:e=>e.preventDefault(),onDrop:e=>{e.preventDefault();const ks=arrastre.current;arrastre.current=null;mover(ks,dest);}});
   // Completa solo a los que no tienen lugar (no toca lo que ya se acomodó) y NO mezcla empresas:
-  // 1) en el vehículo en el que subió (si se cuenta y tiene lugar); 2) en un vehículo de su empresa.
+  // 1) en el vehículo en el que subió (si se cuenta y tiene lugar); 2) en un vehículo de su empresa. Los choferes van primero.
   // El resto queda "sin camioneta" para que logística lo acomode a mano: no se completan vehículos con gente de otra
   // empresa (si la camioneta de una empresa tiene 5 lugares y hay 2 de esa empresa, quedan 2 y asientos vacíos).
   const auto=()=>{
     const a={...plan.a};const ocup={};Vc.forEach(v=>{ocup[v.k]=enV[v.k].length;});
     const libre=v=>v.lug-ocup[v.k];
     const pon=(p,v)=>{a[p.k]=v.k;ocup[v.k]++;};
-    const resto=sinLugar.filter(p=>{const v=Vc.find(x=>!x.extra&&x.k===p.veh);if(v&&libre(v)>0){pon(p,v);return false;}return true;});
+    const orden=sinLugar.slice().sort((x,y)=>(y.chofer?1:0)-(x.chofer?1:0));
+    const resto=orden.filter(p=>{const v=Vc.find(x=>!x.extra&&x.k===p.veh);if(v&&libre(v)>0){pon(p,v);return false;}return true;});
     resto.forEach(p=>{const v=Vc.find(x=>x.empresa&&String(empresaGrupo(x.empresa)).toUpperCase()===p.grp&&libre(x)>0);if(v)pon(p,v);});
     setPlan(p=>({...p,a}));setSel(new Set());
   };
-  const vaciar=()=>{if(confirm("¿Vaciar el reparto? Todos vuelven a \"Sin camioneta\" (las camionetas a subir quedan)."))setPlan(p=>({...p,a:{}}));setSel(new Set());};
+  const vaciar=()=>{if(confirm("¿Vaciar el reparto? Todos vuelven a \"Sin camioneta\" (los vehículos que suben a buscar gente quedan, con su chofer)."))setPlan(p=>({...p,a:{}}));setSel(new Set());};
   const guardarVeh=async(v,f)=>{
     if(v.id){
-      const{ok}=await db.upd("vehiculos",{capacidad:f.capacidad,empresa:f.empresa},[["id","eq",v.id]]);
-      if(!ok){alert("No se pudo guardar el vehículo. Reintentá.");return false;}
-      if(v.extra)setPlan(p=>({...p,extras:p.extras.map(x=>x.k===v.k?{...x,capacidad:f.capacidad,empresa:f.empresa}:x)}));
-      else await cargar(true);
+      const r=await vehEditar(v.id,f);
+      if(!r.ok){alert("No se pudo guardar el vehículo.\n\n"+r.msg);return false;}
+      if(v.extra)setPlan(p=>({...p,extras:p.extras.map(x=>x.k===v.k?{...x,...f}:x)}));
+      await cargar(true);
       return true;
     }
     if(v.extra)setPlan(p=>({...p,extras:p.extras.map(x=>x.k===v.k?{...x,capacidad:f.capacidad,empresa:f.empresa}:x)}));
     else setPlan(p=>({...p,cap:{...p.cap,[v.k]:f.capacidad},emp:{...p.emp,[v.k]:f.empresa}}));
     return true;
+  };
+  const marcarChofer=async(ks,es)=>{
+    const ids=ks.filter(bjEsUUID);
+    if(!ids.length){alert("Solo se pueden marcar personas que están en la base.");return false;}
+    if(!es&&!confirm(ids.length===1?`¿${bjNom(personaDe(ids[0]))} no es chofer? Deja de figurar en Choferes.`:`¿Estas ${ids.length} personas no son choferes? Dejan de figurar en Choferes.`))return false;
+    const r=await db.rpc("bajada_chofer",{p_personas:ids,p_es:es});
+    if(!r.ok){const e=(r.data&&typeof r.data==="object")?r.data:{};
+      alert("No se pudo guardar.\n\n"+(SIM_ACTIVO?'Modo "Ver como": no se guardan cambios.':e.code==="PGRST202"?"Falta correr el SQL de la Rev149 en Supabase.":(e.message||"Sin conexión.")));return false;}
+    setSel(new Set());await cargar(true);return true;
   };
   const usados=new Set([...d.up.map(v=>v.id),...plan.extras.map(x=>x.id)].filter(Boolean));
 
@@ -3341,13 +3501,18 @@ function BajadaChalet({user}){
     const l=[`🚐 *BAJADA CHALET* · ${bjFecha(ah)} ${bjHora(ah)}`,
       `👷 ${nBajan} personas para bajar · 🛻 ${Vc.length} vehículos · ${lugares} lugares`];
     if(nSin)l.push(`⚠️ Falta ubicar a ${nSin} ${persTxt}`);
-    Vc.forEach(v=>{
-      const ps=ordP(enV[v.k]);
+    const linea=(v)=>{
+      const ps=ordP(enV[v.k]);const ch=chofDe[v.k];
       l.push("");
-      l.push(`${VI[v.tipo]||"🛻"} *${v.patente}*${v.descripcion&&!v.extra?" · "+v.descripcion:""}${v.empresa?" · "+v.empresa:""} (${ps.length}/${v.lug})${v.pos==="sube"?" — subiendo":v.extra?" — A SUBIR (+ chofer)":""}`);
-      if(ps.length)ps.forEach(p=>l.push(`• ${bjNom(p)} (${p.grp})`));else l.push("_vacía_");
-    });
-    if(sinLugar.length){l.push("");l.push(`⚠️ *Sin lugar todavía* (${sinLugar.length})`);ordP(sinLugar).forEach(p=>l.push(`• ${bjNom(p)} (${p.grp})`));}
+      l.push(`${VI[v.tipo]||"🛻"} *${v.patente}*${v.descripcion?" · "+v.descripcion:""}${v.empresa?" · "+v.empresa:""} (${ps.length}/${v.lug}${v.extra?" + chofer":""})${v.pos==="sube"?" — subiendo":""}`);
+      l.push(ch?`🚗 Chofer: ${bjNom(personaDe(ch))}${v.extra?" (sube desde abajo)":""}`:"⚠️ Sin chofer");
+      const pas=ps.filter(p=>p.k!==ch);
+      if(pas.length)pas.forEach(p=>l.push(`• ${bjNom(p)} (${p.grp})`));else if(!ps.length)l.push("_vacío_");
+    };
+    Vc.filter(v=>!v.extra).forEach(linea);
+    const ex=Vc.filter(v=>v.extra);
+    if(ex.length){l.push("");l.push(`🔼 *SUBEN A BUSCAR GENTE* (${ex.length})`);ex.forEach(linea);}
+    if(sinLugar.length){l.push("");l.push(`⚠️ *Sin lugar todavía* (${sinLugar.length})`);ordP(sinLugar).forEach(p=>l.push(`• ${bjNom(p)} (${p.grp})${p.chofer?" 🚗":""}`));}
     if(noBaja.length){l.push("");l.push(`🚶 *No bajan en camioneta* (${noBaja.length})`);ordP(noBaja).forEach(p=>l.push(`• ${bjNom(p)} (${p.grp})`));}
     return l.join("\n");
   };
@@ -3362,37 +3527,64 @@ function BajadaChalet({user}){
   const whatsapp=()=>{window.open("https://wa.me/?text="+encodeURIComponent(texto()),"_blank");};
 
   // ── pantalla ──
-  const chip=(p,conGrp)=><span key={p.k} className={"bj-p"+(sel.has(p.k)?" sel":"")} draggable={puedeEditar}
+  const chip=(p,conGrp,ch)=><span key={p.k} className={"bj-p"+(sel.has(p.k)?" sel":"")} draggable={puedeEditar}
     onDragStart={puedeEditar?arrastrar(sel.has(p.k)?[...sel]:[p.k]):undefined}
     onClick={puedeEditar?(e=>{e.stopPropagation();togSel(p.k);}):undefined}
-    title={p._synth?"DNI que no está en la base":(p.empresa||"")}>
-    {bjNom(p)}{conGrp&&<small> · {p.grp}</small>}{p.pos==="sube"&&<small className="bj-sube"> ↑ {patDe(p.veh)||"subiendo"}</small>}
+    title={p._synth?"DNI que no está en la base":([p.empresa,p.cargo].filter(Boolean).join(" · "))}>
+    {p.chofer&&"🚗 "}{ch&&<b className="bj-chof-t">CHOFER </b>}{bjNom(p)}{conGrp&&<small> · {p.grp}</small>}{p.pos==="sube"&&<small className="bj-sube"> ↑ {patDe(p.veh)||"subiendo"}</small>}
   </span>;
+  // Chofer en el grupo de arriba: todos, con dónde están y a dónde van
+  const chChip=(c)=>{
+    const enM=montK.has(c.k),p=enM?persByK[c.k]:c;
+    const a=plan.a[c.k];
+    const dest=enM?(a===BJ_NO?"no baja en camioneta":(a&&vOk.has(a))?"→ "+patDe(a):""):(manejaExtra[c.k]?"maneja "+patDe(manejaExtra[c.k]):"");
+    return <span key={c.k} className={"bj-p"+(sel.has(c.k)?" sel":"")+(c.estado==="fuera"?" bj-fuera":"")} draggable={puedeEditar}
+      onDragStart={puedeEditar?arrastrar(sel.has(c.k)?[...sel]:[c.k]):undefined}
+      onClick={puedeEditar?(e=>{e.stopPropagation();togSel(c.k);}):undefined}
+      title={[c.empresa,c.cargo].filter(Boolean).join(" · ")}>
+      🚗 {bjNom(c)} <small>· {c.grp}</small> <small className={"bj-e-"+c.estado}>{BJ_EST_LBL[c.estado]}{c.estado==="sube"&&p.veh?" "+patDe(p.veh):""}</small>{dest&&<small className="bj-dest"> {dest}</small>}
+    </span>;
+  };
   const tarjeta=(v)=>{
-    const ps=v.cuenta?ordP(enV[v.k]):[];const over=ps.length>v.lug;
+    const ps=v.cuenta?ordP(enV[v.k]):[];const over=ps.length>v.lug;const ch=chofDe[v.k];
+    const opcCh=v.extra?d.choferes.filter(c=>!montK.has(c.k)&&(!manejaExtra[c.k]||manejaExtra[c.k]===v.k)):ps;
     return <div key={v.k} className={"bj-v"+(sel.size&&v.cuenta?" drop":"")+(over?" over":"")+(v.cuenta?"":" off")}
       onClick={()=>{if(sel.size&&v.cuenta)mover([...sel],v.k);}} {...(v.cuenta&&puedeEditar?soltarEn(v.k):{})}>
       <div className="bj-vh">
         <span className="bj-vt">{VI[v.tipo]||"🛻"} <b className="mn">{v.patente}</b></span>
-        <span className={"tag "+(v.pos==="chalet"?"t-a":v.pos==="sube"?"t-p":"t-e")}>{v.pos==="chalet"?"en chalet":v.pos==="sube"?"subiendo":"a subir"}</span>
+        <span className={"tag "+(v.pos==="chalet"?"t-a":v.pos==="sube"?"t-p":"t-e")}>{v.pos==="chalet"?"en chalet":v.pos==="sube"?"subiendo":"sube a buscar"}</span>
         <span className="bj-cnt" style={{color:over?"var(--rd)":(v.cuenta&&ps.length===v.lug?"var(--gr)":"var(--tx2)")}}>{v.cuenta?`${ps.length}/${v.lug}`:"—"}</span>
       </div>
       <div className="bj-vd">
-        {[!v.extra&&v.descripcion,v.empresa||"sin empresa"].filter(Boolean).join(" · ")}
+        {[v.descripcion,v.empresa||"sin empresa"].filter(Boolean).join(" · ")}
         {v.pos==="sube"&&` · viene con ${v.nSube} pers.`}
-        {v.extra&&` · ${v.cap} lugares, uno es su chofer`}
+        {v.extra&&` · ${v.cap} pasajeros, uno es el chofer`}
         {v.capSup&&<span style={{color:"var(--acc)"}}> · sin capacidad cargada (supongo {BJ_CAP})</span>}
       </div>
-      {v.cuenta&&<div className="bj-bar"><i style={{width:Math.min(100,v.lug?Math.round(ps.length/v.lug*100):0)+"%"}}/></div>}
-      {v.cuenta&&<div>{ps.map(p=>chip(p,true))}{!ps.length&&<span className="bj-vacia">Vacía{sel.size?" — tocá para poner acá":""}</span>}</div>}
-      {puedeEditar&&<div className="bj-va" onClick={e=>e.stopPropagation()}>
-        <button className="bsm" onClick={()=>setEditar(v)}>✏️ Capacidad / empresa</button>
-        {v.pos==="sube"&&<label className="bj-chk"><input type="checkbox" checked={v.cuenta} onChange={e=>{const on=e.target.checked;setPlan(p=>({...p,off:on?p.off.filter(k=>k!==v.k):[...p.off,v.k]}));}}/> Contarla para bajar</label>}
-        {v.extra&&<button className="bsm bsm-r" onClick={()=>setPlan(p=>({...p,extras:p.extras.filter(x=>x.k!==v.k)}))}>Quitar</button>}
+      {v.cuenta&&(v.extra||ps.length>0||ch)&&<div className="bj-chof" onClick={e=>e.stopPropagation()}>
+        {ch?<span>🚗 Chofer: <b>{bjNom(personaDe(ch))}</b>{v.extra&&choferByK[ch]?<small> · {BJ_EST_LBL[choferByK[ch].estado]}</small>:null}</span>:<span style={{color:"var(--acc)"}}>⚠️ Sin chofer</span>}
+        {puedeEditar&&opcCh.length>0&&<select value={ch||""} onChange={e=>ponerChofer(v.k,e.target.value)}>
+          <option value="">{v.extra?"Elegir chofer...":"Elegir quién maneja..."}</option>
+          {opcCh.map(c=><option key={c.k} value={c.k}>{bjNom(c)}{c.chofer?" 🚗":""}{v.extra?" · "+BJ_EST_LBL[c.estado]:""}</option>)}
+        </select>}
       </div>}
-      {!puedeEditar&&v.pos==="sube"&&!v.cuenta&&<div className="bj-vacia">Logística no la cuenta para bajar.</div>}
+      {v.cuenta&&<div className="bj-bar"><i style={{width:Math.min(100,v.lug?Math.round(ps.length/v.lug*100):0)+"%"}}/></div>}
+      {v.cuenta&&<div>{ps.map(p=>chip(p,true,p.k===ch))}{!ps.length&&<span className="bj-vacia">{v.extra?"Sin pasajeros todavía":"Vacío"}{sel.size?" — tocá para poner acá":""}</span>}</div>}
+      {puedeEditar&&<div className="bj-va" onClick={e=>e.stopPropagation()}>
+        <button className="bsm" onClick={()=>setEditar(v)}>✏️ Datos del vehículo</button>
+        {v.pos==="sube"&&<label className="bj-chk"><input type="checkbox" checked={v.cuenta} onChange={e=>{const on=e.target.checked;setPlan(p=>({...p,off:on?p.off.filter(k=>k!==v.k):[...p.off,v.k]}));}}/> Contarlo para bajar</label>}
+        {v.extra&&<button className="bsm bsm-r" onClick={()=>setPlan(p=>{const chof={...p.chof};delete chof[v.k];return{...p,extras:p.extras.filter(x=>x.k!==v.k),chof};})}>Quitar</button>}
+      </div>}
+      {!puedeEditar&&v.pos==="sube"&&!v.cuenta&&<div className="bj-vacia">Logística no lo cuenta para bajar.</div>}
     </div>;
   };
+  const grupos={};sinLugar.filter(p=>!p.chofer).forEach(p=>(grupos[p.grp]=grupos[p.grp]||[]).push(p));
+  const gOrd=Object.entries(grupos).sort((a,b)=>b[1].length-a[1].length||a[0].localeCompare(b[0]));
+  const chVisibles=d.choferes.filter(c=>c.estado!=="fuera"),chFuera=d.choferes.filter(c=>c.estado==="fuera");
+  const VcChalet=V.filter(v=>!v.extra),VExtra=V.filter(v=>v.extra);
+  const selArr=[...sel];
+  const selNoCh=selArr.filter(k=>montK.has(k)&&!persByK[k].chofer&&bjEsUUID(k));
+  const selCh=selArr.filter(k=>(montK.has(k)?persByK[k].chofer:!!choferByK[k])&&bjEsUUID(k));
   const hhmm=(t)=>t?bjHora(new Date(t)):"";
   const estTxt=!puedeEditar
     ?(srv.existe?`Armado por ${srv.por||"logística"} · ${hhmm(srv.at)}`:"Logística todavía no armó el reparto de hoy")
@@ -3400,8 +3592,6 @@ function BajadaChalet({user}){
     :estado.t==="pend"?"Cambios sin guardar..."
     :estado.t==="error"?"⚠️ Sin guardar"
     :srv.existe?`✓ Guardado ${hhmm(srv.at)}${srv.por?" · "+srv.por:""}`:"Todavía no se guardó nada hoy";
-  const grupos={};sinLugar.forEach(p=>(grupos[p.grp]=grupos[p.grp]||[]).push(p));
-  const gOrd=Object.entries(grupos).sort((a,b)=>b[1].length-a[1].length||a[0].localeCompare(b[0]));
 
   return <div>
     <div className="ph2">
@@ -3420,11 +3610,13 @@ function BajadaChalet({user}){
       <div className="sc"><div className="sv" style={{color:"var(--acc2)"}}>{nSube}</div><div className="slb">Subiendo ahora</div></div>
       <div className="sc"><div className="sv">{libres}</div><div className="slb">Lugares libres · {Vc.length} vehíc.</div></div>
       <div className="sc"><div className="sv" style={{color:nSin?"var(--rd)":"var(--gr)"}}>{nSin}</div><div className="slb">Sin ubicar</div></div>
+      <div className="sc"><div className="sv" style={{color:"var(--acc)"}}>{chAbajo}</div><div className="slb">Choferes libres abajo</div></div>
     </div>
-    <div className={"bj-aviso "+(nSin||sobrecarga.length?"mal":"bien")}>
+    <div className={"bj-aviso "+(nSin||sobrecarga.length||sinChofer.length?"mal":"bien")}>
       {!nSin?<span>✅ Todos tienen lugar.</span>
         :libres<nSin?<span>⚠️ No alcanza: <b>falta ubicar a {nSin} {persTxt} en vehículos</b> y {libres?`quedan solo ${libres} ${pl(libres,"lugar libre","lugares libres")}`:"no queda ningún lugar libre"}.</span>
         :<span>⚠️ <b>Falta ubicar a {nSin} {persTxt} en vehículos</b> (quedan {libres} {pl(libres,"lugar libre","lugares libres")}).</span>}
+      {sinChofer.length>0&&<span> Sin chofer: <b>{sinChofer.map(v=>v.patente).join(", ")}</b>.</span>}
       {sobrecarga.length>0&&<span> Revisá {sobrecarga.map(v=>v.patente).join(", ")}: {pl(sobrecarga.length,"tiene","tienen")} más gente que lugares.</span>}
       {noBaja.length>0&&<span> {noBaja.length} no baja{noBaja.length>1?"n":""} en camioneta.</span>}
       {(d.bajP>0||d.bajV>0)&&<span style={{color:"var(--tx2)"}}> Bajando ahora (no se cuentan): {d.bajP} pers. y {d.bajV} vehíc.</span>}
@@ -3432,18 +3624,32 @@ function BajadaChalet({user}){
     {puedeEditar?<>
     <div className="bj-acc">
       <button className="badd" onClick={auto}>⚡ Completar automático</button>
-      <button className="bsm" onClick={()=>setAgregar(true)}>+ Camioneta a subir</button>
+      <button className="bsm" onClick={()=>setSubir(true)}>🔼 Subir vehículo a buscar gente</button>
       <button className="bsm" onClick={vaciar}>Vaciar reparto</button>
     </div>
-    <div className="bj-ayuda">Tocá una empresa o personas sueltas y después el vehículo (en la PC también se puede arrastrar). Para cambiar a alguien de vehículo, tocalo y tocá el otro. "Completar automático" acomoda solo a los que no tienen lugar, en el vehículo en el que subieron o en uno de su empresa: no mezcla empresas, así que los que no tienen vehículo de su empresa quedan sin ubicar para que los acomodes vos. Las camionetas "a subir" y la casilla "Contarla para bajar" son solo para armar este reparto: no cambian nada de los puestos ni de los conteos.</div>
+    <div className="bj-ayuda">Tocá una empresa o personas sueltas y después el vehículo (en la PC también se puede arrastrar). Para cambiar a alguien de vehículo, tocalo y tocá el otro. Para que un chofer de abajo maneje un vehículo que sube, tocalo y tocá ese vehículo (o elegilo en la tarjeta). "Completar automático" acomoda solo a los que no tienen lugar, en el vehículo en el que subieron o en uno de su empresa: no mezcla empresas. Los vehículos que suben a buscar gente y la casilla "Contarlo para bajar" son solo para organizar: no cambian nada de los puestos ni de los conteos.</div>
     </>:<div className="bj-ayuda">Lo arma logística. Acá ves la última versión guardada; se actualiza sola cada 30 segundos.</div>}
     <div className={"bj-w"+(puedeEditar?"":" bj-ro")}>
       <div className="bj-col" {...(puedeEditar?soltarEn(null):{})}>
-        <div className="slbl">Sin camioneta ({sinLugar.length})</div>
+        <div className="bj-g bj-gch">
+          <div className="slbl" style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+            <span>🚗 Choferes ({d.choferes.length})</span>
+            {puedeEditar&&<button className="bsm" style={{marginLeft:"auto"}} onClick={()=>setAddChofer(true)}>+ Agregar chofer</button>}
+          </div>
+          <div>{chVisibles.map(chChip)}</div>
+          {chFuera.length>0&&<div style={{marginTop:2}}>
+            <button className="bsm" onClick={()=>setVerFuera(!verFuera)}>{verFuera?"Ocultar":"Ver"} {chFuera.length} fuera del predio</button>
+            {verFuera&&<div style={{marginTop:6}}>{chFuera.map(chChip)}</div>}
+          </div>}
+          {!d.choferes.length&&<div className="bj-vacia">No hay choferes marcados. Se toman del cargo (CHOFER), del área "Choferes" de Reportes JO o los que agregues acá.</div>}
+          {d.manualOk===false&&puedeEditar&&<div className="bj-vacia" style={{color:"var(--acc)"}}>Para marcar choferes a mano falta correr el SQL de la Rev149.</div>}
+        </div>
+        <div className="slbl">Sin camioneta ({nSin})</div>
         {gOrd.map(([g,ps])=>{const ks=ps.map(p=>p.k);const todos=ks.every(k=>sel.has(k));return <div key={g} className="bj-g">
           <div className={"bj-gt"+(todos?" sel":"")} draggable={puedeEditar} onDragStart={puedeEditar?arrastrar(ks):undefined} onClick={puedeEditar?()=>togGrupo(ks):undefined}>👥 {g} <span>{ps.length}</span></div>
           <div>{ordP(ps).map(p=>chip(p,false))}</div>
         </div>;})}
+        {sinLugar.some(p=>p.chofer)&&<div className="bj-vacia" style={{marginBottom:8}}>{sinLugar.filter(p=>p.chofer).length} chofer{sinLugar.filter(p=>p.chofer).length>1?"es":""} de la montaña sin vehículo (están arriba, en Choferes).</div>}
         {!sinLugar.length&&<div className="bj-vacia" style={{color:"var(--gr)"}}>{d.pers.length?"✓ Todos tienen lugar":"No hay nadie en el chalet ni subiendo."}</div>}
         {noBaja.length>0&&<div className="bj-g" style={{marginTop:16}} {...(puedeEditar?soltarEn(BJ_NO):{})}>
           <div className="slbl">🚶 No bajan en camioneta ({noBaja.length})</div>
@@ -3451,17 +3657,25 @@ function BajadaChalet({user}){
         </div>}
       </div>
       <div className="bj-col">
-        <div className="slbl">Vehículos</div>
-        {V.map(tarjeta)}
-        {!V.length&&<div className="bj-vacia">No hay vehículos arriba ni subiendo. Agregá las camionetas a subir.</div>}
+        <div className="slbl">Vehículos en el chalet ({VcChalet.length})</div>
+        {VcChalet.map(tarjeta)}
+        {!VcChalet.length&&<div className="bj-vacia" style={{marginBottom:10}}>No hay vehículos arriba ni subiendo.</div>}
+        <div className="slbl" style={{marginTop:14,display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+          <span>🔼 Suben a buscar gente ({VExtra.length})</span>
+          {puedeEditar&&<button className="bsm" style={{marginLeft:"auto"}} onClick={()=>setSubir(true)}>+ Subir vehículo</button>}
+        </div>
+        {VExtra.map(tarjeta)}
+        {!VExtra.length&&<div className="bj-vacia">{puedeEditar?"Si falta lugar, subí un vehículo del campamento con un chofer.":"Ninguno."}</div>}
       </div>
     </div>
     {puedeEditar&&sel.size>0&&<div className="bj-selbar">
       <div className="bj-selt"><b>{sel.size}</b> seleccionad{sel.size===1?"a":"as"}: tocá a dónde van</div>
       <div className="bj-selb">
-        {Vc.map(v=>{const n=enV[v.k].length;return <button key={v.k} className="bsm" onClick={()=>mover([...sel],v.k)}>{v.patente} <span style={{color:n>=v.lug?"var(--rd)":"var(--gr)"}}>{n}/{v.lug}</span></button>;})}
-        <button className="bsm" onClick={()=>mover([...sel],BJ_NO)}>🚶 No baja en camioneta</button>
-        <button className="bsm" onClick={()=>mover([...sel],null)}>Sacar</button>
+        {Vc.map(v=>{const n=enV[v.k].length;return <button key={v.k} className="bsm" onClick={()=>mover(selArr,v.k)}>{v.extra?"🔼 ":""}{v.patente} <span style={{color:n>=v.lug?"var(--rd)":"var(--gr)"}}>{n}/{v.lug}</span></button>;})}
+        <button className="bsm" onClick={()=>mover(selArr,BJ_NO)}>🚶 No baja en camioneta</button>
+        <button className="bsm" onClick={()=>mover(selArr,null)}>Sacar</button>
+        {selNoCh.length>0&&<button className="bsm" onClick={()=>marcarChofer(selNoCh,true)}>🚗 Es chofer</button>}
+        {selCh.length>0&&<button className="bsm" onClick={()=>marcarChofer(selCh,false)}>No es chofer</button>}
         <button className="bsm bsm-r" onClick={()=>setSel(new Set())}>✕</button>
       </div>
     </div>}
@@ -3473,7 +3687,10 @@ function BajadaChalet({user}){
     {verTxt&&<pre className="bj-txt">{texto()}</pre>}
     <div className="bj-ayuda" style={{marginTop:10}}>Personas y vehículos leídos a las {bjHora(d.at)}. {puedeEditar?"El reparto se guarda solo (uno por día) y lo ven logística, admin y los puestos. Es solo informativo: no cambia nada de los puestos ni de los conteos.":""}</div>
     {editar&&<BjVehModal v={editar} empresas={empresas} onClose={()=>setEditar(null)} onGuardar={f=>guardarVeh(editar,f)}/>}
-    {agregar&&<BjAgregarModal todos={d.todos} usados={usados} susp={d.susp} onClose={()=>setAgregar(false)} onAgregar={x=>{setPlan(p=>({...p,extras:[...p.extras,{...x,k:"x"+Date.now()}]}));setAgregar(false);}}/>}
+    {subir&&<BjSubirModal todos={d.todos} usados={usados} susp={d.susp} choferes={d.choferes} ocupados={new Set(Object.keys(manejaExtra))}
+      onClose={()=>setSubir(false)}
+      onAgregar={(x,ch)=>{const k="x"+Date.now();setPlan(p=>{const chof={...p.chof};if(ch){quitarCh(chof,ch);chof[k]=ch;}return{...p,extras:[...p.extras,{...x,k}],chof};});setSubir(false);}}/>}
+    {addChofer&&<BjChoferModal actuales={new Set(d.choferes.map(c=>c.k))} onClose={()=>setAddChofer(false)} onAgregar={async(id)=>{if(await marcarChofer([id],true))setAddChofer(false);}}/>}
   </div>;
 }
 
