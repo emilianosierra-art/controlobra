@@ -406,6 +406,18 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .av-op b{font-size:15px}
 .av-op .d{display:block;font-size:12px;color:var(--tx2);margin-top:2px}
 .av-op.dis{opacity:.35;cursor:not-allowed}
+/* Rev152: conteo de personal, camino separado en subiendo / bajando */
+.pc-cam{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.pc-cam-col{padding:12px 18px 14px;border-right:1px solid rgba(59,130,246,.2)}
+.pc-cam-col:last-child{border-right:none}
+.pc-cam-t{font-family:var(--fh);font-size:18px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--pcc);margin-bottom:8px}
+.pc-cam-t span{font-family:var(--fb);font-size:12px;font-weight:400;letter-spacing:0;text-transform:none;color:var(--tx2);margin-left:4px}
+.pc-cam-n{display:flex;gap:18px;flex-wrap:wrap}
+.pc-cam-i{display:flex;align-items:center;gap:10px;flex:1;min-width:150px}
+.pc-cam-v{font-family:var(--fh);font-size:52px;font-weight:900;color:var(--pcc);line-height:1}
+.pc-cam-l{flex:1;font-family:var(--fh);font-size:14px;font-weight:700;color:var(--pcc);text-transform:uppercase}
+.pc-cam-b{background:rgba(var(--pcb),.15);border:1px solid rgba(var(--pcb),.4);color:var(--pcc);border-radius:4px;padding:5px 12px;font-family:var(--fh);font-size:12px;font-weight:700;cursor:pointer}
+@media(max-width:600px){.pc-cam-col{border-right:none;border-bottom:1px solid rgba(59,130,246,.2)}.pc-cam-col:last-child{border-bottom:none}.pc-cam-v{font-size:40px}}
 /* Rev150: tareas del aviso (S&H e Intendencia) */
 .av-tarea{background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;margin-top:8px}
 .av-tarea-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;font-weight:600}
@@ -529,7 +541,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev151";
+const APP_REV="Rev152";
 // Rev143: número de versión que se muestra al lado de CONTROLOBRA: AAMM.revisión.DD con la fecha de la revisión
 // (ej. 2611.143.14 = revisión 143 del 14/11/2026). En cada revisión nueva se actualizan APP_REV y APP_FECHA.
 const APP_FECHA="2026-11-17";
@@ -7504,6 +7516,10 @@ function PublicDashboard({onBack,embedTab}){
     const persIdsCamino=Object.entries(pos.persona).filter(([_,p])=>p==="camino").map(([k])=>k);
     const vehIdsChalet=Object.entries(pos.vehiculo).filter(([_,p])=>p==="chalet").map(([k])=>k);
     const vehIdsCamino=Object.entries(pos.vehiculo).filter(([_,p])=>p==="camino").map(([k])=>k);
+    // Rev152: en camino, separados los que suben (pasaron P2 subiendo) de los que bajan (salieron por P3)
+    const sube=(last)=>!!last&&last.puesto==="Puesto 2"&&last.dir==="entrada";
+    const persIdsSube=persIdsCamino.filter(k=>sube(pos.personaLast[k])),persIdsBaja=persIdsCamino.filter(k=>!sube(pos.personaLast[k]));
+    const vehIdsSube=vehIdsCamino.filter(k=>sube(pos.vehiculoLast[k])),vehIdsBaja=vehIdsCamino.filter(k=>!sube(pos.vehiculoLast[k]));
     // En predio: mismo criterio que ChaletMini (quien está en camino/chalet también cuenta como dentro)
     const persIdsPredio=Array.from(pred.inSet);
     persIdsChalet.forEach(k=>{if(!pred.inSet.has(k))persIdsPredio.push(k);});
@@ -7530,6 +7546,9 @@ function PublicDashboard({onBack,embedTab}){
       persListPredio:persIdsPredio.map(k=>persMap[k]||synthPer(k)),
       vehListChalet:vehIdsChalet.map(k=>vehMap[k]||synthVeh(k)),
       vehListCamino:vehIdsCamino.map(k=>vehMap[k]||synthVeh(k)),
+      persSube:persIdsSube.length,persBaja:persIdsBaja.length,vehSube:vehIdsSube.length,vehBaja:vehIdsBaja.length,
+      persListSube:persIdsSube.map(k=>persMap[k]||synthPer(k)),persListBaja:persIdsBaja.map(k=>persMap[k]||synthPer(k)),
+      vehListSube:vehIdsSube.map(k=>vehMap[k]||synthVeh(k)),vehListBaja:vehIdsBaja.map(k=>vehMap[k]||synthVeh(k)),
     });
   };
 
@@ -7664,31 +7683,29 @@ function PublicDashboard({onBack,embedTab}){
             </div>
           </div>
         </div>
-        {/* CAMINO */}
-        <div style={{background:"linear-gradient(135deg,rgba(59,130,246,.12),rgba(16,185,129,.07))",border:"1px solid rgba(59,130,246,.3)",borderRadius:8,overflow:"hidden",marginBottom:14}}>
-          <div style={{padding:"10px 18px",borderBottom:"1px solid rgba(59,130,246,.2)",fontFamily:"var(--fh)",fontSize:13,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:"#60A5FA"}}>En Camino — P2 a P3</div>
-          <div style={{display:"flex",flexWrap:"wrap"}}>
-            <div style={{flex:1,minWidth:160,padding:"16px 20px",borderRight:"1px solid rgba(59,130,246,.2)",display:"flex",alignItems:"center",gap:14}}>
-              <div style={{fontFamily:"var(--fh)",fontSize:52,fontWeight:900,color:"#60A5FA",lineHeight:1}}>{pubChalet.persCamino}</div>
-              <div style={{flex:1}}>
-                <div style={{fontFamily:"var(--fh)",fontSize:14,fontWeight:700,color:"#60A5FA",textTransform:"uppercase"}}>Personas</div>
+        {/* CAMINO (Rev152): separado en los que suben y los que bajan */}
+        <div style={{background:"linear-gradient(135deg,rgba(59,130,246,.12),rgba(34,211,238,.06))",border:"1px solid rgba(59,130,246,.3)",borderRadius:8,overflow:"hidden",marginBottom:14}}>
+          <div style={{padding:"10px 18px",borderBottom:"1px solid rgba(59,130,246,.2)",fontFamily:"var(--fh)",fontSize:13,fontWeight:800,letterSpacing:".08em",textTransform:"uppercase",color:"#60A5FA"}}>En camino — entre P2 y P3</div>
+          <div className="pc-cam">
+            {[{k:"Sube",t:"⬆ Subiendo",d:"pasaron P2, van al chalet",c:"#60A5FA",bg:"59,130,246"},{k:"Baja",t:"⬇ Bajando",d:"salieron del chalet, van a P2",c:"#22D3EE",bg:"34,211,238"}].map(x=><div key={x.k} className="pc-cam-col" style={{"--pcc":x.c,"--pcb":x.bg}}>
+              <div className="pc-cam-t">{x.t} <span>{x.d}</span></div>
+              <div className="pc-cam-n">
+                {[["pers","Personas"],["veh","Vehiculos"]].map(([q,l])=><div key={q} className="pc-cam-i">
+                  <div className="pc-cam-v">{pubChalet.persChalet===null?"-":(pubChalet[q+x.k]||0)}</div>
+                  <div className="pc-cam-l">{l}</div>
+                  <button className="pc-cam-b" onClick={()=>setPubShowList(q+x.k)}>Ver</button>
+                </div>)}
               </div>
-              <button style={{background:"rgba(59,130,246,.15)",border:"1px solid rgba(59,130,246,.4)",color:"#60A5FA",borderRadius:4,padding:"5px 12px",fontFamily:"var(--fh)",fontSize:12,fontWeight:700,cursor:"pointer"}} onClick={()=>setPubShowList("persCamino")}>Ver</button>
-            </div>
-            <div style={{flex:1,minWidth:160,padding:"16px 20px",display:"flex",alignItems:"center",gap:14}}>
-              <div style={{fontFamily:"var(--fh)",fontSize:52,fontWeight:900,color:"#60A5FA",lineHeight:1}}>{pubChalet.vehCamino}</div>
-              <div style={{flex:1}}>
-                <div style={{fontFamily:"var(--fh)",fontSize:14,fontWeight:700,color:"#60A5FA",textTransform:"uppercase"}}>Vehiculos</div>
-              </div>
-              <button style={{background:"rgba(59,130,246,.15)",border:"1px solid rgba(59,130,246,.4)",color:"#60A5FA",borderRadius:4,padding:"5px 12px",fontFamily:"var(--fh)",fontSize:12,fontWeight:700,cursor:"pointer"}} onClick={()=>setPubShowList("vehCamino")}>Ver</button>
-            </div>
+            </div>)}
           </div>
         </div>
-        <div style={{fontSize:12,color:"var(--tx2)",marginBottom:14}}>Se actualiza cada 5 segundos</div>
+        <div style={{fontSize:12,color:"var(--tx2)",marginBottom:14}}>Se actualiza cada 15 segundos</div>
         {pubShowList&&<ListaFiltrada
-          items={{persPredio:pubChalet.persListPredio,persChalet:pubChalet.persListChalet,persCamino:pubChalet.persListCamino,vehChalet:pubChalet.vehListChalet,vehCamino:pubChalet.vehListCamino}[pubShowList]}
+          items={{persPredio:pubChalet.persListPredio,persChalet:pubChalet.persListChalet,persCamino:pubChalet.persListCamino,vehChalet:pubChalet.vehListChalet,vehCamino:pubChalet.vehListCamino,
+            persSube:pubChalet.persListSube||[],persBaja:pubChalet.persListBaja||[],vehSube:pubChalet.vehListSube||[],vehBaja:pubChalet.vehListBaja||[]}[pubShowList]}
           tipo={pubShowList.startsWith("pers")?"persona":"vehiculo"}
-          titulo={{persPredio:"Personas en predio (campamento+camino+chalet)",persChalet:"Personas en Chalet",persCamino:"Personas en Camino",vehChalet:"Vehiculos en Chalet",vehCamino:"Vehiculos en Camino"}[pubShowList]}
+          titulo={{persPredio:"Personas en predio (campamento+camino+chalet)",persChalet:"Personas en Chalet",persCamino:"Personas en Camino",vehChalet:"Vehiculos en Chalet",vehCamino:"Vehiculos en Camino",
+            persSube:"Personas subiendo al chalet",persBaja:"Personas bajando del chalet",vehSube:"Vehiculos subiendo al chalet",vehBaja:"Vehiculos bajando del chalet"}[pubShowList]}
           onClose={()=>setPubShowList(null)}
         />}
       </>}
