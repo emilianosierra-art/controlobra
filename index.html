@@ -529,7 +529,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev150";
+const APP_REV="Rev151";
 // Rev143: número de versión que se muestra al lado de CONTROLOBRA: AAMM.revisión.DD con la fecha de la revisión
 // (ej. 2611.143.14 = revisión 143 del 14/11/2026). En cada revisión nueva se actualizan APP_REV y APP_FECHA.
 const APP_FECHA="2026-11-17";
@@ -9068,7 +9068,7 @@ function App(){
   };
 
   // Solapa con la que arranca cada rol
-  const TAB_INI={puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi",admin_viandas:"vi",sobrestante:"jpd",jefe_obra:"jpd",compras:"per",ambiente:"per",intendencia:"per"};
+  const TAB_INI={puesto:"sc",sh:"per",cp:"per",admin:"per",logistica:"per",cocina_campamento:"vi",cocina_chalet:"vi",admin_viandas:"vi",sobrestante:"pc",jefe_obra:"pc",compras:"per",ambiente:"per",intendencia:"per"};
   // Rev140: "Ver como" (solo admin): rol simulado; null = la app normal del admin
   const[sim,setSim]=useState(null);
   const[verSim,setVerSim]=useState(false);
@@ -9085,7 +9085,8 @@ function App(){
 
   // "cvc" = Conteo Viandas Chalet (el conteo viejo, renombrado). "vi" = Viandas (módulo comedor nuevo).
   // Rev141: sobrestante y jefe de obra: Habilitaciones (Personal, Vehículos, Aviso de ingreso) en lugar de Movimientos de obra
-  const TABS_SOB=[{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"}];
+  // Rev151: vuelve "Conteo de personal" (predio / camino / chalet, lo proyectan en pantalla grande) y suman "Bajada chalet" (solo ver)
+  const TABS_SOB=[{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"avi",l:"Aviso de ingreso"},{k:"reg",l:"Registros"},{k:"pc",l:"Conteo de personal"},{k:"baj",l:"Bajada chalet"},{k:"jpd",l:"Parte diario"},{k:"jhs",l:"Horas de personal"}];
   // Rev141: "Aviso de ingreso" es una solapa de Habilitaciones para todos menos los puestos
   const TABS={
     puesto:           [{k:"sc",l:"Escanear"},{k:"per",l:"Personal"},{k:"veh",l:"Vehiculos"},{k:"reg",l:"Registros"},{k:"baj",l:"Bajada chalet"},{k:"cvc",l:"Chalet"}],
@@ -9107,7 +9108,7 @@ function App(){
   // Agrupación visual de solapas (cada rol ve solo los grupos donde tiene alguna solapa)
   const NAV_GROUPS=[
     {t:"Habilitaciones",    ks:["per","veh","avi"]},
-    {t:"Control de puestos",ks:["sc","reg","baj"]},
+    {t:"Control de puestos",ks:["sc","reg","pc","baj"]},
     {t:"Gastronomía",       ks:["vi","cvc"]},
     {t:"Reportes JO",       ks:["jpd","jhs"]},
     {t:"Administración",    ks:["adm"]},
