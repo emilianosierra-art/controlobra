@@ -406,6 +406,69 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .av-op b{font-size:15px}
 .av-op .d{display:block;font-size:12px;color:var(--tx2);margin-top:2px}
 .av-op.dis{opacity:.35;cursor:not-allowed}
+/* Rev153: detalle del botón CAM (subiendo / bajando, por vehículo) */
+.camd{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.camd-col{background:rgba(var(--cb),.06);border:1px solid rgba(var(--cb),.35);border-radius:8px;padding:10px 12px}
+.camd-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-family:var(--fh);font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:var(--cc)}
+.camd-h span{font-family:var(--fm);font-size:12px;font-weight:700;letter-spacing:0;text-transform:none}
+.camd-sub{font-size:11px;color:var(--tx3);margin-bottom:8px}
+.camd-vacio{font-size:13px;color:var(--tx3);padding:8px 0}
+.camd-veh{background:var(--s2);border:1px solid var(--bd);border-left:3px solid var(--cc);border-radius:6px;padding:8px 10px;margin-bottom:8px}
+.camd-sin{border-left-color:var(--tx3)}
+.camd-vh{display:flex;align-items:center;gap:8px}
+.camd-vh .ic{font-size:20px;line-height:1}
+.camd-d{font-size:11px;color:var(--tx2)}
+.camd-n{font-family:var(--fh);font-weight:800;font-size:14px;color:var(--cc);white-space:nowrap}
+.camd-av{font-size:11px;color:var(--acc);margin-top:4px}
+.camd-ps{margin-top:6px;padding-top:6px;border-top:1px dashed var(--bd);display:flex;flex-direction:column;gap:3px}
+.camd-p{font-size:13px}
+.camd-p span{font-size:11px;color:var(--tx3);margin-left:6px}
+/* Rev153: aviso de ingreso, fechas iguales o distintas */
+.avf-modo{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin:6px 0 12px}
+.avf-mb{display:flex;align-items:center;gap:12px;text-align:left;background:var(--s2);border:1.5px solid var(--bd);border-radius:8px;padding:12px 14px;color:var(--tx);cursor:pointer;font-family:var(--fb)}
+.avf-mb:hover{border-color:var(--acc2)}
+.avf-mb.on{border-color:var(--acc);background:rgba(245,158,11,.1)}
+.avf-mb .ic{font-size:24px;line-height:1}
+.avf-mb b{font-size:15px}
+.avf-mb .d{display:block;font-size:12px;color:var(--tx2);margin-top:2px}
+.avf-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,1fr);gap:16px;align-items:start}
+@media(max-width:760px){.avf-grid{grid-template-columns:1fr}}
+.avf-tb{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.avf-row{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:8px 10px;margin-bottom:6px}
+.avf-row.on{border-color:var(--acc);background:rgba(245,158,11,.08)}
+.avf-row.mal{border-color:rgba(239,68,68,.55)}
+.avf-who{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;margin-bottom:6px;flex-wrap:wrap}
+.avf-who input{width:auto;accent-color:var(--acc);transform:scale(1.2);flex-shrink:0}
+.avf-who .d{font-size:11px;color:var(--tx3)}
+.avf-fs{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-left:26px}
+.avf-dot{display:inline-block;width:11px;height:11px;border-radius:50%;border:2px solid;flex-shrink:0}
+.avf-dot.sm{width:8px;height:8px;border-width:1px;margin-right:5px;vertical-align:middle}
+.avf-falta{font-size:12px;color:var(--rd);font-weight:600}
+.avf-cal{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 12px}
+.avf-res{background:var(--s1);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin-top:14px}
+.avf-res-t{font-family:var(--fh);font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--tx2);margin-bottom:6px}
+.avf-res-g{display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:14px}
+.avf-res-g .avf-dot{margin-top:4px}
+.avf-res-g .d{font-size:12px;color:var(--tx2)}
+.avf-res-g.mal b{color:var(--rd)}
+.avf-aviso{font-size:13px;color:var(--acc);font-weight:600;margin-bottom:6px}
+.avf-g{border-left:3px solid var(--bd);padding:4px 0 4px 10px;margin:6px 0 10px}
+.avf-gh{font-size:14px;font-weight:600;margin-bottom:2px}
+.avf-gh .d{font-size:12px;color:var(--tx2);font-weight:400}
+.avf-gh a{font-size:12px;font-weight:400;color:var(--acc2);margin-left:6px}
+.avf-cg{display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 8px}
+.avf-chip{font-family:var(--fm);font-size:11px;border:1px solid;border-radius:10px;padding:1px 8px;white-space:nowrap}
+/* Rev153: dónde se aloja (Intendencia) */
+.alo-top{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin-bottom:10px}
+.alo-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.alo-chip{background:var(--s1);border:1px solid var(--bd);color:var(--tx);border-radius:14px;padding:3px 10px;font-size:12px;cursor:pointer}
+.alo-chip:hover{border-color:var(--acc2);color:var(--acc2)}
+.alo-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:7px 10px;margin-bottom:6px}
+.alo-row.on{border-color:var(--acc);background:rgba(245,158,11,.08)}
+.alo-who{display:flex;align-items:center;gap:8px;flex:1 1 200px;min-width:0;cursor:pointer;font-size:14px}
+.alo-who input{width:auto;accent-color:var(--acc);transform:scale(1.2);flex-shrink:0}
+.alo-who .d{display:block;font-size:11px;color:var(--tx3)}
+.alo-in{flex:1 1 180px;min-width:0;padding:6px 10px}
 /* Rev152: conteo de personal, camino separado en subiendo / bajando */
 .pc-cam{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
 .pc-cam-col{padding:12px 18px 14px;border-right:1px solid rgba(59,130,246,.2)}
@@ -541,7 +604,7 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev152";
+const APP_REV="Rev153";
 // Rev143: número de versión que se muestra al lado de CONTROLOBRA: AAMM.revisión.DD con la fecha de la revisión
 // (ej. 2611.143.14 = revisión 143 del 14/11/2026). En cada revisión nueva se actualizan APP_REV y APP_FECHA.
 const APP_FECHA="2026-11-17";
@@ -954,10 +1017,51 @@ function ListaFiltrada({items,tipo,titulo,onClose,onRemove,onExcel}){
   </div></div>;
 }
 
+// Rev153: detalle del botón CAM — en camino separado en subiendo / bajando, agrupado por vehículo con sus pasajeros
+function CamDetalle({det,onClose,onLista,puedeSacar}){
+  const hora=(t)=>{if(!t)return"";const d=new Date(t);return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");};
+  const nom=(p)=>p._synth?`DNI ${p.dni} (no registrado)`:`${p.apellido||""} ${p.nombre||""}`.trim();
+  const LADOS=[{k:"sube",t:"⬆ Subiendo",d:"pasaron P2, van al chalet",paso:"pasó P2",c:"#60A5FA",bg:"59,130,246",vacio:"Nadie subiendo."},
+    {k:"baja",t:"⬇ Bajando",d:"salieron del chalet por P3, van a P2",paso:"salió P3",c:"#22D3EE",bg:"34,211,238",vacio:"Nadie bajando."}];
+  const pasajeros=(ps)=><div className="camd-ps">{ps.map((p,i)=><div key={p.id||i} className="camd-p">{nom(p)}<span>{p.empresa||""}</span></div>)}</div>;
+  return <div className="mo"><div className="md md-lg" style={{maxWidth:860}}>
+    <div className="mh"><div className="mt">🛣️ En camino — entre P2 y P3</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div className="camd">{LADOS.map(x=>{const d=det[x.k];return <div key={x.k} className="camd-col" style={{"--cc":x.c,"--cb":x.bg}}>
+        <div className="camd-h">{x.t}<span>{d.np} pers · {d.nv} veh</span></div>
+        <div className="camd-sub">{x.d}</div>
+        {!d.grupos.length&&!d.sueltos.length&&<div className="camd-vacio">{x.vacio}</div>}
+        {d.grupos.map(g=><div key={g.key} className="camd-veh">
+          <div className="camd-vh">
+            <span className="ic">{VI[g.v.tipo]||"🚗"}</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div><b className="mn" style={{fontSize:13}}>{g.v.patente}</b>{g.v.descripcion?<span className="camd-d"> · {g.v.descripcion}</span>:null}</div>
+              <div className="camd-d">{g.v.empresa||"—"}{g.t?` · ${g.enTramo?x.paso:"pasaron"} ${hora(g.t)}`:""}</div>
+            </div>
+            <span className="camd-n">{g.pers.length} pers</span>
+          </div>
+          {!g.enTramo&&<div className="camd-av">⚠ {g.donde==="chalet"?"El vehículo ya llegó al chalet":g.donde==="sube"?"El vehículo ahora figura subiendo":g.donde==="baja"?"El vehículo ahora figura bajando":"El vehículo ya no figura en la montaña"}; estas personas pasaron con él</div>}
+          {g.pers.length?pasajeros(g.pers):<div className="camd-d" style={{marginTop:4}}>Sin personas fichadas en este vehículo</div>}
+        </div>)}
+        {d.sueltos.length>0&&<div className="camd-veh camd-sin">
+          <div className="camd-vh"><span className="ic">🚶</span><div style={{flex:1,minWidth:0}}><b>Sin vehículo</b><div className="camd-d">a pie, o el puesto no cargó vehículo</div></div><span className="camd-n">{d.sueltos.length} pers</span></div>
+          {pasajeros(d.sueltos)}
+        </div>}
+      </div>;})}</div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:12}}>
+        <button className="bsm" onClick={()=>onLista("plm")}>👥 Lista de personas en camino{puedeSacar?" (para sacar)":""}</button>
+        <button className="bsm" onClick={()=>onLista("vlm")}>🚗 Lista de vehículos en camino</button>
+      </div>
+      <div style={{fontSize:11,color:"var(--tx3)",marginTop:8}}>Cada persona figura en el vehículo con el que pasó su último puesto. Se actualiza cada 10 segundos.</div>
+    </div>
+  </div></div>;
+}
+
 // ─── CHALET MINI (topbar) ─────────────────────────────────────────────────────
 function ChaletMini({proyectoId,user}){
-  const[data,setData]=useState({pc:null,pm:0,vc:0,vm:0,ep:0,plc:[],plm:[],vlc:[],vlm:[],plp:[]});
+  const[data,setData]=useState({pc:null,pm:0,vc:0,vm:0,ep:0,plc:[],plm:[],vlc:[],vlm:[],plp:[],cam:null});
   const[showList,setShowList]=useState(null);
+  const[verCam,setVerCam]=useState(false); // Rev153: detalle del camino (botón CAM)
   const load=async()=>{
     try{
       const[pos,pred]=await Promise.all([
@@ -978,7 +1082,7 @@ function ChaletMini({proyectoId,user}){
       const allVIds=[...vehIdsChalet,...vehIdsCamino].filter(isUUID);
       const[{data:pers},{data:vehs}]=await Promise.all([
         allPIds.length?db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"}):{data:[]},
-        allVIds.length?db.sel("vehiculos",{cols:"id,patente,descripcion,tipo,empresa"}):{data:[]},
+        (allVIds.length||persIdsCamino.length)?db.sel("vehiculos",{cols:"id,patente,descripcion,tipo,empresa"}):{data:[]},
       ]);
       const persMap={};(pers||[]).forEach(p=>{persMap[p.id]=p;});
       const vehMap={};(vehs||[]).forEach(v=>{vehMap[v.id]=v;});
@@ -986,7 +1090,24 @@ function ChaletMini({proyectoId,user}){
       const synthVeh=(k)=>{const pat=String(k).indexOf("No registrado:")===0?String(k).replace("No registrado:","").trim():k;return{id:k,patente:pat,descripcion:"Vehículo no registrado en la base",tipo:"Otro",empresa:"",_synth:true};};
       const buildPer=(ids)=>ids.map(k=>persMap[k]||synthPer(k));
       const buildVeh=(ids)=>ids.map(k=>vehMap[k]||synthVeh(k));
+      // Rev153: detalle del camino para el botón CAM: subiendo / bajando y quién va en qué vehículo
+      // (cada persona va con el vehículo de la sesión con la que pasó su último puesto, P2 o P3).
+      const subeL=(last)=>!!last&&last.puesto==="Puesto 2"&&last.dir==="entrada";
+      const ordP=(a,b)=>`${a.apellido||""} ${a.nombre||""}`.localeCompare(`${b.apellido||""} ${b.nombre||""}`,"es");
+      const tramo=(sube)=>{
+        const vs=vehIdsCamino.filter(k=>subeL(pos.vehiculoLast[k])===sube);
+        const ps=persIdsCamino.filter(k=>subeL(pos.personaLast[k])===sube);
+        const g={},orden=[],sueltos=[];
+        const grupo=(k)=>{if(!g[k]){const en=vs.includes(k);g[k]={key:k,v:vehMap[k]||synthVeh(k),enTramo:en,donde:en?null:(pos.vehiculo[k]==="chalet"?"chalet":pos.vehiculo[k]==="camino"?(subeL(pos.vehiculoLast[k])?"sube":"baja"):"fuera"),t:en&&pos.vehiculoLast[k]?pos.vehiculoLast[k].t:null,pers:[]};orden.push(g[k]);}return g[k];};
+        vs.forEach(grupo);
+        ps.forEach(k=>{const l=pos.personaLast[k],per=persMap[k]||synthPer(k);
+          if(l&&l.veh){const x=grupo(l.veh);x.pers.push(per);if(!x.enTramo&&(!x.t||l.t<x.t))x.t=l.t;}else sueltos.push(per);});
+        orden.forEach(x=>x.pers.sort(ordP));sueltos.sort(ordP);
+        orden.sort((a,b)=>(b.enTramo-a.enTramo)||(a.t||0)-(b.t||0));
+        return{grupos:orden,sueltos,np:ps.length,nv:vs.length};
+      };
       setData({
+        cam:{sube:tramo(true),baja:tramo(false)},
         pc:persIdsChalet.length,pm:persIdsCamino.length,
         vc:vehIdsChalet.length,vm:vehIdsCamino.length,
         ep:persIdsPredio.length,
@@ -1083,9 +1204,16 @@ function ChaletMini({proyectoId,user}){
     <div className="cmini" style={{display:"flex",alignItems:"center",gap:6}}>
       <TotalPill n={data.ep} label="EN PREDIO" sub="(campamento+camino+chalet)" color="#F59E0B" listKey="plp"/>
       <span style={{color:"var(--tx3)",fontSize:16,opacity:.35,margin:"0 2px"}}>│</span>
-      <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginRight:1}}>CAM</span>
-      <Pill n={data.pm} label="pers" color="#60A5FA" listKey="plm"/>
-      <Pill n={data.vm} label="veh" color="#60A5FA" listKey="vlm"/>
+      {/* Rev153: CAM es un solo botón; al tocarlo se ve quién sube, quién baja y en qué vehículo va cada uno */}
+      <div title="En camino (entre P2 y P3): tocá para ver quién sube, quién baja y en qué vehículo va cada uno" onClick={()=>setVerCam(true)}
+        style={{display:"flex",alignItems:"center",gap:4,background:"rgba(0,0,0,.3)",border:"1px solid #60A5FA55",borderRadius:4,padding:"2px 6px",cursor:"pointer"}}>
+        <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginRight:1}}>CAM</span>
+        <span style={{fontFamily:"var(--fh)",fontSize:13,fontWeight:800,color:"#60A5FA",lineHeight:1}}>{data.pm}</span>
+        <span style={{fontSize:9,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase"}}>pers</span>
+        <span style={{fontFamily:"var(--fh)",fontSize:13,fontWeight:800,color:"#60A5FA",lineHeight:1,marginLeft:3}}>{data.vm}</span>
+        <span style={{fontSize:9,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase"}}>veh</span>
+        <span style={{fontSize:8,color:"#60A5FA",opacity:.7}}>▾</span>
+      </div>
       <span style={{fontSize:8,color:"var(--tx2)",fontFamily:"var(--fm)",textTransform:"uppercase",marginLeft:4,marginRight:1}}>CH</span>
       <Pill n={data.pc} label="pers" color="#A78BFA" listKey="plc"/>
       <Pill n={data.vc} label="veh" color="#10B981" listKey="vlc"/>
@@ -1099,6 +1227,7 @@ function ChaletMini({proyectoId,user}){
       onRemove={showList==="plp"?(canRemovePredio?sacarPredio:null):(canRemove?(showList.startsWith("v")?sacarVeh:sacar):null)}
       onExcel={puedeExcel&&!showList.startsWith("v")?descargarExcel:null}
     />}
+    {verCam&&data.cam&&<CamDetalle det={data.cam} puedeSacar={canRemove} onClose={()=>setVerCam(false)} onLista={(k)=>{setVerCam(false);setShowList(k);}}/>}
   </>;
 }
 
@@ -2486,7 +2615,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
 // resuelto / rechazado, dar de alta en Personal). S&H también tiene campanita, pero solo puede marcar "visto" (función
 // obra.aviso_visto_sh); ese visto lo ven admin y CP. Tabla obra.avisos_ingreso con RLS. Cada persona guarda sus fechas
 // dentro de "personas" (ingreso, egreso, indefinido); fecha_ingreso / hasta / indefinido del aviso son el resumen.
-const AVISO_SQL=`-- Aviso de ingreso (Rev142 · Rev150). Se puede correr aunque ya se haya corrido el SQL anterior.
+const AVISO_SQL=`-- Aviso de ingreso (Rev142 · Rev150 · Rev153). Se puede correr aunque ya se haya corrido el SQL anterior.
 CREATE TABLE IF NOT EXISTS obra.avisos_ingreso (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   creado_at timestamptz NOT NULL DEFAULT now(),
@@ -2577,6 +2706,26 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION obra.aviso_tarea(uuid, text, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION obra.aviso_tarea(uuid, text, text, text) TO authenticated;
+-- Rev153: dónde se aloja cada persona del aviso. int_aloja = {"<dni>": "lugar", ...}. Intendencia, admin y CP.
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS int_aloja jsonb;
+CREATE OR REPLACE FUNCTION obra.aviso_alojamiento(p_aviso uuid, p_aloja jsonb, p_nota text DEFAULT NULL) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = obra, public AS $$
+DECLARE u record; v_aloja jsonb;
+BEGIN
+  SELECT id, nombre, email, rol INTO u FROM obra.usuarios WHERE id = auth.uid() AND activo;
+  IF u.id IS NULL OR u.rol NOT IN ('intendencia','admin','cp') THEN RAISE EXCEPTION 'sin permiso' USING ERRCODE = '42501'; END IF;
+  IF p_aloja IS NOT NULL AND jsonb_typeof(p_aloja) <> 'object' THEN RAISE EXCEPTION 'formato inválido'; END IF;
+  -- solo lugares con texto (máximo 120 letras cada uno)
+  SELECT jsonb_object_agg(e.key, left(trim(e.value), 120)) INTO v_aloja
+    FROM jsonb_each_text(COALESCE(p_aloja, '{}'::jsonb)) e
+   WHERE trim(COALESCE(e.value, '')) <> '';
+  UPDATE obra.avisos_ingreso
+     SET int_aloja = v_aloja, int_nota = NULLIF(trim(p_nota), '')
+   WHERE id = p_aviso AND estadia;
+  IF NOT FOUND THEN RAISE EXCEPTION 'no existe el aviso o no pide estadía'; END IF;
+END $$;
+REVOKE ALL ON FUNCTION obra.aviso_alojamiento(uuid, jsonb, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION obra.aviso_alojamiento(uuid, jsonb, text) TO authenticated;
 NOTIFY pgrst, 'reload schema';`;
 const AV_EST={pendiente:{t:"Pendiente",c:"var(--acc)"},visto:{t:"Visto",c:"#60A5FA"},resuelto:{t:"Resuelto",c:"var(--gr)"},rechazado:{t:"Rechazado",c:"var(--rd)"},anulado:{t:"Anulado",c:"var(--tx3)"}};
 const AV_GESTION=["admin","cp"]; // gestionan los avisos y pueden marcar las tareas de S&H e Intendencia (Rev150)
@@ -2588,6 +2737,16 @@ const avFechasP=(a,p)=>{
   const eg=ind?null:(p.egreso||a.hasta||(a.dias?cmdAddDays(a.fecha_ingreso,a.dias-1):ing));
   return{ing,eg,ind};
 };
+// Rev153: personas agrupadas por fechas (mismo ingreso, egreso e indefinido). items: [{ing,eg,ind,...}] → [{key,ing,eg,ind,col,items}]
+const AV_GCOL=["#F59E0B","#60A5FA","#10B981","#A78BFA","#F472B6","#22D3EE","#FB923C","#84CC16"];
+const avGrupos=(items)=>{
+  const m={},orden=[];
+  items.forEach(x=>{if(!x.ing)return;const k=`${x.ing}|${x.ind?"ind":(x.eg||"")}`;if(!m[k]){m[k]={key:k,ing:x.ing,eg:x.ind?null:(x.eg||null),ind:!!x.ind,items:[]};orden.push(m[k]);}m[k].items.push(x);});
+  orden.sort((a,b)=>a.ing.localeCompare(b.ing)||(a.ind?"9999":a.eg||"").localeCompare(b.ind?"9999":b.eg||""));
+  orden.forEach((g,i)=>{g.col=AV_GCOL[i%AV_GCOL.length];});
+  return orden;
+};
+const avFechaTxt=(g)=>g.ind?`desde ${cmdFmtDate(g.ing)} · sin fecha de egreso`:!g.eg||g.ing===g.eg?`${cmdFmtDate(g.ing)} (por el día)`:`${cmdFmtDate(g.ing)} al ${cmdFmtDate(g.eg)} · ${avDiasTxt(g.ing,g.eg)}`;
 const avDiasTxt=(ing,eg)=>{if(!ing||!eg)return"";const n=Math.round((new Date(eg+"T12:00:00")-new Date(ing+"T12:00:00"))/864e5)+1;return n===1?"1 día":`${n} días`;};
 const avCargo=(a)=>[a.estadia&&"🛏️ Estadía",a.viandas&&"🍽️ Viandas",a.traslado&&("🚌 Traslado"+(a.traslado_origen||a.traslado_destino?`: ${a.traslado_origen||"?"} → ${a.traslado_destino||"?"}`:"")+(a.compra_pasaje?" · con compra de pasaje":""))].filter(Boolean);
 const avVistoPorMi=(a,uid)=>(a.vistos_sh||[]).some(v=>v.por===uid);
@@ -2598,23 +2757,30 @@ function AvisoCard({a,extra,personaExtra,verSH,tareas}){
   const ini=ps.reduce((m,x)=>!m||x.ing<m?x.ing:m,null);
   const algunaInd=ps.some(x=>x.ind);
   const fin=algunaInd?null:ps.reduce((m,x)=>!m||x.eg>m?x.eg:m,null);
+  // Rev153: si vienen en fechas distintas se avisa arriba y cada fecha lleva su color; "Aloja" = dónde se aloja cada uno
+  const grupos=avGrupos(ps),distintas=grupos.length>1;
+  const colG={};grupos.forEach(g=>{colG[g.key]=g.col;});
+  const kG=(x)=>`${x.ing}|${x.ind?"ind":(x.eg||"")}`;
+  const alo=a.int_aloja||{},hayAlo=!!a.estadia&&ps.some(({p})=>!!alo[p.dni]);
   const c=avCargo(a);
   const vs=a.vistos_sh||[];
   return <div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"12px 14px",marginBottom:10}}>
     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:8}}>
       <AvisoChip e={a.estado}/>
-      <span style={{fontWeight:700}}>{ps.length} persona{ps.length===1?"":"s"} · ingreso {ini?cmdFmtDate(ini):"—"} · egreso {algunaInd?"indefinido":fin?cmdFmtDate(fin):"—"}</span>
+      <span style={{fontWeight:700}}>{ps.length} persona{ps.length===1?"":"s"} · {distintas?<span style={{color:"var(--acc)"}}>⚠️ vienen en {grupos.length} fechas distintas</span>:<>ingreso {ini?cmdFmtDate(ini):"—"} · egreso {algunaInd?"indefinido":fin?cmdFmtDate(fin):"—"}</>}</span>
       <span style={{fontSize:11,color:"var(--tx3)",marginLeft:"auto"}}>avisó {a.creado_por_nombre||"—"} · {fmtTs(a.creado_at)}</span>
     </div>
+    {distintas&&<div className="avf-cg">{grupos.map(g=><span key={g.key} className="avf-chip" style={{borderColor:g.col,color:g.col}}>{cmdFmtDate(g.ing)} → {g.ind?"indefinido":g.eg?cmdFmtDate(g.eg):"—"} · {g.items.length} pers.</span>)}</div>}
     <div className="tw" style={{maxHeight:"none",marginBottom:8}}><table style={{minWidth:560}}>
-      <thead><tr><th>DNI</th><th>Nombre</th><th>Apellido</th><th>Empresa</th><th>Ingreso</th><th>Egreso</th>{personaExtra&&<th></th>}</tr></thead>
+      <thead><tr><th>DNI</th><th>Nombre</th><th>Apellido</th><th>Empresa</th><th>Ingreso</th><th>Egreso</th>{hayAlo&&<th>Aloja</th>}{personaExtra&&<th></th>}</tr></thead>
       <tbody>{ps.map(({p,ing,eg,ind},i)=><tr key={i}>
         <td className="mn">{p.dni}</td>
         <td style={{fontWeight:600}}>{p.nombre}</td>
         <td style={{fontWeight:600}}>{p.apellido}</td>
         <td style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa}</td>
-        <td className="mn">{ing?cmdFmtDate(ing):"—"}</td>
+        <td className="mn">{distintas&&ing&&<span className="avf-dot sm" style={{background:colG[kG({ing,eg,ind})],borderColor:colG[kG({ing,eg,ind})]}}/>}{ing?cmdFmtDate(ing):"—"}</td>
         <td className="mn">{ind?"indefinido":eg?<>{cmdFmtDate(eg)} <span style={{color:"var(--tx3)"}}>({avDiasTxt(ing,eg)})</span></>:"—"}</td>
+        {hayAlo&&<td style={{fontSize:12,fontWeight:600}}>{alo[p.dni]||<span style={{color:"var(--tx3)",fontWeight:400}}>—</span>}</td>}
         {personaExtra&&<td>{personaExtra(p)}</td>}
       </tr>)}</tbody>
     </table></div>
@@ -2672,9 +2838,11 @@ function AvisoIngresoModal({user,onClose,pagina}){
   const[tab,setTab]=useState("nuevo");
   const[paso,setPaso]=useState(1);
   const[rango,setRango]=useState({desde:manana,hasta:manana,indef:false}); // fechas para todos
-  const vacia=(r)=>({dni:"",empresa:"",nombre:"",apellido:"",enBase:null,ingreso:r.desde,egreso:r.hasta,indef:r.indef,propia:false});
+  // Rev153: sinF = persona nueva sin fechas (cuando se eligió "fechas distintas", cada uno las tiene que recibir)
+  const vacia=(r,sinF)=>({dni:"",empresa:"",nombre:"",apellido:"",enBase:null,ingreso:sinF?null:r.desde,egreso:sinF?null:r.hasta,indef:sinF?false:r.indef,propia:false});
   const[pers,setPers]=useState(()=>[vacia({desde:manana,hasta:manana,indef:false})]);
-  const[porPersona,setPorPersona]=useState(false); // mostrar las fechas de cada persona
+  const[modoF,setModoF]=useState(null); // Rev153: con más de una persona, "todos" (mismas fechas) o "distintas"
+  const[selF,setSelF]=useState([]); // Rev153: personas tildadas (índices) para ponerles fechas en modo distintas
   const[estadia,setEstadia]=useState(false);
   const[viandas,setViandas]=useState(false);
   const[traslado,setTraslado]=useState(false);
@@ -2698,8 +2866,8 @@ function AvisoIngresoModal({user,onClose,pagina}){
   const cargarMios=async()=>{const{data}=await db.sel("avisos_ingreso",{f:[["creado_por","eq",user.id]],ord:"creado_at.desc",lim:60});setMios(data===null?{err:true}:data);};
   useEffect(()=>{if(tab==="mios")cargarMios();},[tab]);
   const setP=(i,patch)=>setPers(l=>l.map((x,j)=>j===i?{...x,...patch}:x));
-  // Cambiar las fechas "para todos" mueve a quienes no tienen fechas propias
-  const cambiarRango=(r)=>{setRango(r);setPers(l=>l.map(p=>p.propia?p:{...p,ingreso:r.desde,egreso:r.hasta,indef:r.indef}));};
+  // Rev153: con fechas iguales (o una sola persona) el calendario es para todos
+  const cambiarRango=(r)=>{setRango(r);setPers(l=>l.map(p=>({...p,ingreso:r.desde,egreso:r.hasta,indef:r.indef,propia:false})));};
   const igualarTodos=()=>setPers(l=>l.map(p=>({...p,ingreso:rango.desde,egreso:rango.hasta,indef:rango.indef,propia:false})));
   // Al escribir el DNI se busca en Personal: si ya está, se completan los datos que falten
   const buscarDni=async(i)=>{
@@ -2711,7 +2879,7 @@ function AvisoIngresoModal({user,onClose,pagina}){
   // Pegar una lista desde Excel: un renglón por persona con DNI, empresa, nombre y apellido
   const pegar=async()=>{
     const filas=pegado.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>(l.includes("\t")?l.split("\t"):l.includes(";")?l.split(";"):l.split(",")).map(x=>x.trim()));
-    const nuevas=filas.filter(c=>/\d/.test(c[0]||"")).map(c=>({...vacia(rango),dni:c[0]||"",nombre:c[1]||"",apellido:c[2]||"",empresa:c[3]||""}));
+    const nuevas=filas.filter(c=>/\d/.test(c[0]||"")).map(c=>({...vacia(rango,modoF==="distintas"),dni:c[0]||"",nombre:c[1]||"",apellido:c[2]||"",empresa:c[3]||""}));
     if(!nuevas.length){alert("No encontré renglones con DNI. Pegá una persona por renglón: DNI, nombre, apellido, empresa (como columnas de Excel).");return;}
     const dnis=[...new Set(nuevas.map(x=>avDni(x.dni)).filter(d=>d.length>=6))];
     const m={};
@@ -2720,6 +2888,32 @@ function AvisoIngresoModal({user,onClose,pagina}){
     setPers(l=>[...l.filter(p=>p.dni.trim()||p.nombre.trim()||p.apellido.trim()||p.empresa.trim()),...comp]);
     setPegado("");setVerPegar(false);
   };
+  // Rev153: fechas iguales para todos o distintas. En "distintas" se tildan personas y se les ponen las fechas del calendario
+  // (o se cambian en su renglón). Cada combinación de fechas es un grupo con su color.
+  const multi=pers.length>1;
+  const fOk=(p)=>!!p.ingreso&&(!!p.indef||(!!p.egreso&&p.egreso>=p.ingreso));
+  const keyF=(p)=>`${p.ingreso}|${p.indef?"ind":(p.egreso||"")}`;
+  const gruposF=avGrupos(pers.map((p,i)=>({p,i,ing:p.ingreso,eg:p.egreso,ind:!!p.indef})).filter(x=>fOk(x.p)));
+  const colF={};gruposF.forEach(g=>{colF[g.key]=g.col;});
+  const sinFecha=pers.map((p,i)=>fOk(p)?-1:i).filter(i=>i>=0);
+  const rangoOk=!!rango.desde&&(!!rango.indef||(!!rango.hasta&&rango.hasta>=rango.desde));
+  const aplicarSel=()=>{if(!selF.length||!rangoOk)return;setPers(l=>l.map((p,i)=>selF.includes(i)?{...p,ingreso:rango.desde,egreso:rango.indef?null:rango.hasta,indef:!!rango.indef,propia:true}:p));setSelF([]);};
+  const elegirModo=(m)=>{
+    if(m===modoF)return;
+    setModoF(m);setSelF([]);
+    if(m==="todos")setPers(l=>l.map(p=>({...p,ingreso:rango.desde,egreso:rango.hasta,indef:rango.indef,propia:false})));
+    else setPers(l=>l.map(p=>({...p,ingreso:null,egreso:null,indef:false,propia:false})));
+  };
+  // Si cambia la cantidad de personas se destilda todo; si queda una sola, vuelve al calendario único
+  useEffect(()=>{
+    setSelF([]);
+    if(pers.length<2&&modoF){
+      const p=pers[0];
+      if(p&&fOk(p))setRango({desde:p.ingreso,hasta:p.indef?null:p.egreso,indef:!!p.indef});
+      else if(p)setPers(l=>l.map(x=>({...x,ingreso:rango.desde,egreso:rango.hasta,indef:rango.indef})));
+      setModoF(null);
+    }
+  },[pers.length]);
   // Qué falta en cada paso
   const dniCont={};pers.forEach(p=>{const d=avDni(p.dni);if(d)dniCont[d]=(dniCont[d]||0)+1;});
   const repetidos=Object.keys(dniCont).filter(d=>dniCont[d]>1);
@@ -2727,7 +2921,8 @@ function AvisoIngresoModal({user,onClose,pagina}){
   const fechasMal=pers.filter(p=>!p.ingreso||(!p.indef&&(!p.egreso||p.egreso<p.ingreso))).length;
   const faltaPaso={
     1:[datosMal&&`completar DNI, empresa, nombre y apellido (${datosMal===1?"1 persona":datosMal+" personas"})`,repetidos.length&&`DNI repetido: ${repetidos.join(", ")}`].filter(Boolean),
-    2:[fechasMal&&`revisar ingreso y egreso (${fechasMal===1?"1 persona":fechasMal+" personas"})`].filter(Boolean),
+    2:[multi&&!modoF&&"elegir si vienen todos en las mismas fechas o en fechas distintas",
+      fechasMal&&(modoF==="distintas"?`poner las fechas (${fechasMal===1?"falta 1 persona":"faltan "+fechasMal+" personas"})`:`revisar ingreso y egreso (${fechasMal===1?"1 persona":fechasMal+" personas"})`)].filter(Boolean),
     3:[!(estadia||viandas||traslado||nada)&&"tildar lo que necesitan, o \"Nada\"",traslado&&(!origen.trim()||!destino.trim())&&"origen y destino del traslado"].filter(Boolean),
   };
   const falta=[...faltaPaso[1],...faltaPaso[2],...faltaPaso[3]];
@@ -2758,7 +2953,7 @@ function AvisoIngresoModal({user,onClose,pagina}){
     }
     setEnviado(true);
   };
-  const nuevo=()=>{setPers([vacia(rango)]);setNotas("");setEstadia(false);setViandas(false);setTraslado(false);setNadaRaw(false);setVerPegar(false);setPegado("");setOrigen("");setDestino("");setPasaje(false);setVehPropio(false);setSubeChalet(false);setPatente("");setPorPersona(false);setPaso(1);setEnviado(false);};
+  const nuevo=()=>{setPers([vacia(rango)]);setNotas("");setEstadia(false);setViandas(false);setTraslado(false);setNadaRaw(false);setVerPegar(false);setPegado("");setOrigen("");setDestino("");setPasaje(false);setVehPropio(false);setSubeChalet(false);setPatente("");setModoF(null);setSelF([]);setPaso(1);setEnviado(false);};
   const hayDatos=pers.some(p=>p.dni.trim()||p.nombre.trim()||p.apellido.trim()||p.empresa.trim())||estadia||viandas||traslado||nada||vehPropio||subeChalet||!!notas.trim();
   const cancelar=()=>{if(hayDatos&&!confirm("¿Descartar este aviso? Se borra lo que cargaste."))return;if(pagina)nuevo();else onClose();};
   const anular=async(a)=>{if(!confirm("¿Anular este aviso?"))return;const r=await db.upd("avisos_ingreso",{estado:"anulado",estado_por:user.id,estado_por_nombre:user.nombre||user.email||"",estado_at:new Date().toISOString()},[["id","eq",a.id]]);if(!r.ok&&!SIM_ACTIVO)alert("No se pudo anular.");cargarMios();};
@@ -2807,7 +3002,7 @@ function AvisoIngresoModal({user,onClose,pagina}){
             </div>
           </div>)}
           <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"4px 0 6px"}}>
-            <button className="bsm" style={{padding:"8px 12px"}} onClick={()=>setPers(l=>[...l,vacia(rango)])}>+ Agregar otra persona</button>
+            <button className="bsm" style={{padding:"8px 12px"}} onClick={()=>setPers(l=>[...l,vacia(rango,modoF==="distintas")])}>+ Agregar otra persona</button>
             <button className="bsm" style={{padding:"8px 12px"}} onClick={()=>setVerPegar(v=>!v)}>📋 Son muchas: pegar lista de Excel</button>
           </div>
           {verPegar&&<div style={{background:"var(--s2)",border:"1px solid var(--bd)",borderRadius:8,padding:"10px 12px",marginTop:6}}>
@@ -2818,21 +3013,44 @@ function AvisoIngresoModal({user,onClose,pagina}){
         </>}
 
         {paso===2&&<>
-          <div className="av-preg">¿Cuándo ingresan{pers.length>1?"":" y hasta cuándo se queda"}?</div>
-          <div className="av-ayuda">Tocá el día de ingreso y después el de egreso. Si todavía no se sabe hasta cuándo, tildá "egreso indefinido".</div>
-          <AvRango desde={rango.desde} hasta={rango.hasta} indef={rango.indef} onChange={cambiarRango}/>
-          {pers.length>1&&<div style={{marginTop:14}}>
-            <label className={"av-op"+(porPersona?" on":"")} style={{marginBottom:8}}><input type="checkbox" checked={porPersona} onChange={e=>setPorPersona(e.target.checked)}/><span className="ic">👥</span><span><b>Alguien viene o se va otro día</b><span className="d">Para cambiarle las fechas a una persona en particular</span></span></label>
-            {porPersona&&<div>
-              {pers.map((p,i)=>{const mal=!p.ingreso||(!p.indef&&(!p.egreso||p.egreso<p.ingreso));return <div key={i} className="av-fp" style={{borderColor:mal?"var(--rd)":p.propia?"var(--acc2)":undefined}}>
-                <div style={{fontWeight:600,minWidth:150,flex:"1 1 150px"}}>{nombreP(p,i)}</div>
-                <label className="av-fl">Ingreso <input className="fi" type="date" value={p.ingreso||""} min={hoy} onChange={e=>setP(i,{ingreso:e.target.value,propia:true})}/></label>
-                {p.indef?<span className="av-fl" style={{color:"var(--tx2)"}}>Egreso: indefinido</span>
-                  :<label className="av-fl">Egreso <input className="fi" type="date" value={p.egreso||""} min={p.ingreso||hoy} onChange={e=>setP(i,{egreso:e.target.value,propia:true})}/></label>}
-                <label className="av-fl" style={{cursor:"pointer"}}><input type="checkbox" checked={!!p.indef} style={{width:"auto"}} onChange={e=>setP(i,{indef:e.target.checked,egreso:e.target.checked?null:(p.egreso||p.ingreso),propia:true})}/> indefinido</label>
-              </div>;})}
-              {pers.some(p=>p.propia)&&<a href="#" onClick={e=>{e.preventDefault();igualarTodos();}} style={{color:"var(--acc2)",fontSize:12}}>Volver a poner las fechas del calendario a todas</a>}
-            </div>}
+          <div className="av-preg">¿Cuándo ingresan{multi?"":" y hasta cuándo se queda"}?</div>
+          {multi&&<div className="avf-modo">
+            <button className={"avf-mb"+(modoF==="todos"?" on":"")} onClick={()=>elegirModo("todos")}><span className="ic">📅</span><span><b>Todos en las mismas fechas</b><span className="d">Entran y salen el mismo día</span></span></button>
+            <button className={"avf-mb"+(modoF==="distintas"?" on":"")} onClick={()=>elegirModo("distintas")}><span className="ic">👥</span><span><b>En fechas distintas</b><span className="d">Alguien entra o sale otro día</span></span></button>
+          </div>}
+          {(!multi||modoF==="todos")&&<>
+            <div className="av-ayuda">Tocá el día de ingreso y después el de egreso. Si todavía no se sabe hasta cuándo, tildá "egreso indefinido".</div>
+            <AvRango desde={rango.desde} hasta={rango.hasta} indef={rango.indef} onChange={cambiarRango}/>
+          </>}
+          {multi&&modoF==="distintas"&&<>
+            <div className="av-ayuda">Tildá a los que vienen juntos, elegí sus fechas en el calendario y tocá <b>Poner estas fechas</b>. Repetí con cada grupo. También podés cambiar las fechas de una persona en su renglón.</div>
+            <div className="avf-grid">
+              <div>
+                <div className="avf-tb">
+                  <button className="bsm" onClick={()=>setSelF(selF.length===pers.length?[]:pers.map((_,i)=>i))}>{selF.length===pers.length?"Destildar todos":"Tildar todos"}</button>
+                  {sinFecha.length>0&&sinFecha.length<pers.length&&<button className="bsm" onClick={()=>setSelF(sinFecha)}>Tildar los que faltan ({sinFecha.length})</button>}
+                </div>
+                {pers.map((p,i)=>{const ok=fOk(p),col=ok?colF[keyF(p)]:null,on=selF.includes(i);return <div key={i} className={"avf-row"+(on?" on":"")+(ok?"":" mal")}>
+                  <label className="avf-who"><input type="checkbox" checked={on} onChange={()=>setSelF(l=>on?l.filter(x=>x!==i):[...l,i])}/><span className="avf-dot" style={{background:col||"transparent",borderColor:col||"var(--rd)"}}/><b>{nombreP(p,i)}</b><span className="d">{p.empresa}</span></label>
+                  <div className="avf-fs">
+                    <label className="av-fl">Ingreso <input className="fi" type="date" value={p.ingreso||""} min={hoy} onChange={e=>setP(i,{ingreso:e.target.value||null,propia:true})}/></label>
+                    {p.indef?<span className="av-fl">Egreso: indefinido</span>
+                      :<label className="av-fl">Egreso <input className="fi" type="date" value={p.egreso||""} min={p.ingreso||hoy} onChange={e=>setP(i,{egreso:e.target.value||null,propia:true})}/></label>}
+                    <label className="av-fl" style={{cursor:"pointer"}}><input type="checkbox" checked={!!p.indef} style={{width:"auto"}} onChange={e=>setP(i,{indef:e.target.checked,egreso:e.target.checked?null:(p.egreso||p.ingreso),propia:true})}/> indefinido</label>
+                    {!ok&&<span className="avf-falta">{p.ingreso?"revisar egreso":"sin fechas"}</span>}
+                  </div>
+                </div>;})}
+              </div>
+              <div className="avf-cal">
+                <AvRango desde={rango.desde} hasta={rango.hasta} indef={rango.indef} onChange={setRango}/>
+                <button className="bp" style={{marginTop:10,fontSize:14}} disabled={!selF.length||!rangoOk} onClick={aplicarSel}>{selF.length?`Poner estas fechas a ${selF.length===1?"1 tildado":selF.length+" tildados"}`:"Tildá a quiénes les corresponden"}</button>
+              </div>
+            </div>
+          </>}
+          {multi&&modoF&&<div className="avf-res">
+            <div className="avf-res-t">Así queda</div>
+            {gruposF.map(g=><div key={g.key} className="avf-res-g"><span className="avf-dot" style={{background:g.col,borderColor:g.col}}/><div><b>{avFechaTxt(g)}</b><div className="d">{g.items.length===pers.length?`Todos (${pers.length})`:g.items.map(x=>nombreP(x.p,x.i)).join(", ")}</div></div></div>)}
+            {sinFecha.length>0&&<div className="avf-res-g mal"><span className="avf-dot" style={{borderColor:"var(--rd)"}}/><div><b>Sin fechas todavía</b><div className="d">{sinFecha.map(k=>nombreP(pers[k],k)).join(", ")}</div></div></div>}
           </div>}
         </>}
 
@@ -2859,10 +3077,12 @@ function AvisoIngresoModal({user,onClose,pagina}){
           <div className="av-preg">Revisá y enviá</div>
           <div className="av-res">
             <div className="av-res-t">👤 Ingresan {pers.length} persona{pers.length===1?"":"s"} <a href="#" onClick={e=>{e.preventDefault();setPaso(1);}}>cambiar</a></div>
-            {pers.map((p,i)=><div key={i} style={{padding:"7px 0",borderTop:i?"1px solid var(--bd)":"none"}}>
-              <div style={{fontSize:14}}><span className="mn">DNI {avDni(p.dni)}</span> · <b>{nombreP(p,i)}</b> · <span style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa}</span></div>
-              <div style={{fontSize:13,color:p.propia?"#60A5FA":"var(--tx2)",marginTop:2}}>📅 {fechaTxt(p)}</div>
+            {gruposF.length>1&&<div className="avf-aviso">⚠️ Vienen en {gruposF.length} fechas distintas</div>}
+            {gruposF.map(g=><div key={g.key} className="avf-g" style={{borderLeftColor:g.col}}>
+              <div className="avf-gh"><span style={{color:g.col}}>📅 {avFechaTxt(g)}</span> <span className="d">· {multi&&g.items.length===pers.length?"todos":g.items.length===1?"1 persona":g.items.length+" personas"}</span> <a href="#" onClick={e=>{e.preventDefault();setPaso(2);}}>cambiar fechas</a></div>
+              {g.items.map(({p,i})=><div key={i} style={{fontSize:14,padding:"3px 0"}}><span className="mn">DNI {avDni(p.dni)}</span> · <b>{nombreP(p,i)}</b> · <span style={{fontSize:12,color:"var(--tx2)"}}>{p.empresa}</span></div>)}
             </div>)}
+            {sinFecha.length>0&&<div className="avf-falta">Sin fechas: {sinFecha.map(k=>nombreP(pers[k],k)).join(", ")}</div>}
           </div>
           <div className="av-res">
             <div className="av-res-t">🧾 A cargo de Obras y Sistemas <a href="#" onClick={e=>{e.preventDefault();setPaso(3);}}>cambiar</a></div>
@@ -2982,6 +3202,10 @@ function AvisosPanel({user,modo,falta,onClose}){
     setInfo(inf||{});
   },[esInt]);
   useEffect(()=>{if(!falta)cargar();},[cargar,falta]);
+  // Rev153: ventana "Dónde se aloja" ({a, resolver}) y lugares ya usados (botones rápidos)
+  const[aloja,setAloja]=useState(null);
+  const lugaresUsados=useMemo(()=>{const c={};(Array.isArray(lista)?lista:[]).forEach(a=>Object.values(a.int_aloja||{}).forEach(v=>{const k=String(v||"").trim();if(k)c[k]=(c[k]||0)+1;}));
+    return Object.keys(c).sort((x,y)=>c[y]-c[x]||x.localeCompare(y,"es")).slice(0,12);},[lista]);
   const estado=async(a,e)=>{
     let resp=a.respuesta||null;
     if(e==="rechazado"){const r=prompt("Motivo (opcional, lo ve quien avisó):",a.respuesta||"");if(r===null)return;resp=r.trim()||null;}
@@ -2993,6 +3217,7 @@ function AvisosPanel({user,modo,falta,onClose}){
   };
   // Tarea de S&H ("sh") o de Intendencia ("int"): visto / resuelto / rechazado / volver a pendiente
   const tarea=async(a,area,e)=>{
+    if(area==="int"&&e==="resuelto"){setAloja({a,resolver:true});return;} // Rev153: se carga dónde se aloja cada uno
     let nota=null;
     if(e==="resuelto"||e==="rechazado"){
       const preg=e==="rechazado"?"Motivo (opcional, lo ve quien avisó):":area==="int"?"¿Dónde se aloja? (opcional, lo ve quien avisó)":"Comentario (opcional, lo ve quien avisó):";
@@ -3018,6 +3243,7 @@ function AvisosPanel({user,modo,falta,onClose}){
     {e==="pendiente"&&<button className="bsm" disabled={b} onClick={()=>tarea(a,area,"visto")}>👁 Visto</button>}
     {avTareaAbierta(e)&&<button className="bsm" style={{color:"var(--gr)",borderColor:"rgba(16,185,129,.45)"}} disabled={b} onClick={()=>tarea(a,area,"resuelto")}>✓ Resuelto</button>}
     {avTareaAbierta(e)&&<button className="bsm" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.4)"}} disabled={b} onClick={()=>tarea(a,area,"rechazado")}>✗ Rechazado</button>}
+    {area==="int"&&e==="resuelto"&&<button className="bsm" disabled={b} onClick={()=>setAloja({a,resolver:false})}>✏️ Dónde se aloja</button>}
     {!avTareaAbierta(e)&&<button className="bsm" disabled={b} onClick={()=>tarea(a,area,"pendiente")}>↺ Volver a pendiente</button>}
   </>;};
   const porTxt=(e,por,at,nota)=><>{por&&e!=="pendiente"?<span className="av-tarea-por">{por}{at?` · ${fmtTs(at)}`:""}</span>:null}{nota?<span className="av-tarea-por">— "{nota}"</span>:null}</>;
@@ -3047,7 +3273,7 @@ function AvisosPanel({user,modo,falta,onClose}){
   const vis=!ok?[]:lista.filter(a=>a.estado!=="anulado"||(gestion&&filtro==="todos")).filter(a=>filtro==="todos"||(esSH?abiertoSH(a):esInt?avIntAbierta(a):abiertoGestion(a)));
   const nPend=!ok?0:esSH?lista.filter(abiertoSH).length:esInt?lista.filter(avIntAbierta).length:lista.filter(a=>a.estado==="pendiente").length;
   const titPend=!nPend?"":esSH?` · ${nPend} con gente sin habilitar`:esInt?` · ${nPend} estadía${nPend===1?"":"s"} para resolver`:` · ${nPend} pendiente${nPend===1?"":"s"}`;
-  return <div className="mo"><div className="md md-lg" style={{maxWidth:900}}>
+  return <><div className="mo"><div className="md md-lg" style={{maxWidth:900}}>
     <div className="mh"><div className="mt">🔔 Avisos de ingreso{titPend}</div><button className="mc" onClick={onClose}>x</button></div>
     <div className="mb">
       {falta||(lista&&lista.err)?(!gestion
@@ -3066,7 +3292,7 @@ function AvisosPanel({user,modo,falta,onClose}){
         </div>
         <div style={{fontSize:12,color:"var(--tx2)",marginBottom:10,lineHeight:1.45}}>{esSH
           ?"Avisos con gente a la que le falta habilitación de S&H (Ingreso, y Subir a Chalet si suben). Cuando la habilitás en Personal sale sola de la lista; si no corresponde habilitarla, marcala Resuelto o Rechazado."
-          :esInt?"Avisos que piden estadía. Marcá Visto cuando lo leas y después Resuelto (podés poner dónde se aloja) o Rechazado. Lo ve quien avisó."
+          :esInt?"Avisos que piden estadía. Marcá Visto cuando lo leas y después Resuelto: ahí cargás dónde se aloja cada persona (después lo podés corregir con ✏️). O Rechazado. Lo ve quien avisó."
           :"Abiertos: avisos pendientes o vistos, y los que tienen algo sin resolver de S&H o de Intendencia. Admin y CP pueden marcar todo."}</div>
         {vis.length===0?<div style={{color:"var(--tx3)",fontSize:13,padding:10}}>{filtro==="abiertos"?"No hay nada pendiente. 🎉":"Todavía no hay avisos."}</div>
           :vis.map(a=>esInt
@@ -3084,6 +3310,71 @@ function AvisosPanel({user,modo,falta,onClose}){
                 {a.estado!=="pendiente"&&a.estado!=="anulado"&&<button className="bsm" disabled={busy===a.id} onClick={()=>estado(a,"pendiente")}>↺ Volver a pendiente</button>}
               </>}/>)}
       </>}
+    </div>
+  </div></div>
+  {aloja&&<AlojaModal a={aloja.a} resolver={aloja.resolver} lugares={lugaresUsados} onClose={()=>setAloja(null)} onSaved={()=>{setAloja(null);cargar();}}/>}
+  </>;
+}
+// Rev153: dónde se aloja cada persona del aviso (Intendencia, admin y CP). Se abre al marcar Resuelta la estadía y
+// después con "✏️ Dónde se aloja". Se guarda en int_aloja ({dni: lugar}) con obra.aviso_alojamiento; el comentario en int_nota.
+function AlojaModal({a,resolver,lugares,onClose,onSaved}){
+  const ps=a.personas||[];
+  const uno=ps.length===1;
+  const[al,setAl]=useState(()=>{const o={};ps.forEach(p=>{o[p.dni]=(a.int_aloja&&a.int_aloja[p.dni])||"";});return o;});
+  const[sel,setSel]=useState([]);
+  const[lugar,setLugar]=useState("");
+  const[nota,setNota]=useState(a.int_nota||"");
+  const[busy,setBusy]=useState(false);
+  const nom=(p)=>`${p.nombre||""} ${p.apellido||""}`.trim()||("DNI "+p.dni);
+  const setUno=(dni,v)=>setAl(o=>({...o,[dni]:v}));
+  const poner=()=>{const v=lugar.trim();if(!v)return;const dest=sel.length?sel:ps.map(p=>p.dni);setAl(o=>{const n={...o};dest.forEach(d=>{n[d]=v;});return n;});setSel([]);setLugar("");};
+  const faltan=ps.filter(p=>!String(al[p.dni]||"").trim()).length;
+  const guardar=async()=>{
+    if(busy)return;
+    if(resolver&&faltan&&!confirm(faltan===ps.length?"No cargaste dónde se aloja nadie. ¿Marcar la estadía como resuelta igual?":`Falta dónde se aloja${faltan===1?" 1 persona":` ${faltan} personas`}. ¿Marcar la estadía como resuelta igual?`))return;
+    const map={};ps.forEach(p=>{const v=String(al[p.dni]||"").trim();if(v)map[p.dni]=v;});
+    const n=nota.trim()||null;
+    setBusy(true);
+    const r=await db.rpc("aviso_alojamiento",{p_aviso:a.id,p_aloja:map,p_nota:n});
+    if(!r.ok){setBusy(false);if(SIM_ACTIVO)return;alert(/aviso_alojamiento|PGRST202/.test(JSON.stringify(r.data||""))?"Falta actualizar la base: un admin tiene que correr el SQL de la Rev153 (alojamiento por persona).":"No se pudo guardar. Revisá la conexión.");return;}
+    if(resolver){
+      const r2=await db.rpc("aviso_tarea",{p_aviso:a.id,p_area:"int",p_estado:"resuelto",p_nota:n});
+      if(!r2.ok){setBusy(false);if(SIM_ACTIVO)return;alert("Se guardó dónde se aloja, pero no se pudo marcar resuelto. Probá de nuevo.");return;}
+    }
+    setBusy(false);onSaved();
+  };
+  const chips=(onPick)=>lugares.length>0&&<div className="alo-chips">{lugares.map(l=><button key={l} className="alo-chip" onClick={()=>onPick(l)}>{l}</button>)}</div>;
+  return <div className="mo"><div className="md md-lg" style={{maxWidth:640}}>
+    <div className="mh"><div className="mt">🛏️ Dónde se aloja</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mb">
+      <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10}}>Aviso de {a.creado_por_nombre||"—"} · {ps.length} persona{ps.length===1?"":"s"}. Lo ve quien avisó.</div>
+      <datalist id="alo-lugares">{lugares.map(l=><option key={l} value={l}/>)}</datalist>
+      {uno?<div className="f"><label>{nom(ps[0])}{ps[0].empresa?` · ${ps[0].empresa}`:""}</label>
+        <input list="alo-lugares" value={al[ps[0].dni]||""} placeholder="Escribí el lugar" onChange={e=>setUno(ps[0].dni,e.target.value)}/>
+        {chips(l=>setUno(ps[0].dni,l))}
+      </div>:<>
+        <div className="alo-top">
+          <div style={{fontSize:12,color:"var(--tx2)",marginBottom:6}}>{sel.length?`Lugar para ${sel.length===1?"la persona tildada":`las ${sel.length} personas tildadas`}:`:"Lugar para todos (o tildá a algunos abajo):"}</div>
+          <div style={{display:"flex",gap:8}}>
+            <input className="fi" style={{flex:1,minWidth:0}} list="alo-lugares" value={lugar} placeholder="Escribí el lugar" onChange={e=>setLugar(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")poner();}}/>
+            <button className="bsm" style={{padding:"6px 12px",whiteSpace:"nowrap"}} disabled={!lugar.trim()} onClick={poner}>{sel.length?`Poner a ${sel.length}`:"Poner a todos"}</button>
+          </div>
+          {chips(setLugar)}
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8}}>
+          <span style={{fontSize:12,color:faltan?"var(--acc)":"var(--gr)"}}>{faltan?`${faltan===1?"Falta 1 persona":`Faltan ${faltan} personas`} sin lugar`:"✓ Todos tienen lugar"}</span>
+          <button className="bsm" onClick={()=>setSel(sel.length===ps.length?[]:ps.map(p=>p.dni))}>{sel.length===ps.length?"Destildar todos":"Tildar todos"}</button>
+        </div>
+        {ps.map(p=>{const on=sel.includes(p.dni);return <div key={p.dni} className={"alo-row"+(on?" on":"")}>
+          <label className="alo-who"><input type="checkbox" checked={on} onChange={()=>setSel(l=>on?l.filter(x=>x!==p.dni):[...l,p.dni])}/><span><b>{nom(p)}</b><span className="d">{p.empresa||""}</span></span></label>
+          <input className="fi alo-in" list="alo-lugares" value={al[p.dni]||""} placeholder="dónde se aloja" onChange={e=>setUno(p.dni,e.target.value)}/>
+        </div>;})}
+      </>}
+      <div className="f" style={{marginTop:10}}><label>Comentario (opcional)</label><input value={nota} onChange={e=>setNota(e.target.value)} placeholder="Algo más que convenga saber"/></div>
+      <div style={{display:"flex",gap:10,marginTop:14}}>
+        <button className="bcanc" onClick={onClose}>Cancelar</button>
+        <button className="bp" style={{flex:1}} disabled={busy} onClick={guardar}>{busy?"Guardando…":resolver?"Guardar y marcar resuelto":"Guardar"}</button>
+      </div>
     </div>
   </div></div>;
 }
