@@ -406,6 +406,14 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .av-op b{font-size:15px}
 .av-op .d{display:block;font-size:12px;color:var(--tx2);margin-top:2px}
 .av-op.dis{opacity:.35;cursor:not-allowed}
+/* Rev150: tareas del aviso (S&H e Intendencia) */
+.av-tarea{background:var(--s1);border:1px solid var(--bd);border-radius:6px;padding:8px 10px;margin-top:8px}
+.av-tarea-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;font-weight:600}
+.av-tarea-b{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.av-tarea-por{font-size:11px;font-weight:400;color:var(--tx3)}
+.av-falta{color:var(--acc);font-weight:500}
+.av-hb{display:inline-block;font-size:11px;font-family:var(--fm);padding:1px 6px;border-radius:3px;margin-right:4px;border:1px solid}
+.av-hb.si{color:var(--gr);border-color:rgba(16,185,129,.4)}.av-hb.no{color:var(--rd);border-color:rgba(239,68,68,.4)}
 .av-fp{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:8px 12px;margin-bottom:6px}
 .av-fl{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--tx2)}
 .av-fl .fi{padding:5px 8px;font-size:13px}
@@ -521,10 +529,10 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev149";
+const APP_REV="Rev150";
 // Rev143: número de versión que se muestra al lado de CONTROLOBRA: AAMM.revisión.DD con la fecha de la revisión
 // (ej. 2611.143.14 = revisión 143 del 14/11/2026). En cada revisión nueva se actualizan APP_REV y APP_FECHA.
-const APP_FECHA="2026-11-16";
+const APP_FECHA="2026-11-17";
 const APP_VER=APP_FECHA.slice(2,4)+APP_FECHA.slice(5,7)+"."+APP_REV.replace(/\D/g,"")+"."+APP_FECHA.slice(8,10);
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
@@ -2466,7 +2474,7 @@ function PersonalPanel({userRole,currentUserId,proyectoId,user}){
 // resuelto / rechazado, dar de alta en Personal). S&H también tiene campanita, pero solo puede marcar "visto" (función
 // obra.aviso_visto_sh); ese visto lo ven admin y CP. Tabla obra.avisos_ingreso con RLS. Cada persona guarda sus fechas
 // dentro de "personas" (ingreso, egreso, indefinido); fecha_ingreso / hasta / indefinido del aviso son el resumen.
-const AVISO_SQL=`-- Aviso de ingreso (Rev142). Se puede correr aunque ya se haya corrido el SQL anterior.
+const AVISO_SQL=`-- Aviso de ingreso (Rev142 · Rev150). Se puede correr aunque ya se haya corrido el SQL anterior.
 CREATE TABLE IF NOT EXISTS obra.avisos_ingreso (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   creado_at timestamptz NOT NULL DEFAULT now(),
@@ -2493,6 +2501,18 @@ CREATE TABLE IF NOT EXISTS obra.avisos_ingreso (
 ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS vehiculo_propio boolean NOT NULL DEFAULT false;
 ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS vehiculo_patente text;
 ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS vistos_sh jsonb NOT NULL DEFAULT '[]'::jsonb;
+-- Rev150: "sube al chalet" y tareas de S&H e Intendencia (pendiente / visto / resuelto / rechazado)
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS sube_chalet boolean NOT NULL DEFAULT false;
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS estado_sh text NOT NULL DEFAULT 'pendiente';
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS sh_por uuid;
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS sh_por_nombre text;
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS sh_at timestamptz;
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS sh_nota text;
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS estado_int text NOT NULL DEFAULT 'pendiente';
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS int_por uuid;
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS int_por_nombre text;
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS int_at timestamptz;
+ALTER TABLE obra.avisos_ingreso ADD COLUMN IF NOT EXISTS int_nota text;
 ALTER TABLE obra.avisos_ingreso ENABLE ROW LEVEL SECURITY;
 GRANT SELECT, INSERT, UPDATE ON obra.avisos_ingreso TO authenticated;
 DROP POLICY IF EXISTS avisos_ingreso_insert ON obra.avisos_ingreso;
@@ -2500,8 +2520,9 @@ DROP POLICY IF EXISTS avisos_ingreso_select ON obra.avisos_ingreso;
 DROP POLICY IF EXISTS avisos_ingreso_update ON obra.avisos_ingreso;
 CREATE POLICY avisos_ingreso_insert ON obra.avisos_ingreso FOR INSERT TO authenticated
   WITH CHECK (creado_por = auth.uid() AND EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo));
+-- Cada uno ve los suyos; admin, CP y S&H ven todos; Intendencia, los que piden estadía (Rev150)
 CREATE POLICY avisos_ingreso_select ON obra.avisos_ingreso FOR SELECT TO authenticated
-  USING (creado_por = auth.uid() OR EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo AND u.rol IN ('admin','cp','sh')));
+  USING (creado_por = auth.uid() OR EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo AND (u.rol IN ('admin','cp','sh') OR (u.rol = 'intendencia' AND estadia))));
 CREATE POLICY avisos_ingreso_update ON obra.avisos_ingreso FOR UPDATE TO authenticated
   USING (creado_por = auth.uid() OR EXISTS (SELECT 1 FROM obra.usuarios u WHERE u.id = auth.uid() AND u.activo AND u.rol IN ('admin','cp')));
 -- S&H solo puede marcar "visto" (no cambia nada más del aviso)
@@ -2517,9 +2538,36 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION obra.aviso_visto_sh(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION obra.aviso_visto_sh(uuid) TO authenticated;
+-- Rev150: marcar una tarea del aviso. S&H la de S&H ('sh'), Intendencia la de estadía ('int'), admin y CP las dos.
+CREATE OR REPLACE FUNCTION obra.aviso_tarea(p_aviso uuid, p_area text, p_estado text, p_nota text DEFAULT NULL) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = obra, public AS $$
+DECLARE u record;
+BEGIN
+  SELECT id, nombre, email, rol INTO u FROM obra.usuarios WHERE id = auth.uid() AND activo;
+  IF u.id IS NULL THEN RAISE EXCEPTION 'sin permiso' USING ERRCODE = '42501'; END IF;
+  IF p_estado IS NULL OR p_estado NOT IN ('pendiente','visto','resuelto','rechazado') THEN RAISE EXCEPTION 'estado inválido'; END IF;
+  IF p_area = 'sh' THEN
+    IF u.rol NOT IN ('sh','admin','cp') THEN RAISE EXCEPTION 'sin permiso' USING ERRCODE = '42501'; END IF;
+    UPDATE obra.avisos_ingreso
+       SET estado_sh = p_estado, sh_por = u.id, sh_por_nombre = COALESCE(u.nombre, u.email), sh_at = now(),
+           sh_nota = CASE WHEN p_estado IN ('resuelto','rechazado') THEN NULLIF(trim(p_nota), '') ELSE sh_nota END
+     WHERE id = p_aviso;
+  ELSIF p_area = 'int' THEN
+    IF u.rol NOT IN ('intendencia','admin','cp') THEN RAISE EXCEPTION 'sin permiso' USING ERRCODE = '42501'; END IF;
+    UPDATE obra.avisos_ingreso
+       SET estado_int = p_estado, int_por = u.id, int_por_nombre = COALESCE(u.nombre, u.email), int_at = now(),
+           int_nota = CASE WHEN p_estado IN ('resuelto','rechazado') THEN NULLIF(trim(p_nota), '') ELSE int_nota END
+     WHERE id = p_aviso AND estadia;
+  ELSE
+    RAISE EXCEPTION 'área inválida';
+  END IF;
+  IF NOT FOUND THEN RAISE EXCEPTION 'no existe el aviso'; END IF;
+END $$;
+REVOKE ALL ON FUNCTION obra.aviso_tarea(uuid, text, text, text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION obra.aviso_tarea(uuid, text, text, text) TO authenticated;
 NOTIFY pgrst, 'reload schema';`;
 const AV_EST={pendiente:{t:"Pendiente",c:"var(--acc)"},visto:{t:"Visto",c:"#60A5FA"},resuelto:{t:"Resuelto",c:"var(--gr)"},rechazado:{t:"Rechazado",c:"var(--rd)"},anulado:{t:"Anulado",c:"var(--tx3)"}};
-const AV_GESTION=["admin","cp"]; // gestionan los avisos; S&H solo marca visto
+const AV_GESTION=["admin","cp"]; // gestionan los avisos y pueden marcar las tareas de S&H e Intendencia (Rev150)
 const avDni=(x)=>normDni(x).replace(/[^A-Z0-9]/g,"");
 // Fechas de una persona del aviso (los avisos viejos tenían una sola fecha / días para todos)
 const avFechasP=(a,p)=>{
@@ -2533,7 +2581,7 @@ const avCargo=(a)=>[a.estadia&&"🛏️ Estadía",a.viandas&&"🍽️ Viandas",a
 const avVistoPorMi=(a,uid)=>(a.vistos_sh||[]).some(v=>v.por===uid);
 function AvisoChip({e}){const x=AV_EST[e]||AV_EST.pendiente;return <span style={{fontFamily:"var(--fm)",fontSize:11,fontWeight:700,color:x.c,border:"1px solid "+x.c,borderRadius:4,padding:"1px 7px",textTransform:"uppercase",whiteSpace:"nowrap"}}>{x.t}</span>;}
 // Tarjeta de un aviso: "Mis avisos", panel de admin/CP y panel de S&H
-function AvisoCard({a,extra,personaExtra,verSH}){
+function AvisoCard({a,extra,personaExtra,verSH,tareas}){
   const ps=(a.personas||[]).map(p=>({p,...avFechasP(a,p)}));
   const ini=ps.reduce((m,x)=>!m||x.ing<m?x.ing:m,null);
   const algunaInd=ps.some(x=>x.ind);
@@ -2560,9 +2608,11 @@ function AvisoCard({a,extra,personaExtra,verSH}){
     </table></div>
     <div style={{fontSize:12,color:"var(--tx2)"}}>A cargo de Obras y Sistemas: {c.length?c.join(" · "):"nada"}</div>
     {a.vehiculo_propio&&<div style={{fontSize:12,color:"var(--tx2)",marginTop:4}}>🚗 Ingresan con vehículo propio{a.vehiculo_patente?` · ${a.vehiculo_patente}`:""}</div>}
+    {a.sube_chalet&&<div style={{fontSize:12,color:"var(--tx2)",marginTop:4}}>🏔️ Sube al chalet</div>}
     {a.notas&&<div style={{fontSize:12,color:"var(--tx2)",marginTop:4}}>📝 {a.notas}</div>}
     {a.estado!=="pendiente"&&a.estado_por_nombre&&<div style={{fontSize:11,color:"var(--tx3)",marginTop:4}}>{AV_EST[a.estado]?AV_EST[a.estado].t:a.estado} por {a.estado_por_nombre}{a.estado_at?` · ${fmtTs(a.estado_at)}`:""}{a.respuesta?` — "${a.respuesta}"`:""}</div>}
     {verSH&&<div style={{fontSize:11,marginTop:4,color:vs.length?"#60A5FA":"var(--tx3)"}}>S&H: {vs.length?"✓ visto por "+vs.map(v=>`${v.nombre}${v.at?` (${fmtTs(v.at)})`:""}`).join(", "):"todavía no lo vio nadie"}</div>}
+    {tareas!==undefined?tareas:<AvTareasLinea a={a}/>}
     {extra&&<div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:10}}>{extra}</div>}
   </div>;
 }
@@ -2622,6 +2672,7 @@ function AvisoIngresoModal({user,onClose,pagina}){
   const[nada,setNadaRaw]=useState(false); // Rev145: "Nada" = no necesitan nada de Obras y Sistemas
   const setNada=(v)=>{setNadaRaw(v);if(v){setEstadia(false);setViandas(false);setTraslado(false);}};
   const[vehPropio,setVehPropio]=useState(false);
+  const[subeChalet,setSubeChalet]=useState(false); // Rev150: si sube al chalet, S&H tiene que tener Subir a Chalet
   const[patente,setPatente]=useState("");
   const[notas,setNotas]=useState("");
   const[verPegar,setVerPegar]=useState(false);
@@ -2681,21 +2732,22 @@ function AvisoIngresoModal({user,onClose,pagina}){
       estadia,viandas,traslado,traslado_origen:traslado?origen.trim():null,traslado_destino:traslado?destino.trim():null,compra_pasaje:traslado&&pasaje,
       notas:notas.trim()||null,
       // solo si se tildó: así funciona aunque la base todavía no tenga estas columnas
-      ...(vehPropio?{vehiculo_propio:true,vehiculo_patente:patente.trim().toUpperCase()||null}:{})};
+      ...(vehPropio?{vehiculo_propio:true,vehiculo_patente:patente.trim().toUpperCase()||null}:{}),
+      ...(subeChalet?{sube_chalet:true}:{})};
     const r=await db.ins("avisos_ingreso",payload);
     setBusy(false);
     if(!r.ok){
       if(SIM_ACTIVO)return; // modo "Ver como": ya avisó que no se guarda
       const t=JSON.stringify(r.data||"");
-      alert(/avisos_ingreso|vehiculo_|PGRST20[45]|42P01|42501/.test(t)
+      alert(/avisos_ingreso|vehiculo_|sube_chalet|PGRST20[45]|42P01|42501/.test(t)
         ?"Falta actualizar la base para el aviso de ingreso: un admin tiene que correr el SQL (está en la campanita 🔔 de los admins)."
         :"No se pudo enviar el aviso. Revisá la conexión y probá de nuevo.\n\nDetalle: "+t.slice(0,200));
       return;
     }
     setEnviado(true);
   };
-  const nuevo=()=>{setPers([vacia(rango)]);setNotas("");setEstadia(false);setViandas(false);setTraslado(false);setNadaRaw(false);setVerPegar(false);setPegado("");setOrigen("");setDestino("");setPasaje(false);setVehPropio(false);setPatente("");setPorPersona(false);setPaso(1);setEnviado(false);};
-  const hayDatos=pers.some(p=>p.dni.trim()||p.nombre.trim()||p.apellido.trim()||p.empresa.trim())||estadia||viandas||traslado||nada||vehPropio||!!notas.trim();
+  const nuevo=()=>{setPers([vacia(rango)]);setNotas("");setEstadia(false);setViandas(false);setTraslado(false);setNadaRaw(false);setVerPegar(false);setPegado("");setOrigen("");setDestino("");setPasaje(false);setVehPropio(false);setSubeChalet(false);setPatente("");setPorPersona(false);setPaso(1);setEnviado(false);};
+  const hayDatos=pers.some(p=>p.dni.trim()||p.nombre.trim()||p.apellido.trim()||p.empresa.trim())||estadia||viandas||traslado||nada||vehPropio||subeChalet||!!notas.trim();
   const cancelar=()=>{if(hayDatos&&!confirm("¿Descartar este aviso? Se borra lo que cargaste."))return;if(pagina)nuevo();else onClose();};
   const anular=async(a)=>{if(!confirm("¿Anular este aviso?"))return;const r=await db.upd("avisos_ingreso",{estado:"anulado",estado_por:user.id,estado_por_nombre:user.nombre||user.email||"",estado_at:new Date().toISOString()},[["id","eq",a.id]]);if(!r.ok&&!SIM_ACTIVO)alert("No se pudo anular.");cargarMios();};
   const opcion=(v,set,ic,t,d,dis)=><label className={"av-op"+(v?" on":"")+(dis?" dis":"")}><input type="checkbox" checked={v} disabled={!!dis} onChange={e=>set(e.target.checked)}/><span className="ic">{ic}</span><span><b>{t}</b>{d&&<span className="d">{d}</span>}</span></label>;
@@ -2718,7 +2770,7 @@ function AvisoIngresoModal({user,onClose,pagina}){
       :enviado?<div style={{textAlign:"center",padding:"20px 10px"}}>
         <div style={{fontSize:40}}>✅</div>
         <div style={{fontFamily:"var(--fh)",fontSize:20,fontWeight:800,margin:"6px 0"}}>AVISO ENVIADO</div>
-        <div style={{fontSize:13,color:"var(--tx2)",marginBottom:16}}>Les llega a administración y Control de Personal. En "Mis avisos" ves cuando lo marquen como visto o resuelto.</div>
+        <div style={{fontSize:13,color:"var(--tx2)",marginBottom:16}}>Les llega a administración y Control de Personal; a S&H si a alguien le falta habilitación y a Intendencia si pidieron estadía. En "Mis avisos" ves cómo va cada cosa.</div>
         <div style={{display:"flex",gap:8,justifyContent:"center",flexWrap:"wrap"}}><button className="bsm" onClick={nuevo}>Enviar otro aviso</button><button className="bsm" onClick={()=>setTab("mios")}>Ver mis avisos</button></div>
       </div>:<>
         <div className="steps">{AV_PASOS.map((t,i)=>{const n=i+1;return <div key={n} className={`step${paso===n?" on":paso>n?" dn":""}`} style={{cursor:"pointer"}} onClick={()=>irA(n)}><span className="sn">{paso>n?"✓":n}</span>{t}</div>;})}</div>
@@ -2787,6 +2839,7 @@ function AvisoIngresoModal({user,onClose,pagina}){
           <div className="av-preg" style={{fontSize:16,marginTop:16}}>Otros datos</div>
           {opcion(vehPropio,setVehPropio,"🚗","Vienen con vehículo propio",null)}
           {vehPropio&&<div className="f" style={{maxWidth:260}}><label>Patente (si la sabés)</label><input value={patente} onChange={e=>setPatente(e.target.value)} placeholder="Ej: AB123CD"/></div>}
+          {opcion(subeChalet,setSubeChalet,"🏔️","Sube al chalet","S&H tiene que habilitarlo para subir")}
           <div className="f"><label>Notas (opcional)</label><textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Algo más que convenga saber"/></div>
         </>}
 
@@ -2803,6 +2856,7 @@ function AvisoIngresoModal({user,onClose,pagina}){
             <div className="av-res-t">🧾 A cargo de Obras y Sistemas <a href="#" onClick={e=>{e.preventDefault();setPaso(3);}}>cambiar</a></div>
             <div style={{fontSize:14}}>{necesita.length?necesita.join(" · "):"Nada"}</div>
             {vehPropio&&<div style={{fontSize:14,marginTop:4}}>🚗 Vienen con vehículo propio{patente.trim()?` · ${patente.trim().toUpperCase()}`:""}</div>}
+            {subeChalet&&<div style={{fontSize:14,marginTop:4}}>🏔️ Sube al chalet</div>}
             {notas.trim()&&<div style={{fontSize:13,color:"var(--tx2)",marginTop:4}}>📝 {notas.trim()}</div>}
           </div>
         </>}
@@ -2819,44 +2873,102 @@ function AvisoIngresoModal({user,onClose,pagina}){
     </div>
   </>);
 }
-// Campanita: admin y CP ven los pendientes; S&H, los que todavía no marcó como vistos (se revisa cada minuto)
+// ─── Rev150: tareas del aviso de ingreso ──────────────────────────────────────
+// S&H: habilitar a las personas a las que les falta S&H Ingreso (y Subir a Chalet si el aviso dice "sube al chalet").
+//   Se calcula en vivo con las habilitaciones: cuando S&H las habilita en Personal, el aviso sale solo de su lista.
+// Intendencia: la estadía, si la pidieron (solicitud de hospedaje).
+// Cada tarea se marca visto / resuelto / rechazado con la función obra.aviso_tarea: S&H la suya, Intendencia la suya,
+// admin y CP las dos. Lo ve quien avisó (en "Mis avisos").
+const AV_COLS_CAMP="id,estado,personas,fecha_ingreso,hasta,indefinido,dias,estadia,sube_chalet,estado_sh,estado_int";
+// El aviso ya pasó: todas las personas tienen egreso antes de hoy
+const avVencido=(a)=>{const hoy=today();const ps=a.personas||[];return ps.length>0&&ps.every(p=>{const f=avFechasP(a,p);return!f.ind&&!!f.eg&&f.eg<hoy;});};
+const avVivo=(a)=>a.estado!=="anulado"&&a.estado!=="rechazado"&&!avVencido(a);
+const avTareaAbierta=(e)=>!e||e==="pendiente"||e==="visto";
+const avIntAbierta=(a)=>!!a.estadia&&avVivo(a)&&avTareaAbierta(a.estado_int);
+const avShCandidato=(a)=>avVivo(a)&&avTareaAbierta(a.estado_sh);
+const avHabOk=(h,desde)=>!!h&&!h.suspendida&&!(h.fecha_hasta&&String(h.fecha_hasta).slice(0,10)<desde);
+// Habilitaciones S&H (Ingreso y Subir a Chalet) de las personas de los avisos, por DNI: {dni:{id, habs:[...]}}
+const avHabsDe=async(avisos)=>{
+  const dnis=[...new Set(avisos.flatMap(a=>(a.personas||[]).map(p=>avDni(p.dni))).filter(Boolean))];
+  const pid={};
+  for(let i=0;i<dnis.length;i+=150){
+    const{data}=await db.sel("personas",{cols:"id,dni,deleted_at",inFilter:["dni",dnis.slice(i,i+150)],lim:2000});
+    if(data===null)return null;
+    data.forEach(p=>{if(!p.deleted_at)pid[avDni(p.dni)]=p.id;});
+  }
+  const ids=[...new Set(Object.values(pid))];const hp={};
+  for(let i=0;i<ids.length;i+=150){
+    const{data}=await db.sel("habilitaciones",{cols:"persona_id,tipo,suspendida,fecha_hasta",f:[["entity_type","eq","persona"]],inFilter:["persona_id",ids.slice(i,i+150)],lim:5000});
+    if(data===null)return null;
+    data.forEach(h=>{if(h.tipo==="sh_ingreso"||h.tipo==="sh_chalet")(hp[h.persona_id]=hp[h.persona_id]||[]).push(h);});
+  }
+  const out={};dnis.forEach(d=>{out[d]={id:pid[d]||null,habs:pid[d]?(hp[pid[d]]||[]):[]};});
+  return out;
+};
+// Qué le falta a cada persona del aviso para el día que ingresa (o hoy): {ing, cha, enBase}
+const avHabsP=(a,p,info)=>{
+  const x=(info&&info[avDni(p.dni)])||{id:null,habs:[]};
+  const f=avFechasP(a,p);const hoy=today();const desde=f.ing&&f.ing>hoy?f.ing:hoy;
+  const ok=(t)=>x.habs.some(h=>h.tipo===t&&avHabOk(h,desde));
+  return{enBase:!!x.id,ing:!ok("sh_ingreso"),cha:!!a.sube_chalet&&!ok("sh_chalet")};
+};
+const avShFaltan=(a,info)=>!info?[]:(a.personas||[]).map(p=>({p,...avHabsP(a,p,info)})).filter(r=>r.ing||r.cha);
+// Resumen de las tareas para "Mis avisos" (sin botones)
+function AvTareasLinea({a}){
+  const t=[];
+  if(a.estadia&&a.estado_int!==undefined)t.push(["🛏️ Estadía (Intendencia)",a.estado_int||"pendiente",a.int_por_nombre,a.int_at,a.int_nota]);
+  if(a.estado_sh&&a.estado_sh!=="pendiente")t.push(["🦺 S&H",a.estado_sh,a.sh_por_nombre,a.sh_at,a.sh_nota]);
+  if(!t.length)return null;
+  return <div style={{fontSize:12,marginTop:6,display:"flex",flexDirection:"column",gap:3}}>{t.map(([n,e,por,at,nota])=>{const x=AV_EST[e]||AV_EST.pendiente;return <div key={n}>
+    {n}: <b style={{color:x.c}}>{x.t}</b>{por&&e!=="pendiente"?<span style={{color:"var(--tx3)"}}> · {por}{at?` · ${fmtTs(at)}`:""}</span>:null}{nota?<span style={{color:"var(--tx2)"}}> — "{nota}"</span>:null}
+  </div>;})}</div>;
+}
+// Campanita: admin y CP ven los avisos pendientes; S&H, los que tienen gente sin habilitar; Intendencia, las estadías
+// pendientes. El número son los abiertos; titila si hay alguno sin ver. Se revisa cada minuto.
 function AvisosCampana({user}){
-  const modo=AV_GESTION.includes(user.rol)?"gestion":"sh";
+  const modo=AV_GESTION.includes(user.rol)?"gestion":user.rol==="intendencia"?"int":"sh";
   const[pend,setPend]=useState(0);
+  const[sinVer,setSinVer]=useState(false);
   const[falta,setFalta]=useState(false);
   const[ver,setVer]=useState(false);
   const check=useCallback(async()=>{
-    const{data}=await db.sel("avisos_ingreso",{cols:"id,estado,vistos_sh",ord:"creado_at.desc",lim:300});
+    const{data}=await db.sel("avisos_ingreso",{cols:AV_COLS_CAMP,ord:"creado_at.desc",lim:300});
     if(data===null){setFalta(true);return;}
     setFalta(false);
-    setPend(modo==="sh"?data.filter(a=>a.estado!=="anulado"&&a.estado!=="rechazado"&&!avVistoPorMi(a,user.id)).length:data.filter(a=>a.estado==="pendiente").length);
-  },[modo,user.id]);
+    if(modo==="gestion"){const n=data.filter(a=>a.estado==="pendiente").length;setPend(n);setSinVer(n>0);return;}
+    if(modo==="int"){const ab=data.filter(avIntAbierta);setPend(ab.length);setSinVer(ab.some(a=>(a.estado_int||"pendiente")==="pendiente"));return;}
+    const cand=data.filter(avShCandidato);
+    const info=cand.length?await avHabsDe(cand):{};
+    if(info===null)return;
+    const ab=cand.filter(a=>avShFaltan(a,info).length>0);
+    setPend(ab.length);setSinVer(ab.some(a=>(a.estado_sh||"pendiente")==="pendiente"));
+  },[modo]);
   useEffect(()=>{check();const i=setInterval(check,60000);return()=>clearInterval(i);},[check]);
-  const tit=falta?"Aviso de ingreso: falta actualizar la base":pend?(modo==="sh"?`${pend} aviso${pend===1?"":"s"} de ingreso sin ver`:`${pend} aviso${pend===1?"":"s"} de ingreso pendiente${pend===1?"":"s"}`):"Avisos de ingreso";
+  const que=modo==="gestion"?"de ingreso pendiente":modo==="int"?"con estadía para resolver":"con gente sin habilitar";
+  const tit=falta?"Aviso de ingreso: falta actualizar la base":pend?`${pend} aviso${pend===1?"":"s"} ${que}${pend===1?"":(modo==="gestion"?"s":"")}`:"Avisos de ingreso";
   return <>
     <button className="btn-out" onClick={()=>setVer(true)} title={tit}
-      style={{position:"relative",padding:"5px 10px",flexShrink:0,borderColor:pend?"var(--acc)":undefined,animation:pend?"pulseWarn 2s infinite":undefined}}>
-      🔔{pend>0&&<span style={{position:"absolute",top:-7,right:-7,background:"var(--rd)",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 5px",lineHeight:"14px"}}>{pend}</span>}
+      style={{position:"relative",padding:"5px 10px",flexShrink:0,borderColor:pend?"var(--acc)":undefined,animation:sinVer?"pulseWarn 2s infinite":undefined}}>
+      🔔{pend>0&&<span style={{position:"absolute",top:-7,right:-7,background:sinVer?"var(--rd)":"var(--acc)",color:sinVer?"#fff":"#000",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 5px",lineHeight:"14px"}}>{pend}</span>}
     </button>
     {ver&&<AvisosPanel user={user} modo={modo} falta={falta} onClose={()=>{setVer(false);check();}}/>}
   </>;
 }
 function AvisosPanel({user,modo,falta,onClose}){
-  const esSH=modo==="sh";
+  const esSH=modo==="sh",esInt=modo==="int",gestion=modo==="gestion";
   const[lista,setLista]=useState(null);
+  const[info,setInfo]=useState(null); // habilitaciones S&H por DNI (no hace falta para Intendencia)
   const[filtro,setFiltro]=useState("abiertos");
-  const[enBase,setEnBase]=useState({});
   const[busy,setBusy]=useState(null);
   const cargar=useCallback(async()=>{
     const{data}=await db.sel("avisos_ingreso",{ord:"creado_at.desc",lim:300});
     if(data===null){setLista({err:true});return;}
-    setLista(data);
-    if(esSH)return;
-    const dnis=[...new Set(data.flatMap(a=>(a.personas||[]).map(p=>avDni(p.dni))).filter(Boolean))];
-    const m={};
-    for(let i=0;i<dnis.length;i+=150){const{data:ps}=await db.sel("personas",{cols:"dni,deleted_at",inFilter:["dni",dnis.slice(i,i+150)],lim:2000});(ps||[]).forEach(p=>{if(!p.deleted_at)m[avDni(p.dni)]=true;});}
-    setEnBase(m);
-  },[esSH]);
+    const l=esInt?data.filter(a=>a.estadia):data;
+    setLista(l);
+    if(esInt)return;
+    const inf=await avHabsDe(l.filter(a=>a.estado!=="anulado"));
+    setInfo(inf||{});
+  },[esInt]);
   useEffect(()=>{if(!falta)cargar();},[cargar,falta]);
   const estado=async(a,e)=>{
     let resp=a.respuesta||null;
@@ -2867,9 +2979,17 @@ function AvisosPanel({user,modo,falta,onClose}){
     if(!r.ok||(Array.isArray(r.data)&&!r.data.length)){if(!SIM_ACTIVO)alert("No se pudo guardar. Revisá la conexión.");return;}
     cargar();
   };
-  const vistoSH=async(a)=>{
-    setBusy(a.id);const r=await db.rpc("aviso_visto_sh",{p_aviso:a.id});setBusy(null);
-    if(!r.ok){if(SIM_ACTIVO)return;alert(/aviso_visto_sh|PGRST202/.test(JSON.stringify(r.data||""))?"Falta actualizar la base: un admin tiene que correr el SQL nuevo del aviso de ingreso.":"No se pudo marcar como visto. Revisá la conexión.");return;}
+  // Tarea de S&H ("sh") o de Intendencia ("int"): visto / resuelto / rechazado / volver a pendiente
+  const tarea=async(a,area,e)=>{
+    let nota=null;
+    if(e==="resuelto"||e==="rechazado"){
+      const preg=e==="rechazado"?"Motivo (opcional, lo ve quien avisó):":area==="int"?"¿Dónde se aloja? (opcional, lo ve quien avisó)":"Comentario (opcional, lo ve quien avisó):";
+      const r=prompt(preg,(area==="int"?a.int_nota:a.sh_nota)||"");if(r===null)return;nota=r.trim()||null;
+    }
+    setBusy(a.id+area);
+    const r=await db.rpc("aviso_tarea",{p_aviso:a.id,p_area:area,p_estado:e,p_nota:nota});
+    setBusy(null);
+    if(!r.ok){if(SIM_ACTIVO)return;alert(/aviso_tarea|PGRST202/.test(JSON.stringify(r.data||""))?"Falta actualizar la base: un admin tiene que correr el SQL nuevo del aviso de ingreso (Rev150).":"No se pudo guardar. Revisá la conexión.");return;}
     cargar();
   };
   const alta=async(p)=>{
@@ -2882,41 +3002,73 @@ function AvisosPanel({user,modo,falta,onClose}){
     cargar();
   };
   const copiar=async()=>{try{await navigator.clipboard.writeText(AVISO_SQL);alert("SQL copiado");}catch(e){prompt("Copiá el SQL:",AVISO_SQL);}};
-  const ok=lista&&!lista.err;
-  const vis=!ok?[]:esSH
-    ?lista.filter(a=>a.estado!=="anulado"&&(filtro==="todos"||!avVistoPorMi(a,user.id)))
-    :lista.filter(a=>filtro==="todos"||a.estado==="pendiente"||a.estado==="visto");
-  const nPend=!ok?0:esSH?lista.filter(a=>a.estado!=="anulado"&&a.estado!=="rechazado"&&!avVistoPorMi(a,user.id)).length:lista.filter(a=>a.estado==="pendiente").length;
+  const botones=(a,area)=>{const e=(area==="sh"?a.estado_sh:a.estado_int)||"pendiente";const b=busy===a.id+area;return <>
+    {e==="pendiente"&&<button className="bsm" disabled={b} onClick={()=>tarea(a,area,"visto")}>👁 Visto</button>}
+    {avTareaAbierta(e)&&<button className="bsm" style={{color:"var(--gr)",borderColor:"rgba(16,185,129,.45)"}} disabled={b} onClick={()=>tarea(a,area,"resuelto")}>✓ Resuelto</button>}
+    {avTareaAbierta(e)&&<button className="bsm" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.4)"}} disabled={b} onClick={()=>tarea(a,area,"rechazado")}>✗ Rechazado</button>}
+    {!avTareaAbierta(e)&&<button className="bsm" disabled={b} onClick={()=>tarea(a,area,"pendiente")}>↺ Volver a pendiente</button>}
+  </>;};
+  const porTxt=(e,por,at,nota)=><>{por&&e!=="pendiente"?<span className="av-tarea-por">{por}{at?` · ${fmtTs(at)}`:""}</span>:null}{nota?<span className="av-tarea-por">— "{nota}"</span>:null}</>;
+  const bloqueSH=(a)=>{
+    const fal=avShFaltan(a,info);const e=a.estado_sh||"pendiente";
+    const nIng=fal.filter(r=>r.ing).length,nCha=fal.filter(r=>r.cha).length;
+    return <div className="av-tarea">
+      <div className="av-tarea-h">🦺 S&H {(fal.length>0||!avTareaAbierta(e))&&<AvisoChip e={e}/>}
+        {fal.length?<span className="av-falta">Falta habilitar: {[nIng&&`${nIng} sin Ingreso`,nCha&&`${nCha} sin Subir a Chalet`].filter(Boolean).join(" · ")}</span>
+          :<span style={{color:"var(--gr)",fontWeight:500}}>✓ Todos con {a.sube_chalet?"Ingreso y Subir a Chalet":"Ingreso"} habilitado</span>}
+        {porTxt(e,a.sh_por_nombre,a.sh_at,a.sh_nota)}
+      </div>
+      {(fal.length>0||!avTareaAbierta(e))&&a.estado!=="anulado"&&<div className="av-tarea-b">{botones(a,"sh")}</div>}
+    </div>;
+  };
+  const bloqueInt=(a)=>{const e=a.estado_int||"pendiente";return <div className="av-tarea">
+    <div className="av-tarea-h">🛏️ Estadía (Intendencia) <AvisoChip e={e}/>{porTxt(e,a.int_por_nombre,a.int_at,a.int_nota)}</div>
+    {a.estado!=="anulado"&&<div className="av-tarea-b">{botones(a,"int")}</div>}
+  </div>;};
+  const habCel=(a,p)=>{const h=avHabsP(a,p,info);return <span style={{whiteSpace:"nowrap"}}>
+    <span className={"av-hb "+(h.ing?"no":"si")}>{h.ing?"✗":"✓"} Ingreso</span>
+    {a.sube_chalet&&<span className={"av-hb "+(h.cha?"no":"si")}>{h.cha?"✗":"✓"} Chalet</span>}
+  </span>;};
+  const ok=lista&&!lista.err&&(esInt||info!==null);
+  const abiertoGestion=(a)=>a.estado==="pendiente"||a.estado==="visto"||(avShCandidato(a)&&avShFaltan(a,info).length>0)||avIntAbierta(a);
+  const abiertoSH=(a)=>avShCandidato(a)&&avShFaltan(a,info).length>0;
+  const vis=!ok?[]:lista.filter(a=>a.estado!=="anulado"||(gestion&&filtro==="todos")).filter(a=>filtro==="todos"||(esSH?abiertoSH(a):esInt?avIntAbierta(a):abiertoGestion(a)));
+  const nPend=!ok?0:esSH?lista.filter(abiertoSH).length:esInt?lista.filter(avIntAbierta).length:lista.filter(a=>a.estado==="pendiente").length;
+  const titPend=!nPend?"":esSH?` · ${nPend} con gente sin habilitar`:esInt?` · ${nPend} estadía${nPend===1?"":"s"} para resolver`:` · ${nPend} pendiente${nPend===1?"":"s"}`;
   return <div className="mo"><div className="md md-lg" style={{maxWidth:900}}>
-    <div className="mh"><div className="mt">🔔 Avisos de ingreso{nPend?` · ${nPend} ${esSH?"sin ver":"pendiente"+(nPend===1?"":"s")}`:""}</div><button className="mc" onClick={onClose}>x</button></div>
+    <div className="mh"><div className="mt">🔔 Avisos de ingreso{titPend}</div><button className="mc" onClick={onClose}>x</button></div>
     <div className="mb">
-      {falta||(lista&&lista.err)?(esSH
+      {falta||(lista&&lista.err)?(!gestion
         ?<div className="warn">Todavía no está habilitado. Un admin tiene que actualizar la base del aviso de ingreso.</div>
         :<div className="jo-wrap" style={{borderColor:"rgba(245,158,11,.5)"}}>
           <div className="jo-h" style={{color:"var(--acc)"}}>⚠️ Falta actualizar la base del aviso de ingreso</div>
-          <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Corré este SQL una vez en Supabase (SQL Editor) y recargá la página. Sirve aunque ya se haya corrido el anterior: suma lo nuevo (vehículo propio, "visto" de S&H) y los permisos (cada uno ve sus avisos; admin, CP y S&H ven todos; S&H solo marca visto).</div>
+          <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.5}}>Corré este SQL una vez en Supabase (SQL Editor) y recargá la página. Sirve aunque ya se haya corrido el anterior: suma lo nuevo ("sube al chalet" y las tareas de S&H e Intendencia) y los permisos.</div>
           <pre className="jo-pre">{AVISO_SQL}</pre>
           <button className="bsm" style={{marginTop:8}} onClick={copiar}>📋 Copiar SQL</button>
         </div>)
-      :lista===null?<Spin/>:<>
+      :!ok?<Spin/>:<>
         <div className="jo-tabs">
-          <button className={`jo-tab${filtro==="abiertos"?" on":""}`} onClick={()=>setFiltro("abiertos")}>{esSH?"Sin ver":"Pendientes y vistos"}</button>
+          <button className={`jo-tab${filtro==="abiertos"?" on":""}`} onClick={()=>setFiltro("abiertos")}>{esSH?"Pendientes de habilitar":esInt?"Estadías pendientes":"Abiertos"}</button>
           <button className={`jo-tab${filtro==="todos"?" on":""}`} onClick={()=>setFiltro("todos")}>Todos</button>
           <button className="bsm" style={{marginLeft:"auto"}} onClick={cargar}>↻ Actualizar</button>
         </div>
-        {esSH&&<div style={{fontSize:12,color:"var(--tx2)",marginBottom:10}}>Marcá "visto" cuando lo leas. Lo gestionan administración y Control de Personal.</div>}
-        {vis.length===0?<div style={{color:"var(--tx3)",fontSize:13,padding:10}}>{filtro==="abiertos"?(esSH?"No hay avisos sin ver. 🎉":"No hay avisos pendientes. 🎉"):"Todavía no hay avisos."}</div>
-          :vis.map(a=>esSH
-            ?<AvisoCard key={a.id} a={a} extra={avVistoPorMi(a,user.id)
-              ?<span style={{fontSize:12,color:"#60A5FA"}}>✓ Lo marcaste como visto{(()=>{const v=(a.vistos_sh||[]).find(x=>x.por===user.id);return v&&v.at?` · ${fmtTs(v.at)}`:"";})()}</span>
-              :<button className="bsm" disabled={busy===a.id} onClick={()=>vistoSH(a)}>👁 Marcar visto</button>}/>
-            :<AvisoCard key={a.id} a={a} verSH
-              personaExtra={(p)=>enBase[avDni(p.dni)]?<span style={{fontSize:11,color:"var(--gr)",whiteSpace:"nowrap"}}>✓ en Personal</span>
+        <div style={{fontSize:12,color:"var(--tx2)",marginBottom:10,lineHeight:1.45}}>{esSH
+          ?"Avisos con gente a la que le falta habilitación de S&H (Ingreso, y Subir a Chalet si suben). Cuando la habilitás en Personal sale sola de la lista; si no corresponde habilitarla, marcala Resuelto o Rechazado."
+          :esInt?"Avisos que piden estadía. Marcá Visto cuando lo leas y después Resuelto (podés poner dónde se aloja) o Rechazado. Lo ve quien avisó."
+          :"Abiertos: avisos pendientes o vistos, y los que tienen algo sin resolver de S&H o de Intendencia. Admin y CP pueden marcar todo."}</div>
+        {vis.length===0?<div style={{color:"var(--tx3)",fontSize:13,padding:10}}>{filtro==="abiertos"?"No hay nada pendiente. 🎉":"Todavía no hay avisos."}</div>
+          :vis.map(a=>esInt
+            ?<AvisoCard key={a.id} a={a} tareas={bloqueInt(a)}/>
+            :esSH
+            ?<AvisoCard key={a.id} a={a} personaExtra={(p)=>habCel(a,p)} tareas={bloqueSH(a)}/>
+            :<AvisoCard key={a.id} a={a}
+              personaExtra={(p)=>avHabsP(a,p,info).enBase?habCel(a,p)
                 :<button className="bsm" style={{padding:"2px 8px",fontSize:11,whiteSpace:"nowrap"}} onClick={()=>alta(p)}>+ Dar de alta</button>}
+              tareas={<>{a.estado!=="anulado"&&bloqueSH(a)}{a.estadia&&bloqueInt(a)}</>}
               extra={<>
                 {a.estado==="pendiente"&&<button className="bsm" disabled={busy===a.id} onClick={()=>estado(a,"visto")}>👁 Visto</button>}
-                {(a.estado==="pendiente"||a.estado==="visto")&&<button className="bsm" style={{color:"var(--gr)",borderColor:"rgba(16,185,129,.45)"}} disabled={busy===a.id} onClick={()=>estado(a,"resuelto")}>✓ Resuelto</button>}
-                {(a.estado==="pendiente"||a.estado==="visto")&&<button className="bsm" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.4)"}} disabled={busy===a.id} onClick={()=>estado(a,"rechazado")}>✗ Rechazar</button>}
+                {(a.estado==="pendiente"||a.estado==="visto")&&<button className="bsm" style={{color:"var(--gr)",borderColor:"rgba(16,185,129,.45)"}} disabled={busy===a.id} onClick={()=>estado(a,"resuelto")}>✓ Aviso resuelto</button>}
+                {(a.estado==="pendiente"||a.estado==="visto")&&<button className="bsm" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.4)"}} disabled={busy===a.id} onClick={()=>estado(a,"rechazado")}>✗ Rechazar aviso</button>}
                 {a.estado!=="pendiente"&&a.estado!=="anulado"&&<button className="bsm" disabled={busy===a.id} onClick={()=>estado(a,"pendiente")}>↺ Volver a pendiente</button>}
               </>}/>)}
       </>}
@@ -8971,7 +9123,7 @@ function App(){
       <div className="brand">CONTROL<span>OBRA</span> <span style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--tx3)",marginLeft:6,fontWeight:400,letterSpacing:.3}}>{APP_VER}</span></div>
       <div className="tr" style={{gap:8,flexWrap:"nowrap"}}>
         {user.rol==="admin"&&<button className="btn-out" style={{flexShrink:0,padding:"5px 10px",borderColor:sim?"var(--acc)":undefined,color:sim?"var(--acc)":undefined}} onClick={()=>setVerSim(true)} title="Ver la app como la ve otro rol">👁<span className="top-nom"> Ver como</span></button>}
-        {["admin","cp","sh"].includes(uv.rol)&&<AvisosCampana user={uv}/>}
+        {["admin","cp","sh","intendencia"].includes(uv.rol)&&<AvisosCampana user={uv}/>}
         <span className="top-nom" style={{fontSize:12,color:"var(--tx2)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:80}}>{uv.nombre}</span>
         <span className="rol" style={{flexShrink:0}}>{uv.rol==="puesto"?uv.puesto_nombre||"Puesto":(ROL_LBL[uv.rol]||uv.rol).toUpperCase()}</span>
         <button className="btn-out" onClick={logout} style={{flexShrink:0}}>Salir</button>
