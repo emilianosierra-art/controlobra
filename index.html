@@ -604,10 +604,10 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev153";
+const APP_REV="Rev154";
 // Rev143: número de versión que se muestra al lado de CONTROLOBRA: AAMM.revisión.DD con la fecha de la revisión
 // (ej. 2611.143.14 = revisión 143 del 14/11/2026). En cada revisión nueva se actualizan APP_REV y APP_FECHA.
-const APP_FECHA="2026-11-17";
+const APP_FECHA="2026-11-18";
 const APP_VER=APP_FECHA.slice(2,4)+APP_FECHA.slice(5,7)+"."+APP_REV.replace(/\D/g,"")+"."+APP_FECHA.slice(8,10);
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
@@ -677,11 +677,13 @@ const db={
     let path=table;
     if(upsert&&onConflict)path+=`?on_conflict=${onConflict}`;
     const{data,ok}=await dbq(path,{method:"POST",h:{"Prefer":prefer},body:JSON.stringify(body)});
+    if(ok&&CONTEO_TABLAS.has(table))olvidarConteos(); // Rev154
     return{data:ok?(Array.isArray(data)?data:[data]):null,ok};
   },
   upd:async(table,payload,filters)=>{
     let u=`${table}?`;filters.forEach(([k,op,v])=>{u+=`&${k}=${op}.${encodeURIComponent(v)}`;});
     const{data,ok}=await dbq(u,{method:"PATCH",h:{"Prefer":"return=representation"},body:JSON.stringify(payload)});
+    if(ok&&CONTEO_TABLAS.has(table))olvidarConteos(); // Rev154
     if(!ok)console.error("db.upd failed",table,payload,data);
     return{data,ok};
   },
@@ -691,7 +693,8 @@ const db={
   },
   del:async(table,filters)=>{
     let u=`${table}?`;filters.forEach(([k,op,v])=>{u+=`&${k}=${op}.${encodeURIComponent(v)}`;});
-    await dbq(u,{method:"DELETE"});
+    const r=await dbq(u,{method:"DELETE"});
+    if(r.ok&&CONTEO_TABLAS.has(table))olvidarConteos(); // Rev154
   },
 };
 // Trae todas las filas de a páginas de 1000 (Supabase corta cada respuesta en 1000 filas).
@@ -1065,8 +1068,8 @@ function ChaletMini({proyectoId,user}){
   const load=async()=>{
     try{
       const[pos,pred]=await Promise.all([
-        calcPosicionesMontana(),
-        calcPersonasEnPredio(),
+        posMontanaCache(),
+        predioCache(),
       ]);
       const persIdsChalet=Object.entries(pos.persona).filter(([_,p])=>p==="chalet").map(([k])=>k);
       const persIdsCamino=Object.entries(pos.persona).filter(([_,p])=>p==="camino").map(([k])=>k);
@@ -1080,12 +1083,15 @@ function ChaletMini({proyectoId,user}){
       const isUUID=(k)=>typeof k==="string"&&k.length===36&&k.indexOf("-")>=0;
       const allPIds=Array.from(new Set([...persIdsChalet,...persIdsCamino,...persIdsPredio])).filter(isUUID);
       const allVIds=[...vehIdsChalet,...vehIdsCamino].filter(isUUID);
-      const[{data:pers},{data:vehs}]=await Promise.all([
-        allPIds.length?db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"}):{data:[]},
-        (allVIds.length||persIdsCamino.length)?db.sel("vehiculos",{cols:"id,patente,descripcion,tipo,empresa"}):{data:[]},
+      // Rev154: nombres guardados 5 min (antes se bajaban enteros en cada refresco)
+      const[pers,vehs]=await Promise.all([
+        allPIds.length?catPersonas().catch(()=>[]):[],
+        (allVIds.length||persIdsCamino.length)?catVehiculos().catch(()=>[]):[],
       ]);
       const persMap={};(pers||[]).forEach(p=>{persMap[p.id]=p;});
       const vehMap={};(vehs||[]).forEach(v=>{vehMap[v.id]=v;});
+      if(allPIds.some(k=>!persMap[k]))olvidarSiViejo("catP",60000); // alguien recién cargado: se vuelve a bajar la lista
+      if(allVIds.some(k=>!vehMap[k]))olvidarSiViejo("catV",60000);
       const synthPer=(k)=>({id:k,nombre:"Sin registrar",apellido:"",dni:k,empresa:"DNI no encontrado en la base",_synth:true});
       const synthVeh=(k)=>{const pat=String(k).indexOf("No registrado:")===0?String(k).replace("No registrado:","").trim():k;return{id:k,patente:pat,descripcion:"Vehículo no registrado en la base",tipo:"Otro",empresa:"",_synth:true};};
       const buildPer=(ids)=>ids.map(k=>persMap[k]||synthPer(k));
@@ -1121,7 +1127,10 @@ function ChaletMini({proyectoId,user}){
       console.warn("ChaletMini: error de red, manteniendo datos anteriores", e.message);
     }
   };
-  useEffect(()=>{load();const i=setInterval(load,10000);return()=>clearInterval(i);},[]);
+  // Rev154: puestos y admin cada 15 s, el resto cada 60 s; nada si la app no está a la vista. Al abrir una lista se actualiza.
+  const cada=user&&(user.rol==="admin"||user.rol==="puesto")?15000:60000;
+  useEffect(()=>{load();return cadaVisible(load,cada);},[cada]);
+  useEffect(()=>{if(showList||verCam)load();},[showList,verCam]);
   if(data.pc===null)return null;
   const Pill=({n,label,color,listKey})=><div style={{display:"flex",alignItems:"center",gap:3,background:"rgba(0,0,0,.3)",border:`1px solid ${color}33`,borderRadius:4,padding:"2px 5px",cursor:"pointer"}} onClick={()=>setShowList(listKey)}>
     <span style={{fontFamily:"var(--fh)",fontSize:13,fontWeight:800,color,lineHeight:1}}>{n}</span>
@@ -1295,6 +1304,54 @@ const calcNetVehiculos=async(puesto)=>{
 //  - última P3 salida  → "camino" (bajando)
 //  - última P2 entrada → "camino" (subiendo)
 //  - última P2 salida  → "fuera"
+// ─── Rev154: alivianar la base ─────────────────────────────────────────────────
+// Con muchos usuarios con la app abierta, el contador de arriba (cada 10 s, ~9 consultas, dos de ellas recalculando la
+// última fichada de cada persona sobre todo el historial) saturó Supabase el 18/11. Ahora:
+//  · memo(): una misma consulta pedida por varias pantallas se hace una vez y se reusa unos segundos.
+//  · ultimasFichadas(): usa obra.ultimas_fichadas (la base la calcula como mucho cada 10 s para todos juntos);
+//    si todavía no se corrió el SQL de la Rev154, usa la vista como antes.
+//  · Nombres de personas y vehículos guardados 5 min.
+//  · cadaVisible(): los refrescos periódicos se pausan si la app no está a la vista (celular bloqueado, otra pestaña).
+//  · Cualquier escritura en fichadas (sesiones, registros, movimientos manuales) borra lo guardado.
+const _memo={};
+const memo=(k,ttl,fn)=>{
+  const m=_memo[k];
+  if(m&&(!m.fin||Date.now()-m.fin<ttl))return m.p;
+  const x={p:null,fin:0};
+  x.p=Promise.resolve().then(fn).then(r=>{x.fin=Date.now();return r;},e=>{if(_memo[k]===x)delete _memo[k];throw e;});
+  _memo[k]=x;return x.p;
+};
+const olvidar=(...ks)=>ks.forEach(k=>{delete _memo[k];});
+const olvidarSiViejo=(k,ms)=>{const m=_memo[k];if(m&&m.fin&&Date.now()-m.fin>ms)delete _memo[k];};
+const CONTEO_TABLAS=new Set(["sesiones_acceso","registros_acceso","movimientos_manuales"]);
+let UF_FRESCO=false; // después de una fichada, la próxima consulta le pide a la base el cálculo nuevo (sin esperar 10 s)
+const olvidarConteos=()=>{UF_FRESCO=true;olvidar("uf","pos","pred");};
+const cadaVisible=(fn,ms)=>{
+  let ult=Date.now();
+  const run=()=>{ult=Date.now();try{const r=fn();if(r&&r.catch)r.catch(()=>{});}catch(e){}};
+  const i=setInterval(()=>{if(!document.hidden)run();},ms);
+  const vis=()=>{if(!document.hidden&&Date.now()-ult>ms)run();};
+  document.addEventListener("visibilitychange",vis);
+  return()=>{clearInterval(i);document.removeEventListener("visibilitychange",vis);};
+};
+let UF_RPC=true;
+const ultimasFichadas=()=>memo("uf",8000,async()=>{
+  if(UF_RPC&&!SIM_ACTIVO){
+    const seg=UF_FRESCO?0:10;UF_FRESCO=false;
+    const r=await db.rpc("ultimas_fichadas",{p_desde:OPERATIVA_DESDE,p_max_seg:seg});
+    if(r.ok&&Array.isArray(r.data))return r.data;
+    const c=r.data&&r.data.code;
+    if(!(c==="PGRST202"||c==="PGRST203"||c==="42883"||c==="42501"))return null; // corte de red: se reintenta en el próximo refresco
+    UF_RPC=false;console.warn("obra.ultimas_fichadas no está: uso la vista (correr el SQL de la Rev154)",r.data);
+  }
+  const{data}=await db.sel("v_ultima_fichada",{f:[["ts","gte",OPERATIVA_DESDE]],lim:20000});
+  return data;
+});
+const posMontanaCache=()=>memo("pos",8000,calcPosicionesMontana);
+const predioCache=()=>memo("pred",8000,calcPersonasEnPredio);
+const catPersonas=()=>memo("catP",300000,async()=>{const{data}=await dbSelAll("personas",{cols:"id,nombre,apellido,empresa,dni",ord:"id.asc"});if(!data)throw new Error("sin conexión");return data;});
+const catVehiculos=()=>memo("catV",300000,async()=>{const{data}=await dbSelAll("vehiculos",{cols:"id,patente,descripcion,tipo,empresa",ord:"id.asc"});if(!data)throw new Error("sin conexión");return data;});
+
 const calcPosicionesMontana=async()=>{
   const todayStr=today();
   const[r1,r2,r3,r4]=await Promise.all([
@@ -1356,7 +1413,8 @@ const calcPosicionesMontana=async()=>{
   // la entrada del predio). Corrige una salida de P2/P3 mal escaneada u omitida: ej. el 21/10 COSTA fichó la salida por
   // P1 pero en P3 su DNI se leyó pegado a otro y seguía figurando en el chalet. Lo mismo para los vehículos.
   const[{data:u1},{data:s1}]=await Promise.all([
-    db.sel("v_ultima_fichada",{cols:"clave,ts",f:[["puesto","eq","Puesto 1"],["ts","gte",todayStr+"T00:00:00"]],lim:5000}),
+    // Rev154: sale de la misma consulta compartida (antes recalculaba la vista entera otra vez)
+    ultimasFichadas().then(d=>({data:(d||[]).filter(x=>x.puesto==="Puesto 1")})),
     db.sel("sesiones_acceso",{cols:"vehiculo_id,vehiculo_razon,cerrada_at",f:[["puesto","eq","Puesto 1"],["cerrada_at","gte",todayStr+"T00:00:00"]],ord:"cerrada_at.asc",lim:5000}),
   ]);
   const p1={};(u1||[]).forEach(x=>{p1[x.clave]=new Date(x.ts).getTime();});
@@ -1375,7 +1433,7 @@ const calcPosicionesMontana=async()=>{
 // Fallback P1-offline sigue funcionando. Cuando arranque una nueva temporada, cambiar OPERATIVA_DESDE.
 const OPERATIVA_DESDE="2026-09-21T00:00:00";
 const calcPersonasEnPredio=async()=>{
-  const{data}=await db.sel("v_ultima_fichada",{f:[["ts","gte",OPERATIVA_DESDE]],lim:20000});
+  const data=await ultimasFichadas(); // Rev154
   const inSet=new Set();
   const lastMap={};
   const iniHoy=new Date(today()+"T00:00:00").getTime();
@@ -1478,7 +1536,7 @@ function FichadasParaCorregir({puesto,desde,hasta,user,modo,refrescar,onCambio})
   const puede=!!user&&(user.rol==="admin"||user.rol==="puesto");
   const d1=desde||today(),d2=hasta||today();
   const load=useCallback(async()=>{const it=await fcCargar(puesto,d1,d2).catch(()=>null);if(it)setItems(it);},[puesto,d1,d2]);
-  useEffect(()=>{load();const i=setInterval(load,60000);return()=>clearInterval(i);},[load,refrescar]);
+  useEffect(()=>{load();return cadaVisible(load,60000);},[load,refrescar]);
   useEffect(()=>{
     if(!items||!items.length||porDni)return;
     dbSelAll("personas",{cols:"id,dni,nombre,apellido,empresa,deleted_at",ord:"id.asc"}).then(({data})=>{
@@ -1561,7 +1619,7 @@ function ChaletCounter({proyectoId}){
   const[vehiculosCamino,setVehiculosCamino]=useState([]);
   const load=async()=>{
     try{
-    const pos=await calcPosicionesMontana();
+    const pos=await posMontanaCache();
     // Posición = última fichada en P2/P3 (control cruzado, no depende de net por puesto)
     const persIdsChalet=Object.entries(pos.persona).filter(([_,p])=>p==="chalet").map(([k])=>k);
     const persIdsCamino=Object.entries(pos.persona).filter(([_,p])=>p==="camino").map(([k])=>k);
@@ -1595,7 +1653,7 @@ function ChaletCounter({proyectoId}){
     setVehiculosCamino(vehIdsCamino.map(k=>vehMap[k]||synthVeh(k)));
     } catch(e){console.warn("ChaletCounter: error de red, manteniendo datos anteriores");}
   };
-  useEffect(()=>{load();const i=setInterval(load,5000);return()=>clearInterval(i);},[]);
+  useEffect(()=>{load();return cadaVisible(load,5000);},[]);
   if(countChalet===null)return null;
   return <>
     {/* CHALET */}
@@ -2047,7 +2105,7 @@ function PersonaDetalleModal({persona,proyectoId,onClose}){
       // Ojo: la vista v_ultima_fichada usa COALESCE(persona_id::text, dni_raw) como clave — si el garitero
       // tipeó el DNI en vez de escanear el QR, la fichada quedó con persona_id=NULL y clave=dni_raw.
       // Chequeamos por id (UUID) O por dni para cubrir los 2 casos.
-      const[pos,pred]=await Promise.all([calcPosicionesMontana(),calcPersonasEnPredio()]);
+      const[pos,pred]=await Promise.all([posMontanaCache(),predioCache()]);
       const p=pos.persona[persona.id]||pos.persona[persona.dni];
       const enPredio=pred.inSet.has(persona.id)||pred.inSet.has(persona.dni);
       if(p==="chalet")setUbicacion("chalet");
@@ -2129,7 +2187,7 @@ function VehiculoDetalleModal({vehiculo,proyectoId,onClose}){
   useEffect(()=>{
     const load=async()=>{
       // Ubicación actual basada en netos P2/P3
-      const pos=await calcPosicionesMontana();
+      const pos=await posMontanaCache();
       const p=pos.vehiculo[vehiculo.id];
       setUbicacion(p==="chalet"?"chalet":p==="camino"?"camino":"fuera");
 
@@ -3175,7 +3233,7 @@ function AvisosCampana({user}){
     const ab=cand.filter(a=>avShFaltan(a,info).length>0);
     setPend(ab.length);setSinVer(ab.some(a=>(a.estado_sh||"pendiente")==="pendiente"));
   },[modo]);
-  useEffect(()=>{check();const i=setInterval(check,60000);return()=>clearInterval(i);},[check]);
+  useEffect(()=>{check();return cadaVisible(check,60000);},[check]);
   const que=modo==="gestion"?"de ingreso pendiente":modo==="int"?"con estadía para resolver":"con gente sin habilitar";
   const tit=falta?"Aviso de ingreso: falta actualizar la base":pend?`${pend} aviso${pend===1?"":"s"} ${que}${pend===1?"":(modo==="gestion"?"s":"")}`:"Avisos de ingreso";
   return <>
@@ -3598,7 +3656,7 @@ const vehEditar=async(id,datos)=>{
 };
 
 const bjCargar=async()=>{
-  const pos=await calcPosicionesMontana();
+  const pos=await posMontanaCache();
   // "chalet" = última fichada P3 entrada; "sube" = última P2 entrada (todavía no llegó a P3). P3 salida = bajando.
   const donde=(last)=>!last?null:(last.puesto==="Puesto 3"&&last.dir==="entrada")?"chalet":(last.puesto==="Puesto 2"&&last.dir==="entrada")?"sube":null;
   const pk=[],vk=[],bajK=new Set();let bajV=0;
@@ -4371,7 +4429,7 @@ function Registros({defaultPuesto,user}){
     }
     setLoading(false);
   };
-  useEffect(()=>{load();const i=setInterval(load,30000);return()=>clearInterval(i);},[fp,fFecha]);
+  useEffect(()=>{load();return cadaVisible(load,30000);},[fp,fFecha]);
 
   // Rev114: la búsqueda mira patente, nombre, apellido, DNI y empresa (sin importar tildes ni mayúsculas).
   const qT=joNorm(search).split(" ").filter(Boolean);
@@ -4655,8 +4713,8 @@ function ConteoViandasChaletAddModal({user,proyectoId,existentes,onClose,onAdded
   useEffect(()=>{
     Promise.all([
       db.sel("personas",{f:[["deleted_at","is","null"]],ord:"apellido.asc",lim:5000}),
-      calcPersonasEnPredio().catch(()=>null),
-      calcPosicionesMontana().catch(()=>null),
+      predioCache().catch(()=>null),
+      posMontanaCache().catch(()=>null),
     ]).then(([{data},pred,mont])=>{
       if(data)setPersonas(data);
       setEnPredio(pred?pred.inSet:new Set());
@@ -4722,7 +4780,7 @@ function ConteoViandasChalet({user,proyectoId}){
   const load=async()=>{
     const[{data:c},pos,di]=await Promise.all([
       db.sel("comidas_diarias",{f:[["fecha","eq",todayStr],["tipo","eq","almuerzo"],["ubicacion","eq","chalet"],["come","eq",true]],ord:"creada_at.asc",lim:1000}),
-      calcPosicionesMontana(),
+      posMontanaCache(),
       cmdFetchDieta().catch(()=>({})),
     ]);
     const items=c||[];
@@ -4737,7 +4795,7 @@ function ConteoViandasChalet({user,proyectoId}){
     }else setPersonasMap({});
     setLoading(false);
   };
-  useEffect(()=>{load();const i=setInterval(load,15000);return()=>clearInterval(i);},[]);
+  useEffect(()=>{load();return cadaVisible(load,15000);},[]);
 
   const quitar=async(c)=>{
     const p=personasMap[c.persona_id];
@@ -6274,7 +6332,7 @@ function CmdPedidoSemanal({user,canEdit,showToast}){
     setErr(null);setFoto(f.foto);setAjustes(a);setDesp(d);setSigOk(!!(s&&s.foto&&s.foto.estado==='confirmada'));
   };
   // Datos en vivo cada 20 s (despachos y ajustes), así Lagunas ve los cambios sin recargar
-  useEffect(()=>{setLoading(true);setDraft(null);load();const i=setInterval(load,20000);return()=>clearInterval(i);},[semana]);
+  useEffect(()=>{setLoading(true);setDraft(null);load();return cadaVisible(load,20000);},[semana]);
   // El Radar se lee aparte: es la consulta más pesada y no hace falta repetirla cada 20 s
   useEffect(()=>{let vivo=true;setRadar(undefined);certFetchRadar(semana,hasta).then(r=>{if(vivo)setRadar(r?r.prog:null);});return()=>{vivo=false;};},[semana,radarTick]);
   const fotoVis=foto&&(canEdit||foto.estado==='confirmada')?foto:null; // Lagunas no ve los borradores
@@ -6792,7 +6850,7 @@ function Comedor({user,proyectoId}){
     setDespachosDia(d);setDieta(di);setChaletSet(ch);setPlatos(pl);setAgregados(ag);setBandejas(bj);
   };
   useEffect(()=>{setLoading(true);loadAll();},[fecha]);
-  useEffect(()=>{const i=setInterval(loadSync,3000);return()=>clearInterval(i);},[fecha]);
+  useEffect(()=>{return cadaVisible(loadSync,3000);},[fecha]);
 
   // repetir=true solo aplica a almuerzo y cena (se puede entregar más de un plato por persona por día, con aviso)
   const addDespacho=async(persona,comida,repetir=false)=>{
@@ -7203,7 +7261,7 @@ function Puesto({user,pid}){
       setComidasHoy(map);
     }catch(e){console.warn("loadComidasHoy:",e);}
   };
-  useEffect(()=>{loadComidasHoy();const i=setInterval(loadComidasHoy,30000);return()=>clearInterval(i);},[]);
+  useEffect(()=>{loadComidasHoy();return cadaVisible(loadComidasHoy,30000);},[]);
   // "Almorzará en chalet" de una persona al fichar en P2/P3: si hoy ya se decidió (en el otro puesto, al bajar
   // o desde la solapa Chalet) se respeta esa decisión; si no hay nada, por defecto SÍ cuando sube antes de las 11.
   // info: fila de comidas_diarias recién leída (null = no tiene); undefined = usar la que está en memoria.
@@ -7802,7 +7860,7 @@ function PublicDashboard({onBack,embedTab}){
   const[pubShowList,setPubShowList]=useState(null);
 
   const loadChalet=async()=>{
-    const[pos,pred]=await Promise.all([calcPosicionesMontana(),calcPersonasEnPredio()]);
+    const[pos,pred]=await Promise.all([posMontanaCache(),predioCache()]);
     const persIdsChalet=Object.entries(pos.persona).filter(([_,p])=>p==="chalet").map(([k])=>k);
     const persIdsCamino=Object.entries(pos.persona).filter(([_,p])=>p==="camino").map(([k])=>k);
     const vehIdsChalet=Object.entries(pos.vehiculo).filter(([_,p])=>p==="chalet").map(([k])=>k);
@@ -7818,12 +7876,14 @@ function PublicDashboard({onBack,embedTab}){
     const isUUID=(k)=>typeof k==="string"&&k.length===36&&k.indexOf("-")>=0;
     const allPersIds=Array.from(new Set([...persIdsChalet,...persIdsCamino,...persIdsPredio])).filter(isUUID);
     const allVehIds=[...vehIdsChalet,...vehIdsCamino].filter(isUUID);
-    const[{data:pers},{data:vehs}]=await Promise.all([
-      allPersIds.length?db.sel("personas",{cols:"id,nombre,apellido,empresa,dni"}):{data:[]},
-      allVehIds.length?db.sel("vehiculos",{cols:"id,patente,descripcion,tipo,empresa"}):{data:[]},
+    const[pers,vehs]=await Promise.all([ // Rev154: nombres guardados 5 min
+      allPersIds.length?catPersonas().catch(()=>[]):[],
+      allVehIds.length?catVehiculos().catch(()=>[]):[],
     ]);
     const persMap={};(pers||[]).forEach(p=>{persMap[p.id]=p;});
     const vehMap={};(vehs||[]).forEach(v=>{vehMap[v.id]=v;});
+    if(allPersIds.some(k=>!persMap[k]))olvidarSiViejo("catP",60000);
+    if(allVehIds.some(k=>!vehMap[k]))olvidarSiViejo("catV",60000);
     const synthPer=(k)=>({id:k,nombre:"Sin registrar",apellido:"",dni:k,empresa:"DNI no encontrado en la base",_synth:true});
     const synthVeh=(k)=>{const pat=String(k).indexOf("No registrado:")===0?String(k).replace("No registrado:","").trim():k;return{id:k,patente:pat,descripcion:"Vehículo no registrado en la base",tipo:"Otro",empresa:"",_synth:true};};
     setPubChalet({
@@ -7847,11 +7907,13 @@ function PublicDashboard({onBack,embedTab}){
   useEffect(()=>{
     db.sel("habilitaciones",{f:[["suspendida","eq",false]],lim:20000}).then(({data})=>{if(data)setHabs(data);});
     fetchRadarDia().then(m=>setRadarMap(m||{}));
-    loadMovimientos();
-    loadChalet();
-    const i=setInterval(()=>{loadMovimientos();loadChalet();},15000);
-    return()=>clearInterval(i);
   },[]);
+  // Rev154: se refresca solo la solapa que se está viendo (antes las dos siempre), y nada si la pantalla no está a la vista
+  useEffect(()=>{
+    const cargar=()=>tab==="movimientos"?loadMovimientos():tab==="chalet"?loadChalet():null;
+    cargar();
+    return cadaVisible(cargar,15000);
+  },[tab]);
 
   const loadMovimientos=async()=>{
     setMovLoading(true);
@@ -7864,13 +7926,13 @@ function PublicDashboard({onBack,embedTab}){
       const vids=[...new Set((ses||[]).filter(s=>s.vehiculo_id).map(s=>s.vehiculo_id))];
       const sesIds=(ses||[]).map(s=>s.id);
       const[{data:vehs},{data:regs}]=await Promise.all([
-        vids.length?db.sel("vehiculos",{cols:"id,patente,tipo"}):{data:[]},
+        vids.length?catVehiculos().then(d=>({data:d}),()=>({data:[]})):{data:[]},
         db.sel("registros_acceso",{cols:"sesion_id,persona_id,dni_raw,resultado",inFilter:["sesion_id",sesIds]}),
       ]);
       const vm={};(vehs||[]).forEach(v=>{vm[v.id]=v;});setMovVehs(vm);
       const rm={};(regs||[]).filter(r=>sesIds.includes(r.sesion_id)).forEach(r=>{if(!rm[r.sesion_id])rm[r.sesion_id]=[];rm[r.sesion_id].push(r);});setMovRegs(rm);
       const pids=[...new Set((regs||[]).filter(r=>r.persona_id).map(r=>r.persona_id))];
-      if(pids.length){const{data:p}=await db.sel("personas",{cols:"id,nombre,apellido"});const pm={};(p||[]).forEach(x=>{pm[x.id]=x;});setMovPersonas(pm);}
+      if(pids.length){const p=await catPersonas().catch(()=>[]);const pm={};(p||[]).forEach(x=>{pm[x.id]=x;});setMovPersonas(pm);}
     }
     setMovLoading(false);
   };
@@ -9266,7 +9328,7 @@ function JoAvisoSinArea({user}){
       if(nuevos.length)setVer(v=>v||lista);
     }catch(e){}
   },[]);
-  useEffect(()=>{check();const i=setInterval(check,120000);return()=>clearInterval(i);},[check]);
+  useEffect(()=>{check();return cadaVisible(check,120000);},[check]);
   return <>
     {pend.length>0&&<div className="jo-aviso" onClick={()=>setVer(pend)}>
       <span>⚠ {pend.length===1?`Ingresó ${pend[0].p.nombre} ${pend[0].p.apellido} y no está`:`${pend.length} personas ingresaron por Puesto 1 y no están`} en ningún área del parte diario.</span>
@@ -9368,7 +9430,7 @@ function App(){
   // Rev127: habilitación permanente de CP (app_config). Se lee al entrar y cada 2 minutos; al cambiar, se redibuja todo.
   const[cpTick,setCpTick]=useState(0);
   useEffect(()=>{CP_SUBS.add(setCpTick);return()=>{CP_SUBS.delete(setCpTick);};},[]);
-  useEffect(()=>{if(!user)return;cargarCpForzado();const i=setInterval(cargarCpForzado,120000);return()=>clearInterval(i);},[user]);
+  useEffect(()=>{if(!user)return;cargarCpForzado();return cadaVisible(cargarCpForzado,120000);},[user]);
   const desactivarCp=async()=>{
     if(!confirm("¿Desactivar la habilitación permanente de CP?\n\nCP Ingreso vuelve a tomarse del Radar."))return;
     const ok=await guardarCpForzado({activo:false,por:user.nombre||user.email||"",at:new Date().toISOString()},user.id);
