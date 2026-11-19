@@ -458,6 +458,9 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .avf-gh a{font-size:12px;font-weight:400;color:var(--acc2);margin-left:6px}
 .avf-cg{display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 8px}
 .avf-chip{font-family:var(--fm);font-size:11px;border:1px solid;border-radius:10px;padding:1px 8px;white-space:nowrap}
+/* Rev155: botón verde "Tomé el caso" (S&H e Intendencia) */
+.av-tomar{background:var(--gr);color:#04130d;border:none;border-radius:6px;padding:9px 18px;font-family:var(--fh);font-size:15px;font-weight:800;letter-spacing:.03em;cursor:pointer}
+.av-tomar:hover{filter:brightness(1.1)}.av-tomar:disabled{opacity:.5;cursor:default}
 /* Rev153: dónde se aloja (Intendencia) */
 .alo-top{background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;margin-bottom:10px}
 .alo-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
@@ -604,10 +607,10 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev154";
+const APP_REV="Rev155";
 // Rev143: número de versión que se muestra al lado de CONTROLOBRA: AAMM.revisión.DD con la fecha de la revisión
 // (ej. 2611.143.14 = revisión 143 del 14/11/2026). En cada revisión nueva se actualizan APP_REV y APP_FECHA.
-const APP_FECHA="2026-11-18";
+const APP_FECHA="2026-11-19";
 const APP_VER=APP_FECHA.slice(2,4)+APP_FECHA.slice(5,7)+"."+APP_REV.replace(/\D/g,"")+"."+APP_FECHA.slice(8,10);
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
@@ -2786,6 +2789,9 @@ REVOKE ALL ON FUNCTION obra.aviso_alojamiento(uuid, jsonb, text) FROM PUBLIC, an
 GRANT EXECUTE ON FUNCTION obra.aviso_alojamiento(uuid, jsonb, text) TO authenticated;
 NOTIFY pgrst, 'reload schema';`;
 const AV_EST={pendiente:{t:"Pendiente",c:"var(--acc)"},visto:{t:"Visto",c:"#60A5FA"},resuelto:{t:"Resuelto",c:"var(--gr)"},rechazado:{t:"Rechazado",c:"var(--rd)"},anulado:{t:"Anulado",c:"var(--tx3)"}};
+// Rev155: S&H e Intendencia no rechazan: solo "toman el caso" (se guarda como 'resuelto', con comentario opcional).
+// "Visto" y "Rechazado" quedan solo para mostrar avisos viejos.
+const AV_TAREA={pendiente:{t:"Pendiente",c:"var(--acc)"},visto:{t:"Visto",c:"#60A5FA"},resuelto:{t:"✓ Tomó el caso",c:"var(--gr)"},rechazado:{t:"Rechazado",c:"var(--rd)"}};
 const AV_GESTION=["admin","cp"]; // gestionan los avisos y pueden marcar las tareas de S&H e Intendencia (Rev150)
 const avDni=(x)=>normDni(x).replace(/[^A-Z0-9]/g,"");
 // Fechas de una persona del aviso (los avisos viejos tenían una sola fecha / días para todos)
@@ -2808,7 +2814,7 @@ const avFechaTxt=(g)=>g.ind?`desde ${cmdFmtDate(g.ing)} · sin fecha de egreso`:
 const avDiasTxt=(ing,eg)=>{if(!ing||!eg)return"";const n=Math.round((new Date(eg+"T12:00:00")-new Date(ing+"T12:00:00"))/864e5)+1;return n===1?"1 día":`${n} días`;};
 const avCargo=(a)=>[a.estadia&&"🛏️ Estadía",a.viandas&&"🍽️ Viandas",a.traslado&&("🚌 Traslado"+(a.traslado_origen||a.traslado_destino?`: ${a.traslado_origen||"?"} → ${a.traslado_destino||"?"}`:"")+(a.compra_pasaje?" · con compra de pasaje":""))].filter(Boolean);
 const avVistoPorMi=(a,uid)=>(a.vistos_sh||[]).some(v=>v.por===uid);
-function AvisoChip({e}){const x=AV_EST[e]||AV_EST.pendiente;return <span style={{fontFamily:"var(--fm)",fontSize:11,fontWeight:700,color:x.c,border:"1px solid "+x.c,borderRadius:4,padding:"1px 7px",textTransform:"uppercase",whiteSpace:"nowrap"}}>{x.t}</span>;}
+function AvisoChip({e,m}){const M=m||AV_EST;const x=M[e]||M.pendiente;return <span style={{fontFamily:"var(--fm)",fontSize:11,fontWeight:700,color:x.c,border:"1px solid "+x.c,borderRadius:4,padding:"1px 7px",textTransform:"uppercase",whiteSpace:"nowrap"}}>{x.t}</span>;}
 // Tarjeta de un aviso: "Mis avisos", panel de admin/CP y panel de S&H
 function AvisoCard({a,extra,personaExtra,verSH,tareas}){
   const ps=(a.personas||[]).map(p=>({p,...avFechasP(a,p)}));
@@ -3209,7 +3215,7 @@ function AvTareasLinea({a}){
   if(a.estadia&&a.estado_int!==undefined)t.push(["🛏️ Estadía (Intendencia)",a.estado_int||"pendiente",a.int_por_nombre,a.int_at,a.int_nota]);
   if(a.estado_sh&&a.estado_sh!=="pendiente")t.push(["🦺 S&H",a.estado_sh,a.sh_por_nombre,a.sh_at,a.sh_nota]);
   if(!t.length)return null;
-  return <div style={{fontSize:12,marginTop:6,display:"flex",flexDirection:"column",gap:3}}>{t.map(([n,e,por,at,nota])=>{const x=AV_EST[e]||AV_EST.pendiente;return <div key={n}>
+  return <div style={{fontSize:12,marginTop:6,display:"flex",flexDirection:"column",gap:3}}>{t.map(([n,e,por,at,nota])=>{const x=AV_TAREA[e]||AV_TAREA.pendiente;return <div key={n}>
     {n}: <b style={{color:x.c}}>{x.t}</b>{por&&e!=="pendiente"?<span style={{color:"var(--tx3)"}}> · {por}{at?` · ${fmtTs(at)}`:""}</span>:null}{nota?<span style={{color:"var(--tx2)"}}> — "{nota}"</span>:null}
   </div>;})}</div>;
 }
@@ -3260,10 +3266,7 @@ function AvisosPanel({user,modo,falta,onClose}){
     setInfo(inf||{});
   },[esInt]);
   useEffect(()=>{if(!falta)cargar();},[cargar,falta]);
-  // Rev153: ventana "Dónde se aloja" ({a, resolver}) y lugares ya usados (botones rápidos)
-  const[aloja,setAloja]=useState(null);
-  const lugaresUsados=useMemo(()=>{const c={};(Array.isArray(lista)?lista:[]).forEach(a=>Object.values(a.int_aloja||{}).forEach(v=>{const k=String(v||"").trim();if(k)c[k]=(c[k]||0)+1;}));
-    return Object.keys(c).sort((x,y)=>c[y]-c[x]||x.localeCompare(y,"es")).slice(0,12);},[lista]);
+  const[tomar,setTomar]=useState(null); // Rev155: {a, area} ventana para tomar el caso / editar el comentario
   const estado=async(a,e)=>{
     let resp=a.respuesta||null;
     if(e==="rechazado"){const r=prompt("Motivo (opcional, lo ve quien avisó):",a.respuesta||"");if(r===null)return;resp=r.trim()||null;}
@@ -3273,19 +3276,14 @@ function AvisosPanel({user,modo,falta,onClose}){
     if(!r.ok||(Array.isArray(r.data)&&!r.data.length)){if(!SIM_ACTIVO)alert("No se pudo guardar. Revisá la conexión.");return;}
     cargar();
   };
-  // Tarea de S&H ("sh") o de Intendencia ("int"): visto / resuelto / rechazado / volver a pendiente
-  const tarea=async(a,area,e)=>{
-    if(area==="int"&&e==="resuelto"){setAloja({a,resolver:true});return;} // Rev153: se carga dónde se aloja cada uno
-    let nota=null;
-    if(e==="resuelto"||e==="rechazado"){
-      const preg=e==="rechazado"?"Motivo (opcional, lo ve quien avisó):":area==="int"?"¿Dónde se aloja? (opcional, lo ve quien avisó)":"Comentario (opcional, lo ve quien avisó):";
-      const r=prompt(preg,(area==="int"?a.int_nota:a.sh_nota)||"");if(r===null)return;nota=r.trim()||null;
-    }
+  // Tarea de S&H ("sh") o de Intendencia ("int"). Rev155: tomar el caso = 'resuelto' con comentario; deshacer = 'pendiente'
+  const tarea=async(a,area,e,nota=null)=>{
+    if(e==="pendiente"&&!confirm(`¿Deshacer? Vuelve a quedar pendiente y le aparece de nuevo a ${area==="int"?"Intendencia":"S&H"}.`))return false;
     setBusy(a.id+area);
     const r=await db.rpc("aviso_tarea",{p_aviso:a.id,p_area:area,p_estado:e,p_nota:nota});
     setBusy(null);
-    if(!r.ok){if(SIM_ACTIVO)return;alert(/aviso_tarea|PGRST202/.test(JSON.stringify(r.data||""))?"Falta actualizar la base: un admin tiene que correr el SQL nuevo del aviso de ingreso (Rev150).":"No se pudo guardar. Revisá la conexión.");return;}
-    cargar();
+    if(!r.ok){if(SIM_ACTIVO)return false;alert(/aviso_tarea|PGRST202/.test(JSON.stringify(r.data||""))?"Falta actualizar la base: un admin tiene que correr el SQL nuevo del aviso de ingreso (Rev150).":"No se pudo guardar. Revisá la conexión.");return false;}
+    cargar();return true;
   };
   const alta=async(p)=>{
     if(!confirm(`¿Dar de alta en Personal a ${p.nombre} ${p.apellido} (DNI ${p.dni} · ${p.empresa})?`))return;
@@ -3297,19 +3295,21 @@ function AvisosPanel({user,modo,falta,onClose}){
     cargar();
   };
   const copiar=async()=>{try{await navigator.clipboard.writeText(AVISO_SQL);alert("SQL copiado");}catch(e){prompt("Copiá el SQL:",AVISO_SQL);}};
-  const botones=(a,area)=>{const e=(area==="sh"?a.estado_sh:a.estado_int)||"pendiente";const b=busy===a.id+area;return <>
-    {e==="pendiente"&&<button className="bsm" disabled={b} onClick={()=>tarea(a,area,"visto")}>👁 Visto</button>}
-    {avTareaAbierta(e)&&<button className="bsm" style={{color:"var(--gr)",borderColor:"rgba(16,185,129,.45)"}} disabled={b} onClick={()=>tarea(a,area,"resuelto")}>✓ Resuelto</button>}
-    {avTareaAbierta(e)&&<button className="bsm" style={{color:"var(--rd)",borderColor:"rgba(239,68,68,.4)"}} disabled={b} onClick={()=>tarea(a,area,"rechazado")}>✗ Rechazado</button>}
-    {area==="int"&&e==="resuelto"&&<button className="bsm" disabled={b} onClick={()=>setAloja({a,resolver:false})}>✏️ Dónde se aloja</button>}
-    {!avTareaAbierta(e)&&<button className="bsm" disabled={b} onClick={()=>tarea(a,area,"pendiente")}>↺ Volver a pendiente</button>}
-  </>;};
+  // Rev155: S&H e Intendencia tienen un solo botón verde "Tomé el caso". Admin y CP lo pueden marcar por ellos (botón chico).
+  const botones=(a,area)=>{const e=(area==="sh"?a.estado_sh:a.estado_int)||"pendiente";const b=busy===a.id+area;
+    if(avTareaAbierta(e))return gestion
+      ?<button className="bsm" disabled={b} onClick={()=>setTomar({a,area})}>✓ Marcar tomado</button>
+      :<button className="av-tomar" disabled={b} onClick={()=>setTomar({a,area})}>✓ Tomé el caso</button>;
+    return <>
+      <button className="bsm" disabled={b} onClick={()=>setTomar({a,area})}>✏️ Comentario</button>
+      <button className="bsm" disabled={b} onClick={()=>tarea(a,area,"pendiente")}>↺ Deshacer</button>
+    </>;};
   const porTxt=(e,por,at,nota)=><>{por&&e!=="pendiente"?<span className="av-tarea-por">{por}{at?` · ${fmtTs(at)}`:""}</span>:null}{nota?<span className="av-tarea-por">— "{nota}"</span>:null}</>;
   const bloqueSH=(a)=>{
     const fal=avShFaltan(a,info);const e=a.estado_sh||"pendiente";
     const nIng=fal.filter(r=>r.ing).length,nCha=fal.filter(r=>r.cha).length;
     return <div className="av-tarea">
-      <div className="av-tarea-h">🦺 S&H {(fal.length>0||!avTareaAbierta(e))&&<AvisoChip e={e}/>}
+      <div className="av-tarea-h">🦺 S&H {(fal.length>0||!avTareaAbierta(e))&&<AvisoChip e={e} m={AV_TAREA}/>}
         {fal.length?<span className="av-falta">Falta habilitar: {[nIng&&`${nIng} sin Ingreso`,nCha&&`${nCha} sin Subir a Chalet`].filter(Boolean).join(" · ")}</span>
           :<span style={{color:"var(--gr)",fontWeight:500}}>✓ Todos con {a.sube_chalet?"Ingreso y Subir a Chalet":"Ingreso"} habilitado</span>}
         {porTxt(e,a.sh_por_nombre,a.sh_at,a.sh_nota)}
@@ -3318,7 +3318,7 @@ function AvisosPanel({user,modo,falta,onClose}){
     </div>;
   };
   const bloqueInt=(a)=>{const e=a.estado_int||"pendiente";return <div className="av-tarea">
-    <div className="av-tarea-h">🛏️ Estadía (Intendencia) <AvisoChip e={e}/>{porTxt(e,a.int_por_nombre,a.int_at,a.int_nota)}</div>
+    <div className="av-tarea-h">🛏️ Estadía (Intendencia) <AvisoChip e={e} m={AV_TAREA}/>{porTxt(e,a.int_por_nombre,a.int_at,a.int_nota)}</div>
     {a.estado!=="anulado"&&<div className="av-tarea-b">{botones(a,"int")}</div>}
   </div>;};
   const habCel=(a,p)=>{const h=avHabsP(a,p,info);return <span style={{whiteSpace:"nowrap"}}>
@@ -3349,9 +3349,9 @@ function AvisosPanel({user,modo,falta,onClose}){
           <button className="bsm" style={{marginLeft:"auto"}} onClick={cargar}>↻ Actualizar</button>
         </div>
         <div style={{fontSize:12,color:"var(--tx2)",marginBottom:10,lineHeight:1.45}}>{esSH
-          ?"Avisos con gente a la que le falta habilitación de S&H (Ingreso, y Subir a Chalet si suben). Cuando la habilitás en Personal sale sola de la lista; si no corresponde habilitarla, marcala Resuelto o Rechazado."
-          :esInt?"Avisos que piden estadía. Marcá Visto cuando lo leas y después Resuelto: ahí cargás dónde se aloja cada persona (después lo podés corregir con ✏️). O Rechazado. Lo ve quien avisó."
-          :"Abiertos: avisos pendientes o vistos, y los que tienen algo sin resolver de S&H o de Intendencia. Admin y CP pueden marcar todo."}</div>
+          ?"Avisos con gente a la que le falta habilitación de S&H (Ingreso, y Subir a Chalet si suben). Tocá ✓ Tomé el caso para que quien avisó sepa que lo estás viendo (podés dejar un comentario). Cuando habilitás en Personal, sale sola de la lista."
+          :esInt?"Avisos que piden estadía. Tocá ✓ Tomé el caso para que quien avisó sepa que te estás ocupando (podés dejar un comentario, por ejemplo dónde se alojan)."
+          :"Abiertos: avisos pendientes o vistos, y los que S&H o Intendencia todavía no tomaron. Debajo de cada aviso se ve si S&H e Intendencia tomaron el caso y su comentario."}</div>
         {vis.length===0?<div style={{color:"var(--tx3)",fontSize:13,padding:10}}>{filtro==="abiertos"?"No hay nada pendiente. 🎉":"Todavía no hay avisos."}</div>
           :vis.map(a=>esInt
             ?<AvisoCard key={a.id} a={a} tareas={bloqueInt(a)}/>
@@ -3370,68 +3370,25 @@ function AvisosPanel({user,modo,falta,onClose}){
       </>}
     </div>
   </div></div>
-  {aloja&&<AlojaModal a={aloja.a} resolver={aloja.resolver} lugares={lugaresUsados} onClose={()=>setAloja(null)} onSaved={()=>{setAloja(null);cargar();}}/>}
+  {tomar&&<TomarCasoModal a={tomar.a} area={tomar.area} onClose={()=>setTomar(null)} onOk={(nota)=>tarea(tomar.a,tomar.area,"resuelto",nota)}/>}
   </>;
 }
-// Rev153: dónde se aloja cada persona del aviso (Intendencia, admin y CP). Se abre al marcar Resuelta la estadía y
-// después con "✏️ Dónde se aloja". Se guarda en int_aloja ({dni: lugar}) con obra.aviso_alojamiento; el comentario en int_nota.
-function AlojaModal({a,resolver,lugares,onClose,onSaved}){
-  const ps=a.personas||[];
-  const uno=ps.length===1;
-  const[al,setAl]=useState(()=>{const o={};ps.forEach(p=>{o[p.dni]=(a.int_aloja&&a.int_aloja[p.dni])||"";});return o;});
-  const[sel,setSel]=useState([]);
-  const[lugar,setLugar]=useState("");
-  const[nota,setNota]=useState(a.int_nota||"");
+// Rev155: S&H o Intendencia toman el caso del aviso, con un comentario opcional que ven quien avisó, CP y admin.
+// (Reemplaza la ventana de alojamiento por persona de la Rev153: ahora es solo comentario.)
+function TomarCasoModal({a,area,onOk,onClose}){
+  const ya=(area==="int"?a.estado_int:a.estado_sh)==="resuelto";
+  const[nota,setNota]=useState((area==="int"?a.int_nota:a.sh_nota)||"");
   const[busy,setBusy]=useState(false);
-  const nom=(p)=>`${p.nombre||""} ${p.apellido||""}`.trim()||("DNI "+p.dni);
-  const setUno=(dni,v)=>setAl(o=>({...o,[dni]:v}));
-  const poner=()=>{const v=lugar.trim();if(!v)return;const dest=sel.length?sel:ps.map(p=>p.dni);setAl(o=>{const n={...o};dest.forEach(d=>{n[d]=v;});return n;});setSel([]);setLugar("");};
-  const faltan=ps.filter(p=>!String(al[p.dni]||"").trim()).length;
-  const guardar=async()=>{
-    if(busy)return;
-    if(resolver&&faltan&&!confirm(faltan===ps.length?"No cargaste dónde se aloja nadie. ¿Marcar la estadía como resuelta igual?":`Falta dónde se aloja${faltan===1?" 1 persona":` ${faltan} personas`}. ¿Marcar la estadía como resuelta igual?`))return;
-    const map={};ps.forEach(p=>{const v=String(al[p.dni]||"").trim();if(v)map[p.dni]=v;});
-    const n=nota.trim()||null;
-    setBusy(true);
-    const r=await db.rpc("aviso_alojamiento",{p_aviso:a.id,p_aloja:map,p_nota:n});
-    if(!r.ok){setBusy(false);if(SIM_ACTIVO)return;alert(/aviso_alojamiento|PGRST202/.test(JSON.stringify(r.data||""))?"Falta actualizar la base: un admin tiene que correr el SQL de la Rev153 (alojamiento por persona).":"No se pudo guardar. Revisá la conexión.");return;}
-    if(resolver){
-      const r2=await db.rpc("aviso_tarea",{p_aviso:a.id,p_area:"int",p_estado:"resuelto",p_nota:n});
-      if(!r2.ok){setBusy(false);if(SIM_ACTIVO)return;alert("Se guardó dónde se aloja, pero no se pudo marcar resuelto. Probá de nuevo.");return;}
-    }
-    setBusy(false);onSaved();
-  };
-  const chips=(onPick)=>lugares.length>0&&<div className="alo-chips">{lugares.map(l=><button key={l} className="alo-chip" onClick={()=>onPick(l)}>{l}</button>)}</div>;
-  return <div className="mo"><div className="md md-lg" style={{maxWidth:640}}>
-    <div className="mh"><div className="mt">🛏️ Dónde se aloja</div><button className="mc" onClick={onClose}>x</button></div>
+  const n=(a.personas||[]).length;
+  const listo=async()=>{if(busy)return;setBusy(true);const r=await onOk(nota.trim()||null);setBusy(false);if(r)onClose();};
+  return <div className="mo"><div className="md" style={{maxWidth:480}}>
+    <div className="mh"><div className="mt">{area==="int"?"🛏️ Estadía":"🦺 S&H"} — {ya?"comentario":"tomar el caso"}</div><button className="mc" onClick={onClose}>x</button></div>
     <div className="mb">
-      <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10}}>Aviso de {a.creado_por_nombre||"—"} · {ps.length} persona{ps.length===1?"":"s"}. Lo ve quien avisó.</div>
-      <datalist id="alo-lugares">{lugares.map(l=><option key={l} value={l}/>)}</datalist>
-      {uno?<div className="f"><label>{nom(ps[0])}{ps[0].empresa?` · ${ps[0].empresa}`:""}</label>
-        <input list="alo-lugares" value={al[ps[0].dni]||""} placeholder="Escribí el lugar" onChange={e=>setUno(ps[0].dni,e.target.value)}/>
-        {chips(l=>setUno(ps[0].dni,l))}
-      </div>:<>
-        <div className="alo-top">
-          <div style={{fontSize:12,color:"var(--tx2)",marginBottom:6}}>{sel.length?`Lugar para ${sel.length===1?"la persona tildada":`las ${sel.length} personas tildadas`}:`:"Lugar para todos (o tildá a algunos abajo):"}</div>
-          <div style={{display:"flex",gap:8}}>
-            <input className="fi" style={{flex:1,minWidth:0}} list="alo-lugares" value={lugar} placeholder="Escribí el lugar" onChange={e=>setLugar(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")poner();}}/>
-            <button className="bsm" style={{padding:"6px 12px",whiteSpace:"nowrap"}} disabled={!lugar.trim()} onClick={poner}>{sel.length?`Poner a ${sel.length}`:"Poner a todos"}</button>
-          </div>
-          {chips(setLugar)}
-        </div>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:8}}>
-          <span style={{fontSize:12,color:faltan?"var(--acc)":"var(--gr)"}}>{faltan?`${faltan===1?"Falta 1 persona":`Faltan ${faltan} personas`} sin lugar`:"✓ Todos tienen lugar"}</span>
-          <button className="bsm" onClick={()=>setSel(sel.length===ps.length?[]:ps.map(p=>p.dni))}>{sel.length===ps.length?"Destildar todos":"Tildar todos"}</button>
-        </div>
-        {ps.map(p=>{const on=sel.includes(p.dni);return <div key={p.dni} className={"alo-row"+(on?" on":"")}>
-          <label className="alo-who"><input type="checkbox" checked={on} onChange={()=>setSel(l=>on?l.filter(x=>x!==p.dni):[...l,p.dni])}/><span><b>{nom(p)}</b><span className="d">{p.empresa||""}</span></span></label>
-          <input className="fi alo-in" list="alo-lugares" value={al[p.dni]||""} placeholder="dónde se aloja" onChange={e=>setUno(p.dni,e.target.value)}/>
-        </div>;})}
-      </>}
-      <div className="f" style={{marginTop:10}}><label>Comentario (opcional)</label><input value={nota} onChange={e=>setNota(e.target.value)} placeholder="Algo más que convenga saber"/></div>
-      <div style={{display:"flex",gap:10,marginTop:14}}>
+      <div style={{fontSize:13,color:"var(--tx2)",marginBottom:10,lineHeight:1.45}}>Aviso de {a.creado_por_nombre||"—"} · {n} persona{n===1?"":"s"}. Quien avisó, CP y admin van a ver que tomaste el caso y el comentario.</div>
+      <div className="f"><label>Comentario (opcional)</label><textarea value={nota} onChange={e=>setNota(e.target.value)} placeholder={area==="int"?"Ej: dónde se alojan":"Algo que quien avisó tenga que saber"}/></div>
+      <div style={{display:"flex",gap:10,marginTop:12}}>
         <button className="bcanc" onClick={onClose}>Cancelar</button>
-        <button className="bp" style={{flex:1}} disabled={busy} onClick={guardar}>{busy?"Guardando…":resolver?"Guardar y marcar resuelto":"Guardar"}</button>
+        <button className="av-tomar" style={{flex:1}} disabled={busy} onClick={listo}>{busy?"Guardando…":ya?"Guardar comentario":"✓ Tomé el caso"}</button>
       </div>
     </div>
   </div></div>;
