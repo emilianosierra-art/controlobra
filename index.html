@@ -458,6 +458,12 @@ tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.012
 .avf-gh a{font-size:12px;font-weight:400;color:var(--acc2);margin-left:6px}
 .avf-cg{display:flex;flex-wrap:wrap;gap:6px;margin:-2px 0 8px}
 .avf-chip{font-family:var(--fm);font-size:11px;border:1px solid;border-radius:10px;padding:1px 8px;white-space:nowrap}
+/* Rev158: aviso de versión nueva */
+.ver-nueva{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:3000;display:flex;align-items:center;gap:10px;width:max-content;max-width:calc(100% - 24px);background:#1e3a5f;border:1px solid #60A5FA;color:#fff;border-radius:10px;padding:10px 10px 10px 14px;box-shadow:0 10px 30px rgba(0,0,0,.55);font-size:13px;line-height:1.35}
+.ver-btn{background:#60A5FA;color:#04111f;border:none;border-radius:6px;padding:8px 14px;font-family:var(--fh);font-weight:800;font-size:14px;cursor:pointer;white-space:nowrap}
+.ver-btn:disabled{opacity:.6;cursor:default}
+.ver-x{background:none;border:none;color:#cbd5e1;font-size:16px;cursor:pointer;padding:2px 4px}
+@media(max-width:600px){.ver-nueva{flex-wrap:wrap;bottom:10px}}
 /* Rev156: conteo de otro día y horario */
 .cm-box{margin:-4px 0 14px}
 .cm-tog{background:var(--s2);border:1px solid var(--bd);color:var(--tx2);border-radius:6px;padding:7px 12px;font-size:13px;cursor:pointer}
@@ -624,10 +630,10 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev156";
+const APP_REV="Rev158";
 // Rev143: número de versión que se muestra al lado de CONTROLOBRA: AAMM.revisión.DD con la fecha de la revisión
 // (ej. 2611.143.14 = revisión 143 del 14/11/2026). En cada revisión nueva se actualizan APP_REV y APP_FECHA.
-const APP_FECHA="2026-11-19";
+const APP_FECHA="2026-11-23";
 const APP_VER=APP_FECHA.slice(2,4)+APP_FECHA.slice(5,7)+"."+APP_REV.replace(/\D/g,"")+"."+APP_FECHA.slice(8,10);
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
@@ -698,12 +704,14 @@ const db={
     if(upsert&&onConflict)path+=`?on_conflict=${onConflict}`;
     const{data,ok}=await dbq(path,{method:"POST",h:{"Prefer":prefer},body:JSON.stringify(body)});
     if(ok&&CONTEO_TABLAS.has(table))olvidarConteos(); // Rev154
+    if(ok&&table==="vehiculos")olvidar("catV");if(ok&&table==="personas")olvidar("catP"); // Rev157
     return{data:ok?(Array.isArray(data)?data:[data]):null,ok};
   },
   upd:async(table,payload,filters)=>{
     let u=`${table}?`;filters.forEach(([k,op,v])=>{u+=`&${k}=${op}.${encodeURIComponent(v)}`;});
     const{data,ok}=await dbq(u,{method:"PATCH",h:{"Prefer":"return=representation"},body:JSON.stringify(payload)});
     if(ok&&CONTEO_TABLAS.has(table))olvidarConteos(); // Rev154
+    if(ok&&table==="vehiculos")olvidar("catV");if(ok&&table==="personas")olvidar("catP"); // Rev157
     if(!ok)console.error("db.upd failed",table,payload,data);
     return{data,ok};
   },
@@ -3492,7 +3500,7 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
   const saveV=async f=>{
     if(editV){
       const r=await vehEditar(editV.id,f); // Rev149: por RPC (antes un UPDATE sin permiso no daba error y no guardaba)
-      if(!r.ok){alert("No se pudo actualizar el vehiculo.\n\n"+r.msg);return;}
+      if(!r.ok){alert("No se pudo actualizar el vehiculo.\n\n"+r.msg);return false;}
     } else {
       // Blindaje contra duplicados por patente
       const{data:exist}=await db.sel("vehiculos",{f:[["patente","eq",f.patente]],lim:1});
@@ -3500,17 +3508,18 @@ function VehiculosPanel({userRole,currentUserId,proyectoId}){
         if(!exist[0].activo){
           // Restaurar el que estaba inactivo con los datos nuevos
           const r=await vehEditar(exist[0].id,{...f,activo:true});
-          if(!r.ok){alert("No se pudo restaurar el vehiculo inactivo.\n\n"+r.msg);return;}
+          if(!r.ok){alert("No se pudo restaurar el vehiculo inactivo.\n\n"+r.msg);return false;}
         } else {
           alert("Ya existe un vehiculo ACTIVO con la patente "+f.patente+". No se guarda para evitar duplicado.\n\nUsá el que ya existe o desactivalo antes de crear otro.");
-          return;
+          return false;
         }
       } else {
         const{ok,data}=await db.ins("vehiculos",f);
-        if(!ok){alert("No se pudo guardar el vehiculo.\n\nRevisá que estén completos:\n· Patente\n· Tipo\n· Capacidad (pasajeros)\n\nDetalle del servidor: "+JSON.stringify(data));return;}
+        if(!ok){alert("No se pudo guardar el vehiculo.\n\nRevisá que estén completos:\n· Patente\n· Tipo\n· Capacidad (pasajeros)\n\nDetalle del servidor: "+JSON.stringify(data));return false;}
       }
     }
-    load();
+    await load();
+    return true;
   };
   const delV=async id=>{if(!confirm("Eliminar?"))return;const r=await vehEditar(id,{activo:false});if(!r.ok)alert("No se pudo eliminar el vehiculo.\n\n"+r.msg);load();};
   let filtered=vehiculos.filter(v=>!filter||`${v.patente} ${v.descripcion||""} ${v.empresa||""}`.toLowerCase().includes(filter.toLowerCase()));
@@ -3618,12 +3627,12 @@ const BJ_EST_ORD={chalet:0,sube:1,campamento:2,bajando:3,fuera:4};
 // (con permisos de la tabla, un UPDATE bloqueado no da error: devuelve 0 filas).
 const vehEditar=async(id,datos)=>{
   const r=await db.rpc("vehiculo_editar",{p_id:id,p_datos:datos});
-  if(r.ok)return{ok:true};
+  if(r.ok){olvidar("catV");return{ok:true};} // Rev157: que el contador de arriba y las listas muestren el cambio enseguida
   const e=(r.data&&typeof r.data==="object")?r.data:{};
   if(SIM_ACTIVO)return{ok:false,msg:'Modo "Ver como": no se guardan cambios.'};
   if(e.code==="PGRST202"){
     const u=await db.upd("vehiculos",datos,[["id","eq",id]]);
-    if(u.ok&&Array.isArray(u.data)&&u.data.length)return{ok:true};
+    if(u.ok&&Array.isArray(u.data)&&u.data.length){olvidar("catV");return{ok:true};}
     return{ok:false,msg:u.ok?"La base no dejó guardar el cambio (permisos). Falta correr el SQL de la Rev149 en Supabase.":"Detalle del servidor: "+JSON.stringify(u.data)};
   }
   return{ok:false,msg:r.data===null?"Sin conexión.":(e.message||JSON.stringify(e))};
@@ -4184,6 +4193,7 @@ function BajadaChalet({user}){
 function VehModal({v,onClose,onSave}){
   const[f,setF]=useState({patente:v?v.patente:"",tipo:v?v.tipo:"Camioneta",descripcion:v?v.descripcion:"",capacidad:v?v.capacidad:"",empresa:v?v.empresa:""});
   const[patenteWarn,setPatenteWarn]=useState(null); // {id, patente, descripcion, empresa}
+  const[busy,setBusy]=useState(false); // Rev157: la ventana espera a que se guarde (antes se cerraba antes de saber si se guardó)
   const isNew=!v;
   const checkPatente=async(patente)=>{
     if(!isNew||!patente||patente.length<3)return;
@@ -4214,7 +4224,7 @@ function VehModal({v,onClose,onSave}){
       </div>
       {missing.length>0&&<div style={{fontSize:12,color:"var(--tx2)",marginTop:6}}>Falta completar: <strong style={{color:"var(--acc)"}}>{missing.join(", ")}</strong></div>}
     </div>
-    <div className="mf"><button className="bcanc" onClick={onClose}>Cancelar</button><button className="bp" disabled={!canSave} onClick={()=>{onSave(f);onClose();}}>Guardar</button></div>
+    <div className="mf"><button className="bcanc" onClick={onClose}>Cancelar</button><button className="bp" disabled={!canSave||busy} onClick={async()=>{setBusy(true);const ok=await onSave(f);setBusy(false);if(ok!==false)onClose();}}>{busy?"Guardando...":"Guardar"}</button></div>
   </div></div>;
 }
 
@@ -9571,7 +9581,43 @@ function App(){
   </div>;
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+// Rev158: aviso de versión nueva (pedido del 23/11: varios casos de gente con una versión vieja en caché que no guardaba).
+// A los 15 s de abrir la app y después cada 20 min (si está a la vista, y al volver a ella) se baja la página publicada sin
+// caché y se lee su APP_REV: si es una revisión más nueva que la que está corriendo, aparece el aviso para actualizar.
+const VER_CADA=20*60*1000;
+const verPublicada=async()=>{
+  if(!/^https?:$/.test(location.protocol))return null;
+  try{
+    const url=location.origin+location.pathname;
+    const r=await fetch(url+"?_v="+Date.now(),{cache:"no-store"});
+    if(!r.ok)return null;
+    const t=(await r.text()).slice(0,300000);
+    const m=t.match(/const APP_REV="Rev(\d+)";[\s\S]{0,600}?const APP_FECHA="(\d{4}-\d{2}-\d{2})"/);
+    return m?{n:Number(m[1]),fecha:m[2]}:null;
+  }catch(e){return null;}
+};
+function AvisoVersion(){
+  const[nueva,setNueva]=useState(null);
+  const[oculto,setOculto]=useState(false);
+  const[busy,setBusy]=useState(false);
+  useEffect(()=>{
+    const actual=Number(APP_REV.replace(/\D/g,""));
+    const check=async()=>{const v=await verPublicada();if(v&&v.n>actual){setNueva(v);setOculto(false);}};
+    const t=setTimeout(check,15000);
+    const off=cadaVisible(check,VER_CADA);
+    return()=>{clearTimeout(t);off();};
+  },[]);
+  if(!nueva||oculto)return null;
+  const ver=nueva.fecha.slice(2,4)+nueva.fecha.slice(5,7)+"."+nueva.n+"."+nueva.fecha.slice(8,10);
+  // Primero se pide la página sin caché (así el navegador guarda la nueva) y después se recarga
+  const actualizar=async()=>{setBusy(true);try{await fetch(location.origin+location.pathname,{cache:"reload"});}catch(e){}location.reload();};
+  return <div className="ver-nueva" role="alert">
+    <span>🔄 Hay una versión nueva de la app (<b>{ver}</b>; tenés la {APP_VER}). Terminá lo que estés cargando y actualizá.</span>
+    <button className="ver-btn" disabled={busy} onClick={actualizar}>{busy?"Actualizando…":"Actualizar"}</button>
+    <button className="ver-x" title="Más tarde" onClick={()=>setOculto(true)}>✕</button>
+  </div>;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<><App/><AvisoVersion/></>);
 </script>
 </body>
 </html>
