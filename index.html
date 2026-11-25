@@ -630,10 +630,10 @@ button.jo-fp:hover{filter:brightness(1.3)}
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 // Etiqueta de versión — chip visible en topbar / login / vista pública para saber qué código está corriendo.
 // Actualizar en cada revisión nueva. Si cambia y en tablet/celu no lo ves, hay que borrar caché o abrir en incógnito.
-const APP_REV="Rev158";
+const APP_REV="Rev159";
 // Rev143: número de versión que se muestra al lado de CONTROLOBRA: AAMM.revisión.DD con la fecha de la revisión
 // (ej. 2611.143.14 = revisión 143 del 14/11/2026). En cada revisión nueva se actualizan APP_REV y APP_FECHA.
-const APP_FECHA="2026-11-23";
+const APP_FECHA="2026-11-25";
 const APP_VER=APP_FECHA.slice(2,4)+APP_FECHA.slice(5,7)+"."+APP_REV.replace(/\D/g,"")+"."+APP_FECHA.slice(8,10);
 const SB_URL="https://fuqemgiaspxkvfktsjmo.supabase.co";
 const SB_KEY="sb_publishable_HjbSY_QNP7X4SY83tbXM5g_b5ls7tjZ";
@@ -9144,6 +9144,54 @@ const joImprimirHoras=({puesto,desde,hasta,filas,user})=>{
   h+='</body></html>';
   w.document.write(h);w.document.close();w.focus();setTimeout(()=>{try{w.print();}catch(e){}},400);
 };
+// Rev159: lo mismo que el PDF pero en Excel (pedido del 25/11). Hojas: Resumen (totales por persona), Por día (una fila por
+// persona y una columna por día del período) y Detalle (una fila por persona y día, con los tramos y los avisos).
+// Las horas van como número: "h:mm" con formato de duración y "decimal" con dos decimales, así se pueden sumar en Excel.
+const joExcelHoras=async({puesto,desde,hasta,filas,user})=>{
+  try{
+    const XLSX=await joLoadXLSX();
+    const P=JO_PUESTOS_H[puesto],esP1=puesto==="p1";
+    const ser=(iso)=>{const[y,m,d]=iso.split("-").map(Number);return(Date.UTC(y,m-1,d)-Date.UTC(1899,11,30))/864e5;}; // fecha de Excel
+    const hDia=(ms)=>ms/864e5;                 // duración (formato [h]:mm)
+    const hDec=(ms)=>Math.round(ms/36000)/100; // horas con decimales
+    const dias=joRangoDias(desde,hasta);
+    const cab=[
+      [esP1?"Días en obra — Puesto 1":"Horas de personal — "+P.t+" ("+P.s+")"],
+      ["Período: "+cmdFmtDate(desde)+" al "+cmdFmtDate(hasta)+" · "+filas.length+" persona"+(filas.length===1?"":"s")+" · Generado "+joFechaHora(Date.now())+(user&&user.nombre?" por "+user.nombre:"")],
+      [P.d+(esP1?"":" Entradas sin salida, salidas sin entrada y tramos de más de "+JO_MAX_TRAMO_H+" h no se suman (figuran como aviso).")],
+      [],
+    ];
+    const d0=cab.length+1; // primera fila de datos (debajo de los títulos de columna)
+    const fmt=(ws,cols,z)=>{const rg=XLSX.utils.decode_range(ws["!ref"]);for(let r=d0;r<=rg.e.r;r++)cols.forEach(c=>{const a=XLSX.utils.encode_cell({r,c});if(ws[a]&&ws[a].t==="n")ws[a].z=z;});};
+    const per=(p)=>[p.apellido||"",p.nombre||"",p.dni||"",p.empresa||""];
+    // Resumen
+    const r1=[...cab,["Apellido","Nombre","DNI","Empresa",...(esP1?["Días"]:["Días con horas","Horas (h:mm)","Horas (decimal)","Avisos"])]];
+    filas.forEach(({p,r})=>r1.push([...per(p),...(esP1?[r.total]:[r.nDias,hDia(r.total),hDec(r.total),r.nAv||0])]));
+    const tot=filas.reduce((a,f)=>a+f.r.total,0);
+    r1.push(["TOTAL","","","",...(esP1?[tot]:[filas.reduce((a,f)=>a+f.r.nDias,0),hDia(tot),hDec(tot),filas.reduce((a,f)=>a+f.r.nAv,0)])]);
+    const w1=XLSX.utils.aoa_to_sheet(r1);
+    if(!esP1){fmt(w1,[5],"[h]:mm");fmt(w1,[6],"0.00");}
+    w1["!cols"]=[{wch:20},{wch:20},{wch:12},{wch:28},{wch:14},{wch:13},{wch:15},{wch:8}];
+    // Por día: una fila por persona, una columna por día
+    const r2=[...cab,["Apellido","Nombre","DNI","Empresa",...dias.map(d=>cmdFmtDate(d).slice(0,5)),esP1?"Total días":"Total horas"]];
+    filas.forEach(({p,r})=>r2.push([...per(p),...dias.map(d=>{const x=r.dias[d];if(!x)return"";return esP1?1:(x.ms?hDec(x.ms):"");}),esP1?r.total:hDec(r.total)]));
+    const w2=XLSX.utils.aoa_to_sheet(r2);
+    if(!esP1)fmt(w2,dias.map((_,i)=>4+i).concat([4+dias.length]),"0.00");
+    w2["!cols"]=[{wch:18},{wch:18},{wch:11},{wch:22},...dias.map(()=>({wch:6})),{wch:11}];
+    // Detalle: una fila por persona y día
+    const r3=[...cab,["Apellido","Nombre","DNI","Empresa","Fecha",...(esP1?["Detalle"]:["Tramos","Horas (h:mm)","Horas (decimal)","Avisos"])]];
+    filas.forEach(({p,r})=>Object.keys(r.dias).sort().forEach(d=>{const x=r.dias[d];
+      r3.push([...per(p),ser(d),...(esP1?[joTxtDiaP1(x)]:[joTxtTramos(x),x.ms?hDia(x.ms):"",x.ms?hDec(x.ms):"",x.avisos.join(" · ")])]);}));
+    const w3=XLSX.utils.aoa_to_sheet(r3);
+    fmt(w3,[4],"dd/mm/yyyy");if(!esP1){fmt(w3,[6],"[h]:mm");fmt(w3,[7],"0.00");}
+    w3["!cols"]=esP1?[{wch:18},{wch:18},{wch:11},{wch:22},{wch:11},{wch:60}]:[{wch:18},{wch:18},{wch:11},{wch:22},{wch:11},{wch:50},{wch:12},{wch:15},{wch:50}];
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,w1,"Resumen");
+    XLSX.utils.book_append_sheet(wb,w2,"Por día");
+    XLSX.utils.book_append_sheet(wb,w3,"Detalle");
+    XLSX.writeFile(wb,(esP1?"Dias en obra P1 ":"Horas "+P.t+" ")+desde+" al "+hasta+".xlsx");
+  }catch(e){alert("No se pudo generar el Excel: "+((e&&e.message)||e));}
+};
 
 function JoHoras({user}){
   const hoy=today(),minIso=OPERATIVA_DESDE.slice(0,10);
@@ -9244,8 +9292,11 @@ function JoHoras({user}){
         {!rangoOk&&<div className="warn" style={{fontSize:12}}>Revisá las fechas: "desde" tiene que ser anterior a "hasta", entre el {cmdFmtDate(minIso)} y hoy.</div>}
         <div className="jo-h" style={{marginTop:12}}>4 · Descargar</div>
         <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"var(--tx2)",cursor:"pointer",marginBottom:8}}><input type="checkbox" checked={ocultar0} onChange={e=>setOcultar0(e.target.checked)}/> Ocultar a quienes no tienen registros en el período</label>
-        <button className="badd" disabled={!filas.length} style={{opacity:filas.length?1:.5}} onClick={()=>joImprimirHoras({puesto,desde,hasta,filas,user})}>📄 Descargar PDF</button>
-        <div style={{fontSize:11,color:"var(--tx3)",marginTop:6,lineHeight:1.5}}>Se abre la vista para imprimir: elegí "Guardar como PDF". Trae el resumen con totales y el detalle día por día de cada persona.</div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button className="badd" disabled={!filas.length} style={{opacity:filas.length?1:.5}} onClick={()=>joImprimirHoras({puesto,desde,hasta,filas,user})}>📄 Descargar PDF</button>
+          <button className="badd" disabled={!filas.length} style={{opacity:filas.length?1:.5,background:"rgba(16,185,129,.2)",border:"1px solid var(--gr)",color:"var(--gr)"}} onClick={()=>joExcelHoras({puesto,desde,hasta,filas,user})}>📊 Descargar Excel</button>
+        </div>
+        <div style={{fontSize:11,color:"var(--tx3)",marginTop:6,lineHeight:1.5}}>PDF: se abre la vista para imprimir (elegí "Guardar como PDF"). Excel: hojas Resumen, Por día (una columna por día) y Detalle. Los dos traen los totales y el detalle día por día de cada persona.</div>
       </div>
     </div>
     {!ev&&!evErr&&<Spin t="Leyendo fichadas…"/>}
